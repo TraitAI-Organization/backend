@@ -88,6 +88,69 @@ def get_prediction_request(payload: dict):
         return None
 
 
+@st.cache_data(ttl=60)
+def get_ui_form_config(form_key: str):
+    try:
+        r = requests.get(f"{API_URL}/admin/api/ui-config/public", params={"form_key": form_key}, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        return data.get("config", {})
+    except Exception:
+        return {}
+
+
+def render_custom_fields(custom_fields, key_prefix: str):
+    values = {}
+    missing_required = []
+    if not custom_fields:
+        return values, missing_required
+
+    st.markdown("**Additional Fields**")
+    for idx, field in enumerate(custom_fields):
+        field_key = str(field.get("field_key", f"custom_{idx}"))
+        label = str(field.get("label", field_key))
+        field_type = str(field.get("type", "text")).lower()
+        payload_key = str(field.get("payload_key") or field_key)
+        required = bool(field.get("required", False))
+        help_text = field.get("help_text") or None
+        default = field.get("default")
+        widget_key = f"{key_prefix}_{field_key}"
+        value = None
+
+        if field_type == "select":
+            options = field.get("options") or []
+            options = [str(x) for x in options]
+            if options:
+                default_idx = 0
+                if default in options:
+                    default_idx = options.index(default)
+                value = st.selectbox(
+                    f"{label}{' *' if required else ''}",
+                    options=options,
+                    index=default_idx,
+                    key=widget_key,
+                    help=help_text,
+                )
+            else:
+                value = st.text_input(f"{label}{' *' if required else ''}", value=str(default or ""), key=widget_key, help=help_text)
+        elif field_type == "number":
+            try:
+                default_num = float(default) if default is not None else 0.0
+            except (TypeError, ValueError):
+                default_num = 0.0
+            value = st.number_input(f"{label}{' *' if required else ''}", value=default_num, key=widget_key, help=help_text)
+        elif field_type == "boolean":
+            value = st.checkbox(f"{label}{' *' if required else ''}", value=bool(default), key=widget_key, help=help_text)
+        else:
+            value = st.text_input(f"{label}{' *' if required else ''}", value=str(default or ""), key=widget_key, help=help_text)
+
+        if required and (value is None or value == ""):
+            missing_required.append(label)
+        values[payload_key] = value
+
+    return values, missing_required
+
+
 if "selected_field_id" not in st.session_state:
     st.session_state.selected_field_id = None
 if "filters" not in st.session_state:
@@ -240,6 +303,9 @@ with tab_analytics:
 with tab_predict:
     st.header("🔮 Yield Prediction Tool")
     st.caption("Select an existing field or enter crop, location, season, N/P/K manually; submit to get predicted yield, confidence interval, and key factors.")
+    prediction_form_cfg = get_ui_form_config("prediction")
+    prediction_dropdowns = prediction_form_cfg.get("dropdowns", {}) if isinstance(prediction_form_cfg, dict) else {}
+    prediction_custom_fields = prediction_form_cfg.get("custom_fields", []) if isinstance(prediction_form_cfg, dict) else []
     try:
         fields_resp = requests.get(f"{API_URL}/api/v1/fields?limit=500", timeout=10)
         field_options = []
@@ -259,7 +325,8 @@ with tab_predict:
     with st.form("pred_form"):
         c1, c2, c3 = st.columns(3)
         with c1:
-            pred_crop = st.selectbox("Crop", options=crop_names, index=0)
+            pred_crop_options = prediction_dropdowns.get("crop") if isinstance(prediction_dropdowns.get("crop"), list) and prediction_dropdowns.get("crop") else crop_names
+            pred_crop = st.selectbox("Crop", options=pred_crop_options, index=0)
             pred_variety = st.text_input("Variety (optional)")
             pred_acres = st.number_input("Acres", min_value=0.1, value=50.0, step=1.0)
         with c2:
@@ -272,9 +339,18 @@ with tab_predict:
             pred_k = st.number_input("Total K (lb/ac)", min_value=0.0, value=30.0, step=5.0)
         pred_water = st.number_input("Water Applied (mm)", min_value=0.0, value=0.0, step=10.0)
         pred_county = st.text_input("County")
-        pred_state = st.text_input("State")
+        pred_state_options = prediction_dropdowns.get("state") if isinstance(prediction_dropdowns.get("state"), list) else []
+        if pred_state_options:
+            pred_state = st.selectbox("State", options=pred_state_options, index=0)
+        else:
+            pred_state = st.text_input("State")
+
+        custom_pred_values, missing_custom_pred = render_custom_fields(prediction_custom_fields, "prediction_custom")
 
         if st.form_submit_button("🔮 Predict Yield"):
+            if missing_custom_pred:
+                st.error(f"Missing required additional fields: {', '.join(missing_custom_pred)}")
+                st.stop()
             payload = {
                 "crop": pred_crop, "variety": pred_variety or None, "acres": pred_acres,
                 "lat": pred_lat, "long": pred_long, "season": pred_season,
@@ -282,6 +358,7 @@ with tab_predict:
                 "water_applied_mm": pred_water if pred_water > 0 else None,
                 "county": pred_county or None, "state": pred_state or None,
             }
+            payload.update({k: v for k, v in custom_pred_values.items() if v is not None and v != ""})
             with st.spinner("Predicting..."):
                 res = get_prediction_request(payload)
             if res:
@@ -322,11 +399,18 @@ with tab_upload:
                 st.error(f"Error reading CSV: {e}")
     with tab_form:
         st.markdown("Add a single field-season record by filling the form below.")
+        manual_form_cfg = get_ui_form_config("manual_entry")
+        manual_dropdowns = manual_form_cfg.get("dropdowns", {}) if isinstance(manual_form_cfg, dict) else {}
+        manual_custom_fields = manual_form_cfg.get("custom_fields", []) if isinstance(manual_form_cfg, dict) else []
+        manual_crop_options = manual_dropdowns.get("crop_name_en") if isinstance(manual_dropdowns.get("crop_name_en"), list) and manual_dropdowns.get("crop_name_en") else ["Wheat, Hard Winter", "Corn", "Sorghum", "Fallow", "Other"]
+        manual_state_options = manual_dropdowns.get("state") if isinstance(manual_dropdowns.get("state"), list) and manual_dropdowns.get("state") else ["Kansas", "Nebraska", "Oklahoma", "Texas", "Colorado", "Other"]
+        manual_type_options = manual_dropdowns.get("type") if isinstance(manual_dropdowns.get("type"), list) and manual_dropdowns.get("type") else ["Manual Entry"]
+        manual_status_options = manual_dropdowns.get("status") if isinstance(manual_dropdowns.get("status"), list) and manual_dropdowns.get("status") else ["Completed"]
         with st.form("manual_entry_form"):
             c1, c2 = st.columns(2)
             with c1:
                 field_id = st.number_input("Field ID *", min_value=1, step=1)
-                crop_type = st.selectbox("Crop *", ["Wheat, Hard Winter", "Corn", "Sorghum", "Fallow", "Other"])
+                crop_type = st.selectbox("Crop *", manual_crop_options)
                 variety = st.text_input("Variety")
                 acres = st.number_input("Acres *", min_value=0.1, step=0.01, value=50.0, format="%.2f")
                 grower_id = st.number_input("Grower ID *", min_value=1, step=1, value=1)
@@ -336,14 +420,23 @@ with tab_upload:
                 start_date = st.date_input("Start date", value=datetime.now().date())
                 end_date = st.date_input("End date", value=datetime.now().date())
                 county = st.text_input("County")
-                state = st.selectbox("State", ["Kansas", "Nebraska", "Oklahoma", "Texas", "Colorado", "Other"])
+                state = st.selectbox("State", manual_state_options)
+            op1, op2 = st.columns(2)
+            with op1:
+                op_type = st.selectbox("Operation Type", manual_type_options, index=0)
+            with op2:
+                op_status = st.selectbox("Status", manual_status_options, index=0)
             lat = st.number_input("Latitude", value=37.5, format="%.6f", min_value=-90.0, max_value=90.0)
             long = st.number_input("Longitude", value=-99.5, format="%.6f", min_value=-180.0, max_value=180.0)
             yield_bu_ac = st.number_input("Yield (bu/ac)", min_value=0.0, value=0.0, step=0.1, format="%.1f")
             total_n = st.number_input("Total N per acre (lb)", min_value=0.0, value=0.0, step=0.1, format="%.1f")
             total_p = st.number_input("Total P per acre (lb)", min_value=0.0, value=0.0, step=0.1, format="%.1f")
             total_k = st.number_input("Total K per acre (lb)", min_value=0.0, value=0.0, step=0.1, format="%.1f")
+            custom_manual_values, missing_custom_manual = render_custom_fields(manual_custom_fields, "manual_custom")
             if st.form_submit_button("Submit field data"):
+                if missing_custom_manual:
+                    st.error(f"Missing required additional fields: {', '.join(missing_custom_manual)}")
+                    st.stop()
                 payload = {
                     "field_id": field_id,
                     "crop_name_en": crop_type,
@@ -354,8 +447,8 @@ with tab_upload:
                     "job_id": job_id,
                     "start": start_date.isoformat() + "T00:00:00.000000+00:00",
                     "end": end_date.isoformat() + "T00:00:00.000000+00:00",
-                    "type": "Manual Entry",
-                    "status": "Completed",
+                    "type": op_type,
+                    "status": op_status,
                     "state": state,
                     "county": county or None,
                     "lat": lat,
@@ -366,6 +459,7 @@ with tab_upload:
                     "totalK_per_ac": total_k if total_k else None,
                     "filenames": "manual_entry.csv",
                 }
+                payload.update({k: v for k, v in custom_manual_values.items() if v is not None and v != ""})
                 try:
                     r = requests.post(f"{API_URL}/api/v1/manual-entry/manual-entry", json=payload, timeout=30)
                     if r.status_code == 200:

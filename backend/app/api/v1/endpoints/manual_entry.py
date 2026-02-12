@@ -11,6 +11,7 @@ from app.database.schemas import (
     ManualEntryCreate,
     ManualEntryResponse,
 )
+from app.services.ui_config import get_form_config
 
 router = APIRouter()
 
@@ -139,7 +140,7 @@ async def get_manual_entry_schema():
     Return the schema and validation rules for manual data entry.
     This can be used by frontend to build dynamic forms.
     """
-    return {
+    base_schema = {
         "required_fields": [
             "field_id", "crop_name_en", "acres", "grower", "season", 
             "job_id", "start", "end", "type", "status"
@@ -164,5 +165,17 @@ async def get_manual_entry_schema():
             "lat": {"min": -90, "max": 90, "type": "float", "decimal_places": 6},
             "long": {"min": -180, "max": 180, "type": "float", "decimal_places": 6},
             "yield_bu_ac": {"min": 0, "type": "float", "decimal_places": 1}
-        }
+        },
+        "custom_fields": [],
     }
+
+    dynamic_cfg = get_form_config("manual_entry")
+    dropdowns = dynamic_cfg.get("dropdowns", {})
+    custom_fields = dynamic_cfg.get("custom_fields", [])
+
+    for key, values in dropdowns.items():
+        if isinstance(values, list):
+            base_schema["categorical_fields"][key] = values
+    base_schema["custom_fields"] = custom_fields
+
+    return base_schema

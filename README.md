@@ -96,6 +96,7 @@ docker compose exec backend python scripts/backfill_predictions.py
 - Dashboard: `http://localhost:8502`
 - API docs: `http://localhost:8001/docs`
 - Health: `http://localhost:8001/health`
+- Admin panel: `http://localhost:8001/admin`
 
 ### Docker Ports
 
@@ -178,6 +179,19 @@ cd backend
 python scripts/backfill_predictions.py --batch-size 1000
 ```
 
+## Admin Panel
+
+The backend now includes a first-class admin control plane at `/admin` for:
+- model training jobs
+- model deployment (set production model)
+- prediction backfill jobs
+- ingestion log monitoring
+- live admin job status
+- GUI field builder (manage dropdown options and custom fields for forms)
+
+If `ADMIN_API_KEY` is set, admin API actions require `X-Admin-Key`.
+The `/admin` UI includes a key field and stores it in browser localStorage for convenience.
+
 ## API Quick Reference
 
 Base URL (Docker): `http://localhost:8001`
@@ -250,6 +264,24 @@ curl -X POST "http://localhost:8001/api/v1/predict" \
 - `POST /api/v1/manual-entry/manual-entry`
 - `GET /api/v1/manual-entry/manual-entry/schema`
 
+### Admin APIs (new)
+
+- `GET /admin` (web admin panel)
+- `GET /admin/api/system-status`
+- `GET /admin/api/models`
+- `POST /admin/api/models/train`
+- `POST /admin/api/models/set-production`
+- `POST /admin/api/predictions/backfill`
+- `GET /admin/api/ingestion-logs`
+- `GET /admin/api/jobs`
+- `GET /admin/api/jobs/{job_id}`
+- `GET /admin/api/ui-config` (admin)
+- `GET /admin/api/ui-config/public?form_key=manual_entry|prediction` (frontend-safe read)
+- `POST /admin/api/ui-config/dropdown-option/add`
+- `POST /admin/api/ui-config/dropdown-option/remove`
+- `POST /admin/api/ui-config/custom-field/upsert`
+- `POST /admin/api/ui-config/custom-field/delete`
+
 ## Configuration
 
 Main environment variables (`.env`):
@@ -266,6 +298,8 @@ SECRET_KEY=change-this-to-a-random-secret-key-in-production
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 ENVIRONMENT=development
 DEBUG=True
+ADMIN_API_KEY=
+UI_CONFIG_PATH=data/ui_config.json
 
 # ML
 MODEL_PATH=models/

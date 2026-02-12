@@ -30,6 +30,7 @@ temp/
 
 # Data (large files)
 data/
+*.csv
 
 # Streamlit
 .streamlit/

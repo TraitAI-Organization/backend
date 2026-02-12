@@ -25,6 +25,8 @@ services:
       ENVIRONMENT: production
       DEBUG: "false"
       REDIS_URL: redis://redis:6379/0
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      UI_CONFIG_PATH: ${UI_CONFIG_PATH:-data/ui_config.json}
     volumes:
       - ./backend:/app
       - ./models:/app/models  # Persist trained models

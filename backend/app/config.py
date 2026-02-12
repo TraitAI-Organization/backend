@@ -36,5 +36,11 @@ class Settings(BaseSettings):
     # Redis (optional)
     redis_url: str = "redis://localhost:6379/0"
 
+    # Admin
+    admin_api_key: Optional[str] = None
+
+    # UI configuration
+    ui_config_path: str = "data/ui_config.json"
+
 
 settings = Settings()
