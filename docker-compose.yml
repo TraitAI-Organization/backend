@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: nutrition
+      POSTGRES_PASSWORD: securepassword123
+      POSTGRES_DB: nutrition_ai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # Changed from 5432 to 5433 to avoid conflict
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nutrition -d nutrition_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://nutrition:securepassword123@postgres:5432/nutrition_ai
+      MODEL_PATH: /app/models
+      ENVIRONMENT: production
+      DEBUG: "false"
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+      - ./models:/app/models  # Persist trained models
+      - ./data:/app/data      # CSV data
+    ports:
+      - "8001:8000"  # Changed from 8000 to 8001 to avoid conflict
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        python -m app.main
+      "
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    environment:
+      API_URL: http://backend:8000
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "8502:8501"
+    depends_on:
+      - backend
+    command: >
+      streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --browser.gatherUsageStats false
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"  # Changed from 6379 to 6380 to avoid conflict
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+*.egg
+
+# Environment (secrets)
+.env
+.env.local
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Project
+models/
+*.pkl
+*.joblib
+*.log
+logs/
+tmp/
+temp/
+.cache/
+
+# Data (large files)
+data/
+
+# Streamlit
+.streamlit/
