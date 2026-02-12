@@ -20,8 +20,10 @@ env/
 
 # Project
 models/
+model_specific_files/
 *.pkl
 *.joblib
+*.cbm
 *.log
 logs/
 tmp/
