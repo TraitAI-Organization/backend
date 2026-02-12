@@ -1,184 +1,317 @@
 # Nutrition AI
 
-Agricultural yield prediction platform with ML-powered insights for farmers and agronomists.
+Nutrition AI is an agricultural yield prediction platform with:
+- a FastAPI backend
+- a Streamlit dashboard
+- a PostgreSQL data layer
+- an ML pipeline for model training, prediction, and explainability
 
-## Features
+It supports CSV ingestion, field-level filtering, model versioning, and yield prediction with confidence intervals.
 
-- **Yield Prediction**: Predict crop yields based on fertilizer applications, location, and management practices
-- **Interactive Dashboard**: Filter and explore field-season records with sortable tables and visualizations
-- **Explainability**: Understand key factors driving yield predictions (SHAP values)
-- **Model Versioning**: Track model performance and improvements over time
-- **Data Ingestion**: Automated CSV import with deduplication and provenance tracking
+## What You Get
+
+- Yield prediction from crop, location, season, and N/P/K inputs
+- Dashboard for overview metrics, field table, map, analytics, and prediction form
+- CSV export for filtered records
+- Model training/version management APIs
+- Bulk data ingestion (CLI or API upload)
 
 ## Tech Stack
 
-- **Backend**: FastAPI + PostgreSQL
-- **ML**: LightGBM/XGBoost + SHAP
-- **Frontend**: Streamlit (MVP) / React (production)
-- **Infrastructure**: Docker, Redis (optional)
+- Backend: FastAPI, SQLAlchemy, Alembic
+- Database: PostgreSQL 15
+- ML: scikit-learn, LightGBM, XGBoost, SHAP
+- Frontend: Streamlit + Plotly
+- Infra: Docker Compose, Redis (optional)
 
-## Quick Start
+## Repository Layout
 
-### 1. Clone and setup
-
-```bash
-cd nutrition-ai
-cp .env.example .env
-# Edit .env with your database credentials
-```
-
-### 2. Start with Docker Compose
-
-```bash
-docker-compose up -d
-```
-
-This starts:
-- PostgreSQL on port 5432
-- FastAPI backend on port 8000
-- Streamlit dashboard on port 8501
-
-### 3. Import initial data
-
-```bash
-# From the backend container
-docker exec -it nutrition-ai-backend python scripts/import_data.py \
-  --csv /data/NSP_field_product_combined_all.csv
-
-# Or locally if database is accessible
-python scripts/import_data.py --csv ../NSP_field_product_combined_all.csv
-```
-
-### 4. Train initial model
-
-```bash
-docker exec -it nutrition-ai-backend python scripts/train_model.py \
-  --start-season 2018 --end-season 2024
-```
-
-### 5. Access the application
-
-- **Dashboard**: http://localhost:8501
-- **API docs**: http://localhost:8000/docs
-- **Health check**: http://localhost:8000/health
-
-## Project Structure
-
-```
-nutrition-ai/
+```text
+nutriotion-ai/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/endpoints/    # REST API endpoints
-│   │   ├── database/            # SQLAlchemy models & schemas
-│   │   ├── ml/                  # ML models, training, explainability
-│   │   ├── services/            # Business logic layer
-│   │   └── utils/               # Helpers, validators
-│   ├── scripts/                 # Data import, training, management
-│   ├── tests/                   # Unit and integration tests
+│   │   ├── api/v1/endpoints/    # API endpoints
+│   │   ├── database/            # models, CRUD, session, schemas
+│   │   ├── ml/                  # trainer, predictor, explainability
+│   │   ├── services/            # ingestion and regional services
+│   │   └── config.py
+│   ├── scripts/                 # init_db, import_data, train_model, backfill_predictions
 │   └── requirements.txt
 ├── frontend/
-│   ├── app.py                   # Streamlit dashboard (MVP)
+│   ├── app.py                   # Streamlit UI
 │   └── requirements.txt
-├── docs/                        # Additional documentation
-├── scripts/                     # One-off scripts
-├── alembic/                     # Database migrations
+├── alembic/                     # DB migrations
+├── docs/
+│   └── database_schema.sql
 ├── docker-compose.yml
 ├── .env.example
-└── README.md
+├── QUICKSTART.md
+├── SETUP.md
+└── ARCHITECTURE.md
+```
+
+## Prerequisites
+
+- Docker + Docker Compose (recommended)
+- or Python 3.11+ and PostgreSQL 15+ for local/manual setup
+
+## Quick Start (Docker)
+
+1. Start services:
+
+```bash
+docker compose up -d --build
+```
+
+2. Initialize database tables:
+
+```bash
+docker compose exec backend python scripts/init_db.py
+```
+
+3. Import data (CSV file should be in `./data/`):
+
+```bash
+docker compose exec backend python scripts/import_data.py \
+  --csv /app/data/NSP_field_product_combined_all.csv
+```
+
+4. Train an initial model:
+
+```bash
+docker compose exec backend python scripts/train_model.py \
+  --model-type lightgbm \
+  --start-season 2018 \
+  --end-season 2024
+```
+
+5. Optional: backfill predictions for historical records:
+
+```bash
+docker compose exec backend python scripts/backfill_predictions.py
+```
+
+6. Open the apps:
+
+- Dashboard: `http://localhost:8502`
+- API docs: `http://localhost:8001/docs`
+- Health: `http://localhost:8001/health`
+
+### Docker Ports
+
+- PostgreSQL: `5433` (container `5432`)
+- Backend API: `8001` (container `8000`)
+- Frontend: `8502` (container `8501`)
+- Redis: `6380` (container `6379`)
+
+## Manual Setup (Local)
+
+1. Create env file:
+
+```bash
+cp .env.example .env
+```
+
+2. Start PostgreSQL and ensure `DATABASE_URL` in `.env` is correct.
+   If you are using the PostgreSQL container from this repo, use host port `5433`.
+
+3. Install backend deps:
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+4. Run DB migrations from repo root (in a terminal with backend env available):
+
+```bash
+alembic upgrade head
+```
+
+5. Run backend:
+
+```bash
+cd backend
+uvicorn app.main:app --reload --port 8000
+```
+
+6. Run frontend in a new terminal:
+
+```bash
+cd frontend
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+API_URL=http://localhost:8000 streamlit run app.py
+```
+
+## Data Operations
+
+### Import CSV
+
+```bash
+cd backend
+python scripts/import_data.py \
+  --csv ../NSP_field_product_combined_all.csv \
+  --source-filename NSP_field_product_combined_all.csv \
+  --chunk-size 10000
+```
+
+### Train Model
+
+```bash
+cd backend
+python scripts/train_model.py \
+  --model-type lightgbm \
+  --start-season 2018 \
+  --end-season 2024 \
+  --test-size 0.2 \
+  --random-seed 42
+```
+
+### Backfill Predictions
+
+```bash
+cd backend
+python scripts/backfill_predictions.py --batch-size 1000
 ```
 
 ## API Quick Reference
 
-### Filter Fields
+Base URL (Docker): `http://localhost:8001`
 
-```
-GET /api/v1/fields/?crop=Sorghum&season=2025&state=Kansas&limit=50
-```
+### Core
 
-### Get Prediction
+- `GET /health`
+- `GET /`
+- `GET /docs`
 
-```
-POST /api/v1/predict
-{
-  "crop": "Sorghum",
-  "variety": "Pioneer 86P20",
-  "acres": 47.07,
-  "lat": 37.567,
-  "long": -99.936,
-  "season": 2025,
-  "totalN_per_ac": 65.6,
-  "totalP_per_ac": 45.2,
-  "totalK_per_ac": 30.1
-}
-```
+### Fields
 
-### Model Info
+- `GET /api/v1/fields/overview`
+- `GET /api/v1/fields`
+- `GET /api/v1/fields/{field_season_id}`
+- `GET /api/v1/fields/crops/`
+- `GET /api/v1/fields/varieties/`
+- `GET /api/v1/fields/seasons/`
 
-```
-GET /api/v1/models/versions
-```
-
-## Development
-
-### Setup local environment
+Example:
 
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r backend/requirements.txt
-pip install -r frontend/requirements.txt
-
-# Start PostgreSQL (using Docker)
-docker run -d -p 5432:5432 \
-  -e POSTGRES_USER=nutrition \
-  -e POSTGRES_PASSWORD=devpassword \
-  -e POSTGRES_DB=nutrition_ai \
-  postgres:15
-
-# Run database migrations
-cd backend
-alembic upgrade head
-
-# Start backend
-uvicorn app.main:app --reload --port 8000
-
-# In another terminal, start frontend
-cd frontend
-streamlit run app.py
+curl "http://localhost:8001/api/v1/fields?crop=Sorghum&season=2025&state=Kansas&limit=50"
 ```
 
-### Run tests
+### Predictions
+
+- `POST /api/v1/predict`
+- `POST /api/v1/predict/batch`
+
+Example:
+
+```bash
+curl -X POST "http://localhost:8001/api/v1/predict" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "crop": "Sorghum",
+    "variety": "Pioneer 86P20",
+    "acres": 47.07,
+    "lat": 37.567,
+    "long": -99.936,
+    "season": 2025,
+    "totalN_per_ac": 65.6,
+    "totalP_per_ac": 45.2,
+    "totalK_per_ac": 30.1
+  }'
+```
+
+### Models
+
+- `GET /api/v1/models/versions`
+- `GET /api/v1/models/versions/{version_id}`
+- `POST /api/v1/models/train`
+- `POST /api/v1/models/versions/{version_id}/set-production`
+- `GET /api/v1/models/production`
+- `GET /api/v1/models/performance`
+
+### Exports
+
+- `GET /api/v1/export/csv`
+- `GET /api/v1/export/field/{field_season_id}/summary?format=json|csv`
+
+### Data Ingestion APIs
+
+- `POST /api/v1/data/upload` (multipart CSV upload)
+- `GET /api/v1/data/ingestion/logs`
+
+### Manual Entry APIs
+
+- `POST /api/v1/manual-entry/manual-entry`
+- `GET /api/v1/manual-entry/manual-entry/schema`
+
+## Configuration
+
+Main environment variables (`.env`):
+
+```bash
+# Database
+DATABASE_URL=postgresql://nutrition:password@localhost:5432/nutrition_ai
+POSTGRES_USER=nutrition
+POSTGRES_PASSWORD=password
+POSTGRES_DB=nutrition_ai
+
+# App
+SECRET_KEY=change-this-to-a-random-secret-key-in-production
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+ENVIRONMENT=development
+DEBUG=True
+
+# ML
+MODEL_PATH=models/
+MODEL_VERSION=v1.0.0
+
+# Optional
+REDIS_URL=redis://localhost:6379/0
+```
+
+## Useful Commands
+
+```bash
+# View logs
+docker compose logs -f backend
+docker compose logs -f frontend
+
+# Stop services
+docker compose down
+
+# Rebuild from scratch
+docker compose down -v
+docker compose up -d --build
+```
+
+## Tests
+
+`backend/tests/` is present but currently empty. When tests are added, run:
 
 ```bash
 pytest backend/tests/
 ```
 
-## Data Model
+## Troubleshooting
 
-### Core Tables
+- `No production model available`: train a model first, then retry prediction.
+- `Failed to fetch overview` in dashboard: verify backend is up and reachable at `API_URL`.
+- DB connection errors in Docker: ensure API uses compose network DB host (`postgres`) and container port `5432`.
+- Large CSV import memory pressure: lower `--chunk-size` (for example, `5000`).
 
-- **fields**: Unique field locations with geographic info
-- **field_seasons**: Field × Season combinations (main fact table)
-- **management_events**: All operations (planting, fertilizer, spray, harvest)
-- **model_versions**: ML model metadata and performance
-- **model_predictions**: Predictions with explainability data
+## Additional Docs
 
-See `docs/database_schema.sql` for full schema.
-
-## Configuration
-
-Environment variables in `.env`:
-
-```bash
-DATABASE_URL=postgresql://user:pass@localhost/nutrition_ai
-SECRET_KEY=your-secret-key-here
-MODEL_PATH=models/
-ENVIRONMENT=development  # or production
-```
+- `QUICKSTART.md`: short bootstrap flow
+- `SETUP.md`: detailed setup walkthrough
+- `ARCHITECTURE.md`: system design and implementation details
+- `docs/database_schema.sql`: database schema reference
 
 ## License
 
-[Your License Here]
+No license is declared yet. Add a license file and update this section before external distribution.
