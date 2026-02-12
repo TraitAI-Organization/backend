@@ -21,6 +21,38 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _sanitize_metrics(metrics: Optional[dict]) -> dict:
+    """
+    Convert metrics payload to Dict[str, float] to satisfy response schema.
+    Non-numeric values are dropped.
+    """
+    if not isinstance(metrics, dict):
+        return {}
+
+    out = {}
+    for key, value in metrics.items():
+        if isinstance(value, (int, float)):
+            out[key] = float(value)
+    return out
+
+
+def _to_model_version_response(mv) -> ModelVersionResponse:
+    return ModelVersionResponse(
+        model_version_id=mv.model_version_id,
+        version_tag=mv.version_tag,
+        model_type=mv.model_type,
+        model_params=mv.model_params or {},
+        training_data_range=mv.training_data_range,
+        performance_metrics=_sanitize_metrics(mv.performance_metrics),
+        training_date=mv.training_date,
+        is_production=mv.is_production,
+        feature_list=mv.feature_list or [],
+        preprocessing_steps=mv.preprocessing_steps,
+        notes=mv.notes,
+        created_by=mv.created_by,
+    )
+
+
 @router.get("/versions", response_model=List[ModelVersionResponse], summary="List model versions")
 async def list_model_versions(
     db: Session = Depends(get_db),
@@ -33,7 +65,7 @@ async def list_model_versions(
     **active_only**: If true, returns only the latest version for each model_type.
     """
     versions = crud.get_model_versions(db, limit=limit, active_only=active_only)
-    return versions
+    return [_to_model_version_response(v) for v in versions]
 
 
 @router.get("/versions/{version_id}", response_model=ModelVersionDetailResponse, summary="Get model version details")
@@ -58,7 +90,7 @@ async def get_model_version(
         model_type=mv.model_type,
         model_params=mv.model_params,
         training_data_range=mv.training_data_range,
-        performance_metrics=mv.performance_metrics,
+        performance_metrics=_sanitize_metrics(mv.performance_metrics),
         training_date=mv.training_date,
         is_production=mv.is_production,
         feature_list=mv.feature_list,
@@ -174,7 +206,7 @@ async def get_production_model(
             detail="No production model is currently set"
         )
 
-    return ModelVersionResponse.model_validate(mv)
+    return _to_model_version_response(mv)
 
 
 @router.get("/performance", summary="Get model performance metrics")

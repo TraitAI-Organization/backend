@@ -83,13 +83,17 @@ async def predict_yield(
         # Generate prediction
         prediction_result = predictor.predict(request.model_dump(), model_version)
 
-        # Get explainability
-        explainer = ExplainabilityEngine(db, predictor)
-        explanations = explainer.explain_prediction(
-            features=prediction_result['features'],
-            model_version=model_version,
-            base_value=prediction_result.get('base_value', 0.0)
-        )
+        # Get explainability (best-effort; do not fail prediction if explanation fails)
+        explanations = {"top_features": []}
+        try:
+            explainer = ExplainabilityEngine(db, predictor)
+            explanations = explainer.explain_prediction(
+                features=prediction_result['features'],
+                model_version=model_version,
+                base_value=prediction_result.get('base_value', 0.0)
+            )
+        except Exception as explain_err:
+            logger.warning(f"Explainability unavailable for model {model_version.version_tag}: {explain_err}")
 
         # Build response
         response = PredictionResponse(

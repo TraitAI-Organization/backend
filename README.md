@@ -344,6 +344,9 @@ pytest backend/tests/
 - `QUICKSTART.md`: short bootstrap flow
 - `SETUP.md`: detailed setup walkthrough
 - `ARCHITECTURE.md`: system design and implementation details
+- `docs/FEDERATED_MULTI_TENANT_ARCHITECTURE.md`: federated multi-tenant target architecture and diagrams
+- `docs/FEDERATED_IMPLEMENTATION_PLAN.md`: phased delivery plan for federated rollout
+- `docs/GENMILLS_MODEL_IMPORT.md`: importing and registering external GenMills model artifacts
 - `docs/database_schema.sql`: database schema reference
 
 ## License
