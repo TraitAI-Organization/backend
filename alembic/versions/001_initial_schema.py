@@ -6,8 +6,6 @@ Create Date: 2025-02-11 00:00:00.000000
 
 """
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = '001'
@@ -16,13 +14,14 @@ branch_labels = None
 depends_on = None
 
 def upgrade() -> None:
-    # This file is a placeholder - actual schema is defined in app/database/models.py
-    # When running alembic upgrade head, it will create all tables from Base.metadata
-    pass
+    # Build schema from SQLAlchemy metadata for initial revision.
+    from app.database import models
+
+    bind = op.get_bind()
+    models.Base.metadata.create_all(bind=bind)
 
 def downgrade() -> None:
     # Drop all tables in reverse order
-    from app.database.models import Base
     op.drop_constraint('uq_field_season', 'field_seasons', type_='unique')
     op.drop_constraint('uq_prediction_field_model', 'model_predictions', type_='unique')
     op.drop_constraint('uq_variety_crop', 'varieties', type_='unique')

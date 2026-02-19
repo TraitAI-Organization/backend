@@ -38,6 +38,7 @@ services:
         condition: service_healthy
     command: >
       sh -c "
+        python scripts/init_db.py &&
         python -m app.main
       "
     restart: unless-stopped

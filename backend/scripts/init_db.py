@@ -3,9 +3,8 @@
 Initialize database - create tables
 """
 import sys
-import os
-from sqlalchemy import create_engine
 from app.database.session import Base, engine
+from app.database import models  # noqa: F401 - ensure ORM models are registered
 from app.config import settings
 
 def init_database():
