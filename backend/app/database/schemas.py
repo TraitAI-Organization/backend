@@ -8,7 +8,7 @@ from datetime import datetime, date
 
 # Base schemas
 class BaseSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
 
 
 # Field schemas

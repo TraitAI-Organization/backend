@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -32,7 +32,11 @@ from app.services.ui_config import (
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-class TrainJobRequest(BaseModel):
+class AdminSchema(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+
+class TrainJobRequest(AdminSchema):
     model_type: str = Field(default="lightgbm", pattern="^(lightgbm|xgboost|random_forest)$")
     start_season: int = Field(default=2018, ge=1900, le=2100)
     end_season: int = Field(default=2024, ge=1900, le=2100)
@@ -41,21 +45,21 @@ class TrainJobRequest(BaseModel):
     set_production: bool = Field(default=True)
 
 
-class SetProductionRequest(BaseModel):
+class SetProductionRequest(AdminSchema):
     version_id: int
 
 
-class BackfillJobRequest(BaseModel):
+class BackfillJobRequest(AdminSchema):
     batch_size: int = Field(default=1000, ge=10, le=10000)
 
 
-class UiDropdownOptionRequest(BaseModel):
+class UiDropdownOptionRequest(AdminSchema):
     form_key: str = Field(pattern="^(manual_entry|prediction)$")
     field_key: str = Field(min_length=1)
     option: str = Field(min_length=1)
 
 
-class UiCustomFieldRequest(BaseModel):
+class UiCustomFieldRequest(AdminSchema):
     form_key: str = Field(pattern="^(manual_entry|prediction)$")
     field_key: str = Field(min_length=1)
     label: str = Field(min_length=1)
@@ -67,7 +71,7 @@ class UiCustomFieldRequest(BaseModel):
     options: Optional[list[str]] = None
 
 
-class UiCustomFieldDeleteRequest(BaseModel):
+class UiCustomFieldDeleteRequest(AdminSchema):
     form_key: str = Field(pattern="^(manual_entry|prediction)$")
     field_key: str = Field(min_length=1)
 
