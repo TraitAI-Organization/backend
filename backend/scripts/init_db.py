@@ -3,6 +3,13 @@
 Initialize database - create tables
 """
 import sys
+from pathlib import Path
+
+# Ensure backend root is importable when run as `python scripts/init_db.py`.
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
 from app.database.session import Base, engine
 from app.database import models  # noqa: F401 - ensure ORM models are registered
 from app.config import settings
