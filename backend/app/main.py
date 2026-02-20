@@ -4,6 +4,7 @@ Nutrition AI Backend - FastAPI Application
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 import time
 import logging
 
@@ -81,7 +82,7 @@ async def health_check():
         # Test database connection
         from app.database.session import SessionLocal
         db = SessionLocal()
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         db.close()
         db_status = "healthy"
     except Exception as e:
