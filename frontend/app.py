@@ -367,8 +367,28 @@ with tab_predict:
                     st.info(f"95% CI: [{res['confidence_interval'][0]:.1f}, {res['confidence_interval'][1]:.1f}]")
                 if res.get("explainability"):
                     st.subheader("Key factors")
-                    for feat in res["explainability"][:5]:
-                        st.write(feat)
+                    explainability = res.get("explainability")
+                    top_features = []
+                    if isinstance(explainability, dict):
+                        if isinstance(explainability.get("top_features"), list):
+                            top_features = explainability.get("top_features", [])
+                        elif isinstance(explainability.get("all_contributions"), list):
+                            top_features = explainability.get("all_contributions", [])
+                    elif isinstance(explainability, list):
+                        top_features = explainability
+
+                    for feat in top_features[:5]:
+                        if isinstance(feat, dict):
+                            name = feat.get("feature", "feature")
+                            direction = feat.get("direction")
+                            importance = feat.get("importance")
+                            value = feat.get("value")
+                            if isinstance(importance, (int, float)):
+                                st.write(f"- {name}: importance {importance:.3f}, value {value}, direction {direction}")
+                            else:
+                                st.write(f"- {name}: value {value}, direction {direction}")
+                        else:
+                            st.write(feat)
 
 # Data Upload
 with tab_upload:
