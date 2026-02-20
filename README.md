@@ -148,6 +148,16 @@ pip install -r requirements.txt
 API_URL=http://localhost:8000 streamlit run app.py
 ```
 
+## AWS EC2 Landing Deploy
+
+For nginx + Let's Encrypt deployment on EC2 using:
+
+```bash
+docker compose -f docker-compose.landing.yml up -d --build
+```
+
+see `docs/AWS_EC2_LANDING_DEPLOY.md`.
+
 ## Data Operations
 
 ### Import CSV
