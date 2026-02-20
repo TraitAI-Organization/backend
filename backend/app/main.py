@@ -37,11 +37,23 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+def _parse_cors_origins(raw: str) -> list[str]:
+    value = (raw or "").strip()
+    if not value:
+        return ["*"]
+    if value == "*":
+        return ["*"]
+    return [origin.strip() for origin in value.split(",") if origin.strip()]
+
+
 # CORS
+cors_origins = _parse_cors_origins(settings.cors_origins)
+cors_allow_credentials = settings.cors_allow_credentials and ("*" not in cors_origins)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

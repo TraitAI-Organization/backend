@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     # API
     secret_key: str = "change-this-in-production"
     access_token_expire_minutes: int = 30
+    cors_origins: str = "*"
+    cors_allow_credentials: bool = False
 
     # Model
     model_path: str = "models/"

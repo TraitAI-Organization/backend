@@ -165,7 +165,7 @@ async def list_field_seasons(
     }
 
 
-@router.get("/{field_season_id}", response_model=FieldSeasonDetailResponse, summary="Get field-season details")
+@router.get("/{field_season_id:int}", response_model=FieldSeasonDetailResponse, summary="Get field-season details")
 async def get_field_season_detail(
     field_season_id: int,
     db: Session = Depends(get_db),

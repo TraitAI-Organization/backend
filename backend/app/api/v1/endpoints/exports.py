@@ -125,7 +125,7 @@ async def export_csv(
 @router.get("/field/{field_season_id}/summary", summary="Export single field-season summary")
 async def export_field_summary(
     field_season_id: int,
-    format: str = Query("json", description="Export format: json or csv", regex="^(json|csv)$"),
+    format: str = Query("json", description="Export format: json or csv", pattern="^(json|csv)$"),
     db: Session = Depends(get_db),
 ):
     """

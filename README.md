@@ -206,6 +206,8 @@ The `/admin` UI includes a key field and stores it in browser localStorage for c
 
 Base URL (Docker): `http://localhost:8001`
 
+Detailed endpoint documentation: `docs/API_REFERENCE.md`
+
 ### Core
 
 - `GET /health`
