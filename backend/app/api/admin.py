@@ -86,7 +86,7 @@ ADMIN_HTML = """
 <head>
   <meta charset=\"utf-8\" />
   <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
-  <title>Nutrition AI Admin</title>
+  <title>TraitHarvest Admin</title>
   <style>
     :root {
       --bg: #f6f8fb;
@@ -315,7 +315,7 @@ ADMIN_HTML = """
   <div class=\"shell\">
     <div class=\"header\">
       <div>
-        <h1 class=\"title\">Nutrition AI Admin Control Plane</h1>
+        <h1 class=\"title\">TraitHarvest Admin Control Plane</h1>
         <p class=\"subtitle\">Train models, promote deployments, monitor jobs, and operate data workflows from one place.</p>
       </div>
       <div class=\"auth\">
@@ -471,7 +471,7 @@ ADMIN_HTML = """
     const KEY_REQUIRED = __ADMIN_KEY_REQUIRED__;
 
     const state = {
-      adminKey: localStorage.getItem("nutrition_admin_key") || "",
+      adminKey: localStorage.getItem("traitharvest_admin_key") || localStorage.getItem("nutrition_admin_key") || "",
       polling: null,
     };
 
@@ -710,7 +710,7 @@ ADMIN_HTML = """
 
     function saveKey() {
       state.adminKey = $("adminKey").value.trim();
-      localStorage.setItem("nutrition_admin_key", state.adminKey);
+      localStorage.setItem("traitharvest_admin_key", state.adminKey);
       log("Admin key saved in browser localStorage");
     }
 

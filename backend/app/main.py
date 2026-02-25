@@ -1,5 +1,5 @@
 """
-Nutrition AI Backend - FastAPI Application
+TraitHarvest Backend - FastAPI Application
 """
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Nutrition AI API",
+    title="TraitHarvest API",
     description="Agricultural yield prediction platform",
     version="1.0.0",
     docs_url="/docs",
@@ -115,7 +115,7 @@ async def health_check():
 async def root():
     """Root endpoint with API info."""
     return {
-        "name": "Nutrition AI API",
+        "name": "TraitHarvest API",
         "version": app.version,
         "docs": "/docs",
         "health": "/health",

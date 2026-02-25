@@ -1,5 +1,5 @@
 """
-Nutrition AI Dashboard - Streamlit Frontend (MVP)
+TraitHarvest Dashboard - Streamlit Frontend (MVP)
 """
 import streamlit as st
 import pandas as pd
@@ -11,7 +11,7 @@ from urllib.parse import quote
 import time
 
 st.set_page_config(
-    page_title="Nutrition AI",
+    page_title="TraitHarvest",
     page_icon="🌱",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -36,7 +36,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-header"><span>🌱</span><span>Nutrition AI</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header"><span>🌱</span><span>TraitHarvest</span></div>', unsafe_allow_html=True)
 
 API_URL = os.getenv("API_URL", "http://localhost:8001")
 
@@ -253,7 +253,7 @@ with st.sidebar:
         try:
             resp = requests.get(f"{API_URL}/api/v1/export/csv", params=st.session_state.get("filters", {}), timeout=30)
             resp.raise_for_status()
-            st.download_button("⬇️ Download", data=resp.content, file_name=f"nutrition_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", mime="text/csv", key="dl_csv")
+            st.download_button("⬇️ Download", data=resp.content, file_name=f"traitharvest_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", mime="text/csv", key="dl_csv")
         except Exception as e:
             st.error(str(e))
 
@@ -269,7 +269,7 @@ tab_overview, tab_table, tab_map, tab_analytics, tab_predict, tab_upload = st.ta
 with tab_overview:
     st.header("Project Overview")
     st.caption("Summary metrics (field-seasons, crops, seasons), observed yield range, and prediction statistics (coverage, avg predicted yield).")
-    st.markdown("**Nutrition AI** - Agricultural Yield Prediction Platform")
+    st.markdown("**TraitHarvest** - Agricultural Yield Prediction Platform")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Field-Seasons", f"{overview.get('total_field_seasons', 0):,}")
@@ -623,4 +623,4 @@ with tab_upload:
     except Exception as e:
         st.error(str(e))
 
-st.caption("Nutrition AI v1.0 | Agricultural yield prediction")
+st.caption("TraitHarvest v1.0 | Agricultural yield prediction")

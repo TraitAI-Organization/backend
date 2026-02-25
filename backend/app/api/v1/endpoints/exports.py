@@ -114,7 +114,7 @@ async def export_csv(
     output.seek(0)
 
     # Create response
-    filename = f"nutrition_export_{crop or 'all'}_{state or 'all'}.csv"
+    filename = f"traitharvest_export_{crop or 'all'}_{state or 'all'}.csv"
     return StreamingResponse(
         output,
         media_type="text/csv",
