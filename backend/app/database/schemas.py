@@ -222,6 +222,21 @@ class PredictionResponse(BaseSchema):
     recommendations: Optional[Dict[str, Any]] = None
 
 
+class MultiModelPredictionItem(BaseSchema):
+    model_version_id: int
+    model_version: str
+    model_type: str
+    is_production: bool
+    predicted_yield: Optional[float] = None
+    confidence_interval: Optional[List[float]] = None
+    error: Optional[str] = None
+
+
+class MultiModelPredictionResponse(BaseSchema):
+    request: Dict[str, Any]
+    predictions: List[MultiModelPredictionItem]
+
+
 # Model version schemas
 class ModelVersionBase(BaseSchema):
     model_config = ConfigDict(protected_namespaces=())

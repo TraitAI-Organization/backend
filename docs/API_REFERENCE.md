@@ -113,6 +113,37 @@ Response:
 {"predictions":[...],"total":2}
 ```
 
+3. `POST /api/v1/predict/all-models`
+Description: returns predictions for all registered model versions in one call (for model comparison UIs).
+Request body: same as `POST /api/v1/predict`.
+Response:
+```json
+{
+  "request": {"crop":"Sorghum","acres":50.0,"lat":37.5,"long":-99.5,"season":2025,"totalN_per_ac":60,"totalP_per_ac":40,"totalK_per_ac":30},
+  "predictions": [
+    {
+      "model_version_id": 1,
+      "model_version": "genmills_cbmodel_v2",
+      "model_type": "catboost",
+      "is_production": true,
+      "predicted_yield": 67.7,
+      "confidence_interval": [48.1, 87.3],
+      "error": null
+    }
+  ]
+}
+```
+
+4. `POST /api/v1/predict/model/{version_tag}`
+Description: prediction using one specific registered model version.
+Path param:
+- `version_tag` (string), example: `genmills_cbmodel_v2`
+Request body: same as `POST /api/v1/predict`.
+Response: same schema as `POST /api/v1/predict`.
+Common errors:
+- `404`: model version tag not found
+- `400`: invalid request/business validation
+
 ## Model APIs
 
 1. `GET /api/v1/models/versions`

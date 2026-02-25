@@ -34,6 +34,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
     command: >
       sh -c "
         python -m scripts.init_db &&
@@ -50,7 +56,8 @@ services:
     ports:
       - "8502:8501"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     command: >
       streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --browser.gatherUsageStats false
     restart: unless-stopped

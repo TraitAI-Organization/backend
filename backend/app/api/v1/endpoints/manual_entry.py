@@ -3,8 +3,11 @@ Manual Data Entry endpoints - Form-based data submission
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import Optional, Dict, Any
 from datetime import datetime
+import json
+from uuid import uuid4
 from app.database.session import get_db
 from app.database import models
 from app.database.schemas import (
@@ -31,76 +34,193 @@ async def submit_manual_entry(
     - Handle multiple management events per field-season
     - Store detailed application data
     """
+    started_at = datetime.utcnow()
+    file_hash = (
+        f"manual_{data.field_id}_{data.season}_{data.job_id}_"
+        f"{int(started_at.timestamp() * 1_000_000)}_{uuid4().hex[:8]}"
+    )
+    source_filename = data.filenames or "manual_entry"
+    records_inserted = 0
+    records_updated = 0
+
     try:
-        # Check if field exists, create if not
+        # Field
         field = db.query(models.Field).filter(models.Field.field_id == data.field_id).first()
         if not field:
             field = models.Field(
                 field_id=data.field_id,
+                field_number=data.field_id,
                 acres=data.acres,
                 lat=data.lat,
                 long=data.long,
+                county=data.county,
+                state=data.state,
                 grower_id=data.grower,
-                field_number=data.field_id,  # Use field_id as field_number temporarily
             )
             db.add(field)
-            db.commit()
-            db.refresh(field)
-        
-        # Check if season exists, create if not
+        else:
+            # Keep field data fresh from manual updates.
+            field.acres = data.acres or field.acres
+            field.lat = data.lat if data.lat is not None else field.lat
+            field.long = data.long if data.long is not None else field.long
+            field.county = data.county or field.county
+            field.state = data.state or field.state
+            field.grower_id = data.grower or field.grower_id
+
+        # Crop
+        crop = (
+            db.query(models.Crop)
+            .filter(models.Crop.crop_name_en == data.crop_name_en)
+            .first()
+        )
+        if not crop:
+            crop = models.Crop(crop_name_en=data.crop_name_en, is_active=True)
+            db.add(crop)
+            db.flush()
+
+        # Variety (optional)
+        variety_id = None
+        if data.variety_name_en:
+            variety = (
+                db.query(models.Variety)
+                .filter(
+                    models.Variety.variety_name_en == data.variety_name_en,
+                    models.Variety.crop_id == crop.crop_id,
+                )
+                .first()
+            )
+            if not variety:
+                variety = models.Variety(
+                    variety_name_en=data.variety_name_en,
+                    crop_id=crop.crop_id,
+                    is_active=True,
+                )
+                db.add(variety)
+                db.flush()
+            variety_id = variety.variety_id
+
+        # Season
         season = db.query(models.Season).filter(models.Season.season_year == data.season).first()
         if not season:
-            season = models.Season(
-                season_year=data.season,
-                season_name=f"{data.season} Season"
-            )
+            season = models.Season(season_year=data.season, is_current=False)
             db.add(season)
-            db.commit()
-            db.refresh(season)
-        
-        # Create field-season record
-        field_season = db.query(models.FieldSeason).filter(
-            models.FieldSeason.field_id == data.field_id,
-            models.FieldSeason.season_id == season.season_id
-        ).first()
-        
+            db.flush()
+
+        # FieldSeason
+        field_season = (
+            db.query(models.FieldSeason)
+            .filter(
+                models.FieldSeason.field_id == data.field_id,
+                models.FieldSeason.crop_id == crop.crop_id,
+                models.FieldSeason.variety_id == variety_id,
+                models.FieldSeason.season_id == season.season_id,
+            )
+            .first()
+        )
         if not field_season:
             field_season = models.FieldSeason(
                 field_id=data.field_id,
+                crop_id=crop.crop_id,
+                variety_id=variety_id,
                 season_id=season.season_id,
-                acres=data.acres,
-                total_n=data.totalN_per_ac,
-                total_p=data.totalP_per_ac,
-                total_k=data.totalK_per_ac,
-                yield_observed=data.yield_bu_ac,
+                yield_bu_ac=data.yield_bu_ac,
                 yield_target=data.yield_target,
-                county=data.county,
-                state=data.state,
-                latitude=data.lat,
-                longitude=data.long,
-                data_source="manual_entry"
+                totalN_per_ac=data.totalN_per_ac,
+                totalP_per_ac=data.totalP_per_ac,
+                totalK_per_ac=data.totalK_per_ac,
+                record_source="manual_entry",
+                data_quality_score=1.0,
             )
             db.add(field_season)
-            db.commit()
-            db.refresh(field_season)
-        
-        # Log the ingestion
+            db.flush()
+            records_inserted = 1
+        else:
+            # Update available fields without clearing existing values.
+            if data.yield_bu_ac is not None:
+                field_season.yield_bu_ac = data.yield_bu_ac
+            if data.yield_target is not None:
+                field_season.yield_target = data.yield_target
+            if data.totalN_per_ac is not None:
+                field_season.totalN_per_ac = data.totalN_per_ac
+            if data.totalP_per_ac is not None:
+                field_season.totalP_per_ac = data.totalP_per_ac
+            if data.totalK_per_ac is not None:
+                field_season.totalK_per_ac = data.totalK_per_ac
+            field_season.record_source = "manual_entry"
+            records_updated = 1
+
+        # Optional management event for this manual submission.
+        event_type = (data.type or "").strip()
+        if event_type:
+            actives_payload = None
+            if data.actives:
+                try:
+                    actives_payload = json.loads(data.actives)
+                except Exception:
+                    actives_payload = data.actives
+            event = models.ManagementEvent(
+                field_season_id=field_season.field_season_id,
+                job_id=data.job_id,
+                event_type=event_type,
+                status=data.status,
+                start_date=data.start,
+                end_date=data.end,
+                application_area=data.application_area,
+                amount=data.amount,
+                description=data.description,
+                fert_units=data.fert_units,
+                rate=data.rate,
+                blend_name=data.blend_name,
+                chemical_type=data.chemical_type,
+                chem_product=data.chem_product,
+                chem_units=data.chem_units,
+                actives=actives_payload,
+                water_applied_mm=data.water_applied_mm,
+                irrigation_method=data.irrigation_method,
+                machine_make1=data.machine_make1,
+                machine_model1=data.machine_model1,
+                machine_type1=data.machine_type1,
+                implement_a_make1=data.implement_a_make1,
+                implement_a_model1=data.implement_a_model1,
+                implement_a_type1=data.implement_a_type1,
+                implement_b_make1=data.implement_b_make1,
+                implement_b_model1=data.implement_b_model1,
+                implement_b_type1=data.implement_b_type1,
+                machine_make2=data.machine_make2,
+                machine_model2=data.machine_model2,
+                machine_type2=data.machine_type2,
+                implement_a_make2=data.implement_a_make2,
+                implement_a_model2=data.implement_a_model2,
+                implement_a_type2=data.implement_a_type2,
+                implement_b_make2=data.implement_b_make2,
+                implement_b_model2=data.implement_b_model2,
+                implement_b_type2=data.implement_b_type2,
+                scout_count=data.scout_count,
+                actives_id=data.actives_id,
+                actives_Name=data.actives_Name,
+                actives_Weight=data.actives_Weight,
+                actives_Percent=data.actives_Percent,
+                actives_subComponents=data.actives_subComponents,
+            )
+            db.add(event)
+
+        db.commit()
+
         ingestion_log = models.DataIngestionLog(
-            source_filename="manual_entry",
-            file_hash="manual_" + str(data.field_id) + "_" + str(data.season),
+            source_filename=source_filename,
+            file_hash=file_hash,
             records_parsed=1,
-            records_inserted=1,
-            records_updated=0,
+            records_inserted=records_inserted,
+            records_updated=records_updated,
             records_skipped=0,
             status="completed",
             error_details=None,
-            ingestion_started_at=datetime.utcnow(),
-            ingestion_completed_at=datetime.utcnow()
+            ingestion_started_at=started_at,
+            ingestion_completed_at=datetime.utcnow(),
         )
         db.add(ingestion_log)
         db.commit()
-        
-        # Return success response
+
         return {
             "success": True,
             "message": "Field data submitted successfully",
@@ -108,26 +228,31 @@ async def submit_manual_entry(
             "field_id": data.field_id,
             "season": data.season,
             "crop": data.crop_name_en,
-            "status": "completed"
+            "status": "completed",
         }
-        
+
     except Exception as e:
-        # Log error and return failure
-        ingestion_log = models.DataIngestionLog(
-            source_filename="manual_entry",
-            file_hash="manual_" + str(data.field_id) + "_" + str(data.season),
-            records_parsed=1,
-            records_inserted=0,
-            records_updated=0,
-            records_skipped=0,
-            status="failed",
-            error_details=str(e),
-            ingestion_started_at=datetime.utcnow(),
-            ingestion_completed_at=datetime.utcnow()
-        )
-        db.add(ingestion_log)
-        db.commit()
-        
+        db.rollback()
+        try:
+            ingestion_log = models.DataIngestionLog(
+                source_filename=source_filename,
+                file_hash=f"{file_hash}_failed",
+                records_parsed=1,
+                records_inserted=0,
+                records_updated=0,
+                records_skipped=0,
+                status="failed",
+                error_details=str(e),
+                ingestion_started_at=started_at,
+                ingestion_completed_at=datetime.utcnow(),
+            )
+            db.add(ingestion_log)
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+        except Exception:
+            db.rollback()
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to submit field data: {str(e)}"

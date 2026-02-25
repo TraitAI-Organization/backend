@@ -7,6 +7,8 @@ import requests
 import plotly.express as px
 from datetime import datetime
 import os
+from urllib.parse import quote
+import time
 
 st.set_page_config(
     page_title="Nutrition AI",
@@ -41,13 +43,17 @@ API_URL = os.getenv("API_URL", "http://localhost:8001")
 
 @st.cache_data(ttl=300)
 def get_overview():
-    try:
-        r = requests.get(f"{API_URL}/api/v1/fields/overview", timeout=10)
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        st.error(f"Failed to fetch overview: {e}")
-        return {}
+    last_error = None
+    for _ in range(3):
+        try:
+            r = requests.get(f"{API_URL}/api/v1/fields/overview", timeout=10)
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            last_error = e
+            time.sleep(1)
+    st.warning(f"Failed to fetch overview (backend may still be starting): {last_error}")
+    return {}
 
 
 def get_filtered_fields(crop=None, variety=None, season=None, state=None, min_acres=None, max_acres=None, has_prediction=None, limit=500):
@@ -78,14 +84,77 @@ def get_field_details(field_season_id: int):
         return None
 
 
-def get_prediction_request(payload: dict):
+def get_prediction_request(payload: dict, version_tag=None):
     try:
-        r = requests.post(f"{API_URL}/api/v1/predict", json=payload, timeout=15)
+        endpoint = f"{API_URL}/api/v1/predict"
+        if version_tag:
+            endpoint = f"{API_URL}/api/v1/predict/model/{quote(str(version_tag), safe='')}"
+        r = requests.post(endpoint, json=payload, timeout=30)
         r.raise_for_status()
         return r.json()
     except Exception as e:
         st.error(f"Prediction failed: {e}")
         return None
+
+
+def get_all_models_prediction(payload: dict):
+    try:
+        r = requests.post(f"{API_URL}/api/v1/predict/all-models", json=payload, timeout=60)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        st.error(f"All-model prediction failed: {e}")
+        return None
+
+
+@st.cache_data(ttl=120)
+def get_model_versions(limit: int = 200):
+    try:
+        r = requests.get(f"{API_URL}/api/v1/models/versions", params={"limit": limit}, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def extract_top_features(explainability):
+    top_features = []
+    if isinstance(explainability, dict):
+        if isinstance(explainability.get("top_features"), list):
+            top_features = explainability.get("top_features", [])
+        elif isinstance(explainability.get("all_contributions"), list):
+            top_features = explainability.get("all_contributions", [])
+    elif isinstance(explainability, list):
+        top_features = explainability
+    return top_features
+
+
+def render_prediction_result(title: str, res: dict):
+    st.subheader(title)
+    st.success(f"**Predicted Yield:** {res.get('predicted_yield', 0):.1f} bu/ac")
+    ci = res.get("confidence_interval")
+    if isinstance(ci, list) and len(ci) >= 2:
+        st.info(f"95% CI: [{ci[0]:.1f}, {ci[1]:.1f}]")
+
+    st.markdown("**Key factors**")
+    top_features = extract_top_features(res.get("explainability"))
+    if not top_features:
+        st.caption("Key factors are not available for this model/result.")
+        return
+
+    for feat in top_features[:5]:
+        if isinstance(feat, dict):
+            name = feat.get("feature", "feature")
+            direction = feat.get("direction")
+            importance = feat.get("importance")
+            value = feat.get("value")
+            if isinstance(importance, (int, float)):
+                st.write(f"- {name}: importance {importance:.3f}, value {value}, direction {direction}")
+            else:
+                st.write(f"- {name}: value {value}, direction {direction}")
+        else:
+            st.write(feat)
 
 
 @st.cache_data(ttl=60)
@@ -302,10 +371,13 @@ with tab_analytics:
 # Predict
 with tab_predict:
     st.header("🔮 Yield Prediction Tool")
-    st.caption("Select an existing field or enter crop, location, season, N/P/K manually; submit to get predicted yield, confidence interval, and key factors.")
+    st.caption("Select an existing field or enter crop, location, season, N/P/K manually; choose prediction mode, then submit.")
     prediction_form_cfg = get_ui_form_config("prediction")
     prediction_dropdowns = prediction_form_cfg.get("dropdowns", {}) if isinstance(prediction_form_cfg, dict) else {}
     prediction_custom_fields = prediction_form_cfg.get("custom_fields", []) if isinstance(prediction_form_cfg, dict) else []
+    model_versions = get_model_versions(500)
+    model_tags = [m.get("version_tag") for m in model_versions if isinstance(m, dict) and m.get("version_tag")]
+    production_tag = next((m.get("version_tag") for m in model_versions if isinstance(m, dict) and m.get("is_production")), None)
     try:
         fields_resp = requests.get(f"{API_URL}/api/v1/fields?limit=500", timeout=10)
         field_options = []
@@ -347,9 +419,30 @@ with tab_predict:
 
         custom_pred_values, missing_custom_pred = render_custom_fields(prediction_custom_fields, "prediction_custom")
 
+        prediction_mode = st.radio(
+            "Prediction mode",
+            options=[
+                "Production model",
+                "Specific model",
+                "All models comparison",
+                "Specific + all models",
+            ],
+            horizontal=True,
+        )
+        selected_model_tag = None
+        if prediction_mode in {"Specific model", "Specific + all models"}:
+            if model_tags:
+                default_idx = model_tags.index(production_tag) if production_tag in model_tags else 0
+                selected_model_tag = st.selectbox("Select model version", options=model_tags, index=default_idx)
+            else:
+                st.warning("No model versions found.")
+
         if st.form_submit_button("🔮 Predict Yield"):
             if missing_custom_pred:
                 st.error(f"Missing required additional fields: {', '.join(missing_custom_pred)}")
+                st.stop()
+            if prediction_mode in {"Specific model", "Specific + all models"} and not selected_model_tag:
+                st.error("Please select a model version.")
                 st.stop()
             payload = {
                 "crop": pred_crop, "variety": pred_variety or None, "acres": pred_acres,
@@ -360,35 +453,62 @@ with tab_predict:
             }
             payload.update({k: v for k, v in custom_pred_values.items() if v is not None and v != ""})
             with st.spinner("Predicting..."):
-                res = get_prediction_request(payload)
-            if res:
-                st.success(f"**Predicted Yield:** {res.get('predicted_yield', 0):.1f} bu/ac")
-                if res.get("confidence_interval"):
-                    st.info(f"95% CI: [{res['confidence_interval'][0]:.1f}, {res['confidence_interval'][1]:.1f}]")
-                if res.get("explainability"):
-                    st.subheader("Key factors")
-                    explainability = res.get("explainability")
-                    top_features = []
-                    if isinstance(explainability, dict):
-                        if isinstance(explainability.get("top_features"), list):
-                            top_features = explainability.get("top_features", [])
-                        elif isinstance(explainability.get("all_contributions"), list):
-                            top_features = explainability.get("all_contributions", [])
-                    elif isinstance(explainability, list):
-                        top_features = explainability
+                production_res = None
+                specific_res = None
+                all_models_res = None
 
-                    for feat in top_features[:5]:
-                        if isinstance(feat, dict):
-                            name = feat.get("feature", "feature")
-                            direction = feat.get("direction")
-                            importance = feat.get("importance")
-                            value = feat.get("value")
-                            if isinstance(importance, (int, float)):
-                                st.write(f"- {name}: importance {importance:.3f}, value {value}, direction {direction}")
-                            else:
-                                st.write(f"- {name}: value {value}, direction {direction}")
-                        else:
-                            st.write(feat)
+                if prediction_mode == "Production model":
+                    production_res = get_prediction_request(payload)
+                elif prediction_mode == "Specific model":
+                    specific_res = get_prediction_request(payload, version_tag=selected_model_tag)
+                elif prediction_mode == "All models comparison":
+                    all_models_res = get_all_models_prediction(payload)
+                elif prediction_mode == "Specific + all models":
+                    specific_res = get_prediction_request(payload, version_tag=selected_model_tag)
+                    all_models_res = get_all_models_prediction(payload)
+
+            if production_res:
+                render_prediction_result("Production model result", production_res)
+
+            if specific_res:
+                render_prediction_result(f"Specific model result: {selected_model_tag}", specific_res)
+
+            if all_models_res:
+                st.subheader("All models comparison")
+                predictions = all_models_res.get("predictions", []) if isinstance(all_models_res, dict) else []
+                rows = []
+                for item in predictions:
+                    if not isinstance(item, dict):
+                        continue
+                    ci = item.get("confidence_interval")
+                    ci_low = ci[0] if isinstance(ci, list) and len(ci) >= 2 else None
+                    ci_high = ci[1] if isinstance(ci, list) and len(ci) >= 2 else None
+                    rows.append({
+                        "model_version": item.get("model_version"),
+                        "model_type": item.get("model_type"),
+                        "is_production": item.get("is_production"),
+                        "predicted_yield": item.get("predicted_yield"),
+                        "ci_low": ci_low,
+                        "ci_high": ci_high,
+                        "error": item.get("error"),
+                    })
+
+                if rows:
+                    df_models = pd.DataFrame(rows)
+                    st.dataframe(df_models, use_container_width=True, hide_index=True)
+                    ok_df = df_models[df_models["error"].isna() & df_models["predicted_yield"].notna()]
+                    if not ok_df.empty:
+                        fig = px.bar(
+                            ok_df.sort_values("predicted_yield", ascending=False),
+                            x="model_version",
+                            y="predicted_yield",
+                            color="is_production",
+                            hover_data=["model_type", "ci_low", "ci_high"],
+                            title="Predicted yield by model",
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No model predictions returned.")
 
 # Data Upload
 with tab_upload:

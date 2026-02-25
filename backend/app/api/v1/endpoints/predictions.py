@@ -7,8 +7,14 @@ from typing import Dict, Any, List
 import logging
 
 from app.database.session import get_db
-from app.database import crud
-from app.database.schemas import PredictionRequest, PredictionResponse, FeatureContribution
+from app.database import crud, models as db_models
+from app.database.schemas import (
+    PredictionRequest,
+    PredictionResponse,
+    FeatureContribution,
+    MultiModelPredictionResponse,
+    MultiModelPredictionItem,
+)
 from app.ml.predictor import PredictionService
 from app.ml.explainability import ExplainabilityEngine
 from app.services.regional_stats import RegionalStatsService
@@ -138,6 +144,169 @@ async def predict_yield(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Prediction failed: {str(e)}"
+        )
+
+
+@router.post("/model/{version_tag}", response_model=PredictionResponse, summary="Predict yield with a specific model version")
+async def predict_yield_specific_model(
+    version_tag: str,
+    request: PredictionRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Predict crop yield using a specific model version tag.
+    """
+    try:
+        model_version = (
+            db.query(db_models.ModelVersion)
+            .filter(db_models.ModelVersion.version_tag == version_tag)
+            .first()
+        )
+        if not model_version:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Model version '{version_tag}' not found."
+            )
+
+        predictor = PredictionService(db)
+
+        county = request.county if hasattr(request, 'county') and request.county else None
+        state = request.state if hasattr(request, 'state') and request.state else None
+        if not county or not state:
+            regional_comparison = None
+        else:
+            regional_stats = RegionalStatsService(db)
+            regional_comparison = regional_stats.get_county_avg(
+                crop=request.crop,
+                season=request.season,
+                state=state,
+                county=county
+            )
+
+        prediction_result = predictor.predict(request.model_dump(), model_version=model_version)
+
+        explanations = {"top_features": []}
+        try:
+            explainer = ExplainabilityEngine(db, predictor)
+            explanations = explainer.explain_prediction(
+                features=prediction_result['features'],
+                model_version=model_version,
+                base_value=prediction_result.get('base_value', 0.0)
+            )
+        except Exception as explain_err:
+            logger.warning(f"Explainability unavailable for model {model_version.version_tag}: {explain_err}")
+
+        response = PredictionResponse(
+            predicted_yield=prediction_result['predicted_yield'],
+            confidence_interval=[
+                prediction_result['confidence_lower'],
+                prediction_result['confidence_upper']
+            ],
+            model_version=model_version.version_tag,
+            regional_comparison=regional_comparison,
+            explainability={
+                "top_features": [
+                    FeatureContribution(
+                        feature=feat['feature'],
+                        value=feat['value'],
+                        direction=feat['direction'],
+                        importance=feat['importance']
+                    ).model_dump()
+                    for feat in explanations['top_features'][:5]
+                ]
+            },
+            recommendations=None,
+        )
+
+        background_tasks.add_task(
+            log_prediction_request,
+            request=request,
+            response=response,
+            model_version=model_version.version_tag
+        )
+
+        return response
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Prediction error for specific model {version_tag}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Prediction failed: {str(e)}"
+        )
+
+
+@router.post("/all-models", response_model=MultiModelPredictionResponse, summary="Predict yield across all registered models")
+async def predict_yield_all_models(
+    request: PredictionRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Predict yield using every registered model version.
+
+    Useful for model comparison in external frontends.
+    Returns one entry per model with either prediction values or an error.
+    """
+    try:
+        predictor = PredictionService(db)
+        model_versions = crud.get_model_versions(db, limit=500)
+        if not model_versions:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="No model versions available. Register/train a model first."
+            )
+
+        payload = request.model_dump()
+        items: List[MultiModelPredictionItem] = []
+        for mv in model_versions:
+            try:
+                result = predictor.predict(payload, model_version=mv)
+                items.append(
+                    MultiModelPredictionItem(
+                        model_version_id=mv.model_version_id,
+                        model_version=mv.version_tag,
+                        model_type=mv.model_type,
+                        is_production=bool(mv.is_production),
+                        predicted_yield=result["predicted_yield"],
+                        confidence_interval=[
+                            result["confidence_lower"],
+                            result["confidence_upper"],
+                        ],
+                        error=None,
+                    )
+                )
+            except Exception as exc:
+                logger.warning(f"All-model prediction failed for {mv.version_tag}: {exc}")
+                items.append(
+                    MultiModelPredictionItem(
+                        model_version_id=mv.model_version_id,
+                        model_version=mv.version_tag,
+                        model_type=mv.model_type,
+                        is_production=bool(mv.is_production),
+                        predicted_yield=None,
+                        confidence_interval=None,
+                        error=str(exc),
+                    )
+                )
+
+        # Production first, then version_tag for stable ordering.
+        items.sort(key=lambda x: (not x.is_production, x.model_version))
+        return MultiModelPredictionResponse(request=payload, predictions=items)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"All-model prediction error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"All-model prediction failed: {str(e)}"
         )
 
 

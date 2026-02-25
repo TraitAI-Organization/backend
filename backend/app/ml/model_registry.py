@@ -122,6 +122,7 @@ class ModelRegistry:
         version_dir = os.path.join(self.models_dir, version_tag)
         model_path = os.path.join(version_dir, "model.pkl")
         catboost_model_path = os.path.join(version_dir, "model.cbm")
+        pytorch_model_path = os.path.join(version_dir, "model.pth")
         features_path = os.path.join(version_dir, "features.json")
         metrics_path = os.path.join(version_dir, "metrics.json")
         params_path = os.path.join(version_dir, "params.json")
@@ -131,26 +132,15 @@ class ModelRegistry:
             if not os.path.exists(p):
                 raise FileNotFoundError(f"Model artifact not found: {p}")
 
-        if not os.path.exists(model_path) and not os.path.exists(catboost_model_path):
+        if (
+            not os.path.exists(model_path)
+            and not os.path.exists(catboost_model_path)
+            and not os.path.exists(pytorch_model_path)
+        ):
             raise FileNotFoundError(
-                f"Model artifact not found: expected one of {model_path} or {catboost_model_path}"
+                "Model artifact not found: expected one of "
+                f"{model_path}, {catboost_model_path}, or {pytorch_model_path}"
             )
-
-        # Load model artifact by format
-        artifact_format = "joblib_pkl"
-        if os.path.exists(model_path):
-            model = joblib.load(model_path)
-        else:
-            try:
-                from catboost import CatBoostRegressor
-            except ImportError as e:
-                raise ImportError(
-                    "CatBoost model detected but catboost is not installed. "
-                    "Install `catboost` in backend requirements."
-                ) from e
-            model = CatBoostRegressor()
-            model.load_model(catboost_model_path)
-            artifact_format = "catboost_cbm"
 
         with open(features_path, 'r') as f:
             features_data = json.load(f)
@@ -162,6 +152,34 @@ class ModelRegistry:
 
         with open(params_path, 'r') as f:
             params = json.load(f)
+
+        # Load model artifact by format
+        artifact_format = "joblib_pkl"
+        if os.path.exists(model_path):
+            model = joblib.load(model_path)
+        elif os.path.exists(catboost_model_path):
+            try:
+                from catboost import CatBoostRegressor
+            except ImportError as e:
+                raise ImportError(
+                    "CatBoost model detected but catboost is not installed. "
+                    "Install `catboost` in backend requirements."
+                ) from e
+            model = CatBoostRegressor()
+            model.load_model(catboost_model_path)
+            artifact_format = "catboost_cbm"
+        else:
+            from app.ml.torch_runtime import load_torch_tabular_model
+
+            model = load_torch_tabular_model(
+                version_dir=version_dir,
+                feature_list=feature_list,
+                preprocessing={
+                    **(preprocessing or {}),
+                    **(params if isinstance(params, dict) else {}),
+                },
+            )
+            artifact_format = "pytorch_pth"
 
         metadata = {
             'feature_list': feature_list,

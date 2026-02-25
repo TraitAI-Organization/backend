@@ -207,6 +207,7 @@ The `/admin` UI includes a key field and stores it in browser localStorage for c
 Base URL (Docker): `http://localhost:8001`
 
 Detailed endpoint documentation: `docs/API_REFERENCE.md`
+Model bulk sync guide: `docs/MODEL_SYNC.md`
 
 ### Core
 
