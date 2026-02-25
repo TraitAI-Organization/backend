@@ -507,6 +507,33 @@ with tab_predict:
                             title="Predicted yield by model",
                         )
                         st.plotly_chart(fig, use_container_width=True)
+
+                    st.markdown("**Per-model key factors**")
+                    for item in predictions:
+                        if not isinstance(item, dict):
+                            continue
+                        model_name = item.get("model_version", "model")
+                        model_error = item.get("error")
+                        with st.expander(f"{model_name} key factors", expanded=False):
+                            if model_error:
+                                st.caption(f"Prediction error: {model_error}")
+                                continue
+                            top_features = extract_top_features(item.get("explainability"))
+                            if not top_features:
+                                st.caption("Key factors are not available for this model.")
+                                continue
+                            for feat in top_features[:5]:
+                                if isinstance(feat, dict):
+                                    name = feat.get("feature", "feature")
+                                    direction = feat.get("direction")
+                                    importance = feat.get("importance")
+                                    value = feat.get("value")
+                                    if isinstance(importance, (int, float)):
+                                        st.write(f"- {name}: importance {importance:.3f}, value {value}, direction {direction}")
+                                    else:
+                                        st.write(f"- {name}: value {value}, direction {direction}")
+                                else:
+                                    st.write(feat)
                 else:
                     st.info("No model predictions returned.")
 

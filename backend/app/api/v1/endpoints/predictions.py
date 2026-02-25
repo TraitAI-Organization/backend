@@ -265,9 +265,20 @@ async def predict_yield_all_models(
 
         payload = request.model_dump()
         items: List[MultiModelPredictionItem] = []
+        explainer = ExplainabilityEngine(db, predictor)
         for mv in model_versions:
             try:
                 result = predictor.predict(payload, model_version=mv)
+                explanations = {"top_features": []}
+                try:
+                    explanations = explainer.explain_prediction(
+                        features=result["features"],
+                        model_version=mv,
+                        base_value=result.get("base_value", 0.0),
+                    )
+                except Exception as explain_err:
+                    logger.warning(f"All-model explainability unavailable for {mv.version_tag}: {explain_err}")
+
                 items.append(
                     MultiModelPredictionItem(
                         model_version_id=mv.model_version_id,
@@ -279,6 +290,17 @@ async def predict_yield_all_models(
                             result["confidence_lower"],
                             result["confidence_upper"],
                         ],
+                        explainability={
+                            "top_features": [
+                                FeatureContribution(
+                                    feature=feat["feature"],
+                                    value=feat["value"],
+                                    direction=feat["direction"],
+                                    importance=feat["importance"],
+                                ).model_dump()
+                                for feat in explanations.get("top_features", [])[:5]
+                            ]
+                        },
                         error=None,
                     )
                 )
@@ -292,6 +314,7 @@ async def predict_yield_all_models(
                         is_production=bool(mv.is_production),
                         predicted_yield=None,
                         confidence_interval=None,
+                        explainability={"top_features": []},
                         error=str(exc),
                     )
                 )

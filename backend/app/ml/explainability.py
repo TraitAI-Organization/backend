@@ -21,6 +21,8 @@ class ExplainabilityEngine:
         self.db = db
         self.predictor = predictor
         self._explainer = None
+        self._current_model_tag = None
+        self._background_data = None
 
     def _get_explainer(self, model):
         """
@@ -34,9 +36,13 @@ class ExplainabilityEngine:
             return shap.TreeExplainer(model.get_booster())
         elif hasattr(model, 'estimators_'):  # RandomForest
             return shap.TreeExplainer(model)
+        elif model.__class__.__module__.startswith("catboost") or hasattr(model, "get_feature_importance"):  # CatBoost
+            return shap.TreeExplainer(model)
         else:
             logger.warning(f"Unknown model type {model_type}, falling back to KernelExplainer")
-            return shap.KernelExplainer(model.predict, shap.sample(self._background_data, 100))
+            if self._background_data is None or len(self._background_data) == 0:
+                raise ValueError("No background data available for KernelExplainer fallback")
+            return shap.KernelExplainer(model.predict, shap.sample(self._background_data, min(len(self._background_data), 100)))
 
     def explain_prediction(
         self,
@@ -76,6 +82,7 @@ class ExplainabilityEngine:
             for col in missing:
                 X[col] = 0.0
         X = X[feature_list]
+        self._background_data = X.copy()
 
         # Create explainer (cache for performance)
         if self._explainer is None or self._current_model_tag != model_version.version_tag:
@@ -101,9 +108,14 @@ class ExplainabilityEngine:
         shap_vals = shap_values[0] if len(shap_values.shape) > 1 else shap_values
 
         for idx, (feature_name, shap_val) in enumerate(zip(feature_list, shap_vals)):
+            raw_value = X.iloc[0, idx]
+            if isinstance(raw_value, np.generic):
+                raw_value = raw_value.item()
+            if isinstance(raw_value, float) and np.isnan(raw_value):
+                raw_value = None
             feature_contributions.append({
                 'feature': feature_name,
-                'value': float(X.iloc[0, idx]),
+                'value': raw_value,
                 'shap_value': float(shap_val),
                 'direction': 'positive' if shap_val > 0 else 'negative',
                 'importance': float(abs(shap_val)),

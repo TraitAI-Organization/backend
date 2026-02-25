@@ -202,7 +202,7 @@ class PredictionRequest(BaseSchema):
 
 class FeatureContribution(BaseSchema):
     feature: str
-    value: float
+    value: Any
     direction: str  # "positive" or "negative"
     importance: float  # 0-1
 
@@ -229,6 +229,7 @@ class MultiModelPredictionItem(BaseSchema):
     is_production: bool
     predicted_yield: Optional[float] = None
     confidence_interval: Optional[List[float]] = None
+    explainability: Optional[Dict[str, List[FeatureContribution]]] = None
     error: Optional[str] = None
 
 
