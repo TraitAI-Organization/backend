@@ -7,6 +7,7 @@ import requests
 import plotly.express as px
 from datetime import datetime
 import os
+import re
 from urllib.parse import quote
 import time
 
@@ -116,6 +117,71 @@ def get_model_versions(limit: int = 200):
         return data if isinstance(data, list) else []
     except Exception:
         return []
+
+
+def _humanize_model_tag(version_tag: str) -> str:
+    if not version_tag:
+        return "Model"
+
+    name = str(version_tag).strip()
+    lowered = name.lower()
+    for prefix in ("genmills_", "genmill_", "nutriotion_", "nutrition_", "traitharvest_"):
+        if lowered.startswith(prefix):
+            name = name[len(prefix):]
+            break
+
+    name = re.sub(r"[_-]+", " ", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    if not name:
+        return "Model"
+
+    cb_match = re.match(r"^cbmodel(?:\s*(.*))?$", name, flags=re.IGNORECASE)
+    if cb_match:
+        suffix = (cb_match.group(1) or "").strip()
+        if suffix:
+            return f"CatBoost Model {suffix.upper() if re.match(r'^v\\d+(?:\\.\\d+)?$', suffix, flags=re.IGNORECASE) else suffix.title()}"
+        return "CatBoost Model"
+
+    deep_match = re.match(r"^deep\s+learning(?:\s+model)?(?:\s*(.*))?$", name, flags=re.IGNORECASE)
+    if deep_match:
+        suffix = (deep_match.group(1) or "").strip()
+        return f"Deep Learning Model {suffix}".strip()
+
+    token_map = {"xgboost": "XGBoost", "catboost": "CatBoost", "ai": "AI", "ml": "ML"}
+    pretty_tokens = []
+    for token in name.split():
+        t = token.strip()
+        tl = t.lower()
+        if re.match(r"^v\d+(?:\.\d+)?$", tl):
+            pretty_tokens.append(t.upper())
+        elif tl in token_map:
+            pretty_tokens.append(token_map[tl])
+        else:
+            pretty_tokens.append(t.capitalize())
+    return " ".join(pretty_tokens)
+
+
+def build_model_display_map(model_versions: list) -> dict:
+    display_map = {}
+    used_labels = set()
+
+    for item in model_versions:
+        if not isinstance(item, dict):
+            continue
+        tag = item.get("version_tag")
+        if not tag:
+            continue
+
+        label = _humanize_model_tag(tag)
+        if item.get("is_production"):
+            label = f"{label} (Production)"
+
+        if label in used_labels:
+            label = f"{label} [{tag}]"
+        used_labels.add(label)
+        display_map[tag] = label
+
+    return display_map
 
 
 def extract_top_features(explainability):
@@ -377,6 +443,7 @@ with tab_predict:
     prediction_custom_fields = prediction_form_cfg.get("custom_fields", []) if isinstance(prediction_form_cfg, dict) else []
     model_versions = get_model_versions(500)
     model_tags = [m.get("version_tag") for m in model_versions if isinstance(m, dict) and m.get("version_tag")]
+    model_display_map = build_model_display_map(model_versions)
     production_tag = next((m.get("version_tag") for m in model_versions if isinstance(m, dict) and m.get("is_production")), None)
     try:
         fields_resp = requests.get(f"{API_URL}/api/v1/fields?limit=500", timeout=10)
@@ -433,7 +500,12 @@ with tab_predict:
         if prediction_mode in {"Specific model", "Specific + all models"}:
             if model_tags:
                 default_idx = model_tags.index(production_tag) if production_tag in model_tags else 0
-                selected_model_tag = st.selectbox("Select model version", options=model_tags, index=default_idx)
+                selected_model_tag = st.selectbox(
+                    "Select model version",
+                    options=model_tags,
+                    index=default_idx,
+                    format_func=lambda tag: model_display_map.get(tag, _humanize_model_tag(tag)),
+                )
             else:
                 st.warning("No model versions found.")
 
@@ -471,7 +543,8 @@ with tab_predict:
                 render_prediction_result("Production model result", production_res)
 
             if specific_res:
-                render_prediction_result(f"Specific model result: {selected_model_tag}", specific_res)
+                selected_display = model_display_map.get(selected_model_tag, _humanize_model_tag(selected_model_tag))
+                render_prediction_result(f"Specific model result: {selected_display}", specific_res)
 
             if all_models_res:
                 st.subheader("All models comparison")
@@ -484,7 +557,7 @@ with tab_predict:
                     ci_low = ci[0] if isinstance(ci, list) and len(ci) >= 2 else None
                     ci_high = ci[1] if isinstance(ci, list) and len(ci) >= 2 else None
                     rows.append({
-                        "model_version": item.get("model_version"),
+                        "model_version": model_display_map.get(item.get("model_version"), _humanize_model_tag(item.get("model_version"))),
                         "model_type": item.get("model_type"),
                         "is_production": item.get("is_production"),
                         "predicted_yield": item.get("predicted_yield"),
@@ -512,7 +585,7 @@ with tab_predict:
                     for item in predictions:
                         if not isinstance(item, dict):
                             continue
-                        model_name = item.get("model_version", "model")
+                        model_name = model_display_map.get(item.get("model_version"), _humanize_model_tag(item.get("model_version")))
                         model_error = item.get("error")
                         with st.expander(f"{model_name} key factors", expanded=False):
                             if model_error:
