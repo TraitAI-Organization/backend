@@ -18,6 +18,32 @@ What it does:
 - keeps one production model if none is set
 - removes duplicates by model fingerprint (skips production version)
 
+## Keep Only Two Models (CatBoost + Deep Learning)
+
+If you want to keep only one CatBoost model and one Deep Learning model:
+
+```bash
+docker compose -f docker-compose.landing.yml exec backend \
+python -m scripts.prune_models --apply --delete-folders
+```
+
+Optional explicit tags:
+
+```bash
+docker compose -f docker-compose.landing.yml exec backend \
+python -m scripts.prune_models \
+  --keep-catboost-tag genmills_cbmodel_v2 \
+  --keep-deep-tag "Deep Learning Model" \
+  --apply --delete-folders
+```
+
+Dry-run (no changes):
+
+```bash
+docker compose -f docker-compose.landing.yml exec backend \
+python -m scripts.prune_models
+```
+
 ## Verify
 
 ```bash

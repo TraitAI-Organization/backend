@@ -140,6 +140,8 @@ def _humanize_model_tag(version_tag: str) -> str:
         suffix = (cb_match.group(1) or "").strip()
         if suffix:
             is_version_suffix = bool(re.match(r"^v\d+(?:\.\d+)?$", suffix, flags=re.IGNORECASE))
+            if is_version_suffix and suffix.lower() == "v2":
+                return "CatBoost Model"
             suffix_label = suffix.upper() if is_version_suffix else suffix.title()
             return f"CatBoost Model {suffix_label}"
         return "CatBoost Model"
