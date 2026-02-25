@@ -139,7 +139,9 @@ def _humanize_model_tag(version_tag: str) -> str:
     if cb_match:
         suffix = (cb_match.group(1) or "").strip()
         if suffix:
-            return f"CatBoost Model {suffix.upper() if re.match(r'^v\\d+(?:\\.\\d+)?$', suffix, flags=re.IGNORECASE) else suffix.title()}"
+            is_version_suffix = bool(re.match(r"^v\d+(?:\.\d+)?$", suffix, flags=re.IGNORECASE))
+            suffix_label = suffix.upper() if is_version_suffix else suffix.title()
+            return f"CatBoost Model {suffix_label}"
         return "CatBoost Model"
 
     deep_match = re.match(r"^deep\s+learning(?:\s+model)?(?:\s*(.*))?$", name, flags=re.IGNORECASE)
