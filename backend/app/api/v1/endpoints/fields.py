@@ -19,6 +19,15 @@ from app.database.schemas import (
 router = APIRouter()
 
 
+def _safe_float(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @router.get("/overview", response_model=OverviewResponse, summary="Dashboard overview")
 async def get_overview(
     db: Session = Depends(get_db),
@@ -117,18 +126,18 @@ async def list_field_seasons(
         item = {
             "field_season_id": fs.field_season_id,
             "field_number": fs.field.field_number if fs.field else None,
-            "acres": float(fs.field.acres) if fs.field else None,
+            "acres": _safe_float(fs.field.acres) if fs.field else None,
             "crop": fs.crop.crop_name_en if fs.crop else None,
             "variety": fs.variety.variety_name_en if fs.variety else None,
             "season": fs.season.season_year if fs.season else None,
             "state": fs.field.state if fs.field else None,
             "county": fs.field.county if fs.field else None,
-            "lat": float(fs.field.lat) if fs.field and fs.field.lat else None,
-            "long": float(fs.field.long) if fs.field and fs.field.long else None,
-            "yield_bu_ac": float(fs.yield_bu_ac) if fs.yield_bu_ac else None,
-            "totalN_per_ac": float(fs.totalN_per_ac) if fs.totalN_per_ac else None,
-            "totalP_per_ac": float(fs.totalP_per_ac) if fs.totalP_per_ac else None,
-            "totalK_per_ac": float(fs.totalK_per_ac) if fs.totalK_per_ac else None,
+            "lat": _safe_float(fs.field.lat) if fs.field else None,
+            "long": _safe_float(fs.field.long) if fs.field else None,
+            "yield_bu_ac": _safe_float(fs.yield_bu_ac),
+            "totalN_per_ac": _safe_float(fs.totalN_per_ac),
+            "totalP_per_ac": _safe_float(fs.totalP_per_ac),
+            "totalK_per_ac": _safe_float(fs.totalK_per_ac),
         }
 
         # Add prediction if available (assuming latest prediction is loaded)
@@ -136,16 +145,12 @@ async def list_field_seasons(
             latest_pred = sorted(
                 fs.predictions, key=lambda x: x.created_at, reverse=True
             )[0]
-            item["predicted_yield"] = float(latest_pred.predicted_yield)
-            item["confidence_interval"] = [
-                float(latest_pred.confidence_lower),
-                float(latest_pred.confidence_upper),
-            ]
-            item["regional_avg_yield"] = (
-                float(latest_pred.regional_avg_yield)
-                if latest_pred.regional_avg_yield
-                else None
-            )
+            pred_yield = _safe_float(latest_pred.predicted_yield)
+            conf_low = _safe_float(latest_pred.confidence_lower)
+            conf_high = _safe_float(latest_pred.confidence_upper)
+            item["predicted_yield"] = pred_yield
+            item["confidence_interval"] = [conf_low, conf_high] if conf_low is not None and conf_high is not None else None
+            item["regional_avg_yield"] = _safe_float(latest_pred.regional_avg_yield)
         else:
             item["predicted_yield"] = None
             item["confidence_interval"] = None
