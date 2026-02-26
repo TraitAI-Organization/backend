@@ -67,12 +67,27 @@ def get_filtered_fields(crop=None, variety=None, season=None, state=None, min_ac
     if min_acres is not None: params["min_acres"] = min_acres
     if max_acres is not None: params["max_acres"] = max_acres
     if has_prediction is not None: params["has_prediction"] = has_prediction
+
+    last_error = None
+    for _ in range(2):
+        try:
+            r = requests.get(f"{API_URL}/api/v1/fields", params=params, timeout=15)
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            last_error = e
+            time.sleep(1)
+
+    # Fallback: remove season filter to avoid temporary backend query failures.
+    fallback_params = dict(params)
+    fallback_params.pop("season", None)
     try:
-        r = requests.get(f"{API_URL}/api/v1/fields", params=params, timeout=10)
+        r = requests.get(f"{API_URL}/api/v1/fields", params=fallback_params, timeout=15)
         r.raise_for_status()
+        st.warning("Analytics fallback used: removed season filter due temporary backend error.")
         return r.json()
-    except Exception as e:
-        st.error(f"Failed to fetch data: {e}")
+    except Exception:
+        st.error(f"Failed to fetch data: {last_error}")
         return {"data": [], "total": 0, "page": 1, "limit": limit, "pages": 0}
 
 
@@ -449,6 +464,9 @@ with tab_analytics:
         for col_name in ["yield_bu_ac", "totalN_per_ac", "season"]:
             if col_name in df.columns:
                 df[col_name] = pd.to_numeric(df[col_name], errors="coerce")
+        if "yield_bu_ac" not in df.columns or df["yield_bu_ac"].notna().sum() == 0:
+            st.warning("Data is loaded, but observed yield (`yield_bu_ac`) is missing in current rows. Upload/ingest data with observed yield to render analytics charts.")
+            st.stop()
 
         if "season" in df.columns:
             df["season_year_label"] = df["season"].astype("Int64").astype(str)
