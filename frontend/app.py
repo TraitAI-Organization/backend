@@ -306,14 +306,14 @@ with st.sidebar:
         crop_names = ["Sorghum", "Wheat, Hard Winter", "Corn"]
 
     selected_seasons = st.multiselect("Season", options=sorted(seasons_available, reverse=True) or [2024, 2025],
-        default=[max(seasons_available)] if seasons_available else [2025], key="season_filter")
-    selected_crop = st.selectbox("Crop", options=crop_names, key="crop_filter")
+        default=sorted(seasons_available, reverse=True) if seasons_available else [2025], key="season_filter")
+    selected_crop = st.selectbox("Crop", options=["All Crops"] + crop_names, key="crop_filter")
     states_available = overview.get("states_available", [])
     selected_state = st.selectbox("State", options=[None] + (states_available or []), key="state_filter")
 
     st.session_state.filters = {
         "season": selected_seasons if selected_seasons else None,
-        "crop": selected_crop if selected_crop else None,
+        "crop": selected_crop if selected_crop and selected_crop != "All Crops" else None,
         "state": selected_state if selected_state else None,
     }
 
@@ -415,7 +415,7 @@ with tab_map:
 # Analytics
 with tab_analytics:
     st.header("Analytics & Comparisons")
-    st.caption("Yield distribution histogram and Predicted vs Observed scatter plot from filtered field-season data.")
+    st.caption("Yield distribution by season, nitrogen-response scatter, state-year heatmap, and seasonal boxplot from filtered field-season data.")
     result_an = get_filtered_fields(
         crop=st.session_state.filters.get("crop"),
         season=st.session_state.filters.get("season"),
@@ -424,17 +424,141 @@ with tab_analytics:
     )
     if result_an.get("data"):
         df = pd.DataFrame(result_an["data"])
-        col1, col2 = st.columns(2)
-        with col1:
-            if "yield_bu_ac" in df.columns and df["yield_bu_ac"].notna().any():
-                fig = px.histogram(df.dropna(subset=["yield_bu_ac"]), x="yield_bu_ac", nbins=50, title="Yield Distribution")
-                st.plotly_chart(fig, use_container_width=True)
-        with col2:
+        for col_name in ["yield_bu_ac", "totalN_per_ac", "season"]:
+            if col_name in df.columns:
+                df[col_name] = pd.to_numeric(df[col_name], errors="coerce")
+
+        if "season" in df.columns:
+            df["season_label"] = df["season"].astype("Int64").astype(str)
+        else:
+            df["season_label"] = "Unknown"
+
+        top_row1, top_row2, top_row3 = st.columns([1.15, 1.15, 1.0])
+
+        with top_row1:
+            hist_df = df.dropna(subset=["yield_bu_ac", "season_label"]).copy()
+            if not hist_df.empty:
+                fig_hist = px.histogram(
+                    hist_df,
+                    x="yield_bu_ac",
+                    color="season_label",
+                    nbins=30,
+                    barmode="overlay",
+                    opacity=0.65,
+                    title="Yield Distribution by Season",
+                    labels={
+                        "yield_bu_ac": "Yield (bu/ac)",
+                        "season_label": "Season",
+                        "count": "Field Season Count",
+                    },
+                )
+                fig_hist.update_layout(legend_title_text="Season")
+                st.plotly_chart(fig_hist, use_container_width=True)
+
+        with top_row2:
+            scatter_df = df.dropna(subset=["yield_bu_ac", "totalN_per_ac"]).copy()
+            if not scatter_df.empty:
+                try:
+                    fig_scatter = px.scatter(
+                        scatter_df,
+                        x="totalN_per_ac",
+                        y="yield_bu_ac",
+                        color="season_label",
+                        trendline="ols",
+                        trendline_scope="overall",
+                        opacity=0.6,
+                        title="Yield vs. Total Nitrogen Applied",
+                        labels={
+                            "totalN_per_ac": "Total N Applied (lbs/ac)",
+                            "yield_bu_ac": "Yield (bu/ac)",
+                            "season_label": "Season",
+                        },
+                    )
+                except Exception:
+                    fig_scatter = px.scatter(
+                        scatter_df,
+                        x="totalN_per_ac",
+                        y="yield_bu_ac",
+                        color="season_label",
+                        opacity=0.6,
+                        title="Yield vs. Total Nitrogen Applied",
+                        labels={
+                            "totalN_per_ac": "Total N Applied (lbs/ac)",
+                            "yield_bu_ac": "Yield (bu/ac)",
+                            "season_label": "Season",
+                        },
+                    )
+                st.plotly_chart(fig_scatter, use_container_width=True)
+
+        with top_row3:
+            heat_df = df.dropna(subset=["state", "season", "yield_bu_ac"]).copy()
+            if not heat_df.empty:
+                heat_df["season_label"] = heat_df["season"].astype(int).astype(str)
+                fig_heat = px.density_heatmap(
+                    heat_df,
+                    x="season_label",
+                    y="state",
+                    z="yield_bu_ac",
+                    histfunc="avg",
+                    color_continuous_scale="YlGnBu",
+                    title="Yield by State and Year",
+                    labels={
+                        "season_label": "Season",
+                        "state": "State",
+                        "yield_bu_ac": "Yield (bu/ac)",
+                    },
+                )
+                st.plotly_chart(fig_heat, use_container_width=True)
+
+        bottom_left, bottom_right = st.columns([1.0, 1.0])
+        with bottom_left:
+            box_df = df.dropna(subset=["yield_bu_ac", "season_label"]).copy()
+            if not box_df.empty:
+                fig_box = px.box(
+                    box_df,
+                    x="season_label",
+                    y="yield_bu_ac",
+                    color="season_label",
+                    points="outliers",
+                    title="Yield by Season",
+                    labels={
+                        "season_label": "Season",
+                        "yield_bu_ac": "Yield (bu/ac)",
+                    },
+                )
+                fig_box.update_layout(showlegend=False)
+                st.plotly_chart(fig_box, use_container_width=True)
+
+        with bottom_right:
             if "yield_bu_ac" in df.columns and "predicted_yield" in df.columns:
-                valid = df.dropna(subset=["yield_bu_ac", "predicted_yield"])
+                valid = df.dropna(subset=["yield_bu_ac", "predicted_yield"]).copy()
                 if len(valid) > 0:
-                    fig = px.scatter(valid, x="yield_bu_ac", y="predicted_yield", trendline="ols", title="Predicted vs Observed")
-                    st.plotly_chart(fig, use_container_width=True)
+                    try:
+                        fig_compare = px.scatter(
+                            valid,
+                            x="yield_bu_ac",
+                            y="predicted_yield",
+                            trendline="ols",
+                            title="Predicted vs Observed Yield",
+                            labels={
+                                "yield_bu_ac": "Observed Yield (bu/ac)",
+                                "predicted_yield": "Predicted Yield (bu/ac)",
+                            },
+                        )
+                    except Exception:
+                        fig_compare = px.scatter(
+                            valid,
+                            x="yield_bu_ac",
+                            y="predicted_yield",
+                            title="Predicted vs Observed Yield",
+                            labels={
+                                "yield_bu_ac": "Observed Yield (bu/ac)",
+                                "predicted_yield": "Predicted Yield (bu/ac)",
+                            },
+                        )
+                    st.plotly_chart(fig_compare, use_container_width=True)
+                else:
+                    st.info("No records with both observed and predicted yield yet.")
     else:
         st.info("No data to analyze.")
 
