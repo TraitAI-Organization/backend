@@ -17,6 +17,8 @@ STATE_CONFIG = {
     "Missouri": {"county": "Boone", "lat": 38.9, "long": -92.3, "base_yield": 132.0},
     "Oklahoma": {"county": "Payne", "lat": 36.1, "long": -97.1, "base_yield": 126.0},
     "Texas": {"county": "Lubbock", "lat": 33.6, "long": -101.8, "base_yield": 116.0},
+    "Nebraska": {"county": "Hall", "lat": 40.9, "long": -98.3, "base_yield": 138.0},
+    "Colorado": {"county": "Yuma", "lat": 40.1, "long": -102.7, "base_yield": 120.0},
 }
 
 CROPS = [
@@ -25,24 +27,27 @@ CROPS = [
     ("Wheat, Hard Winter", ["TAM 114", "WB-Grainfield"]),
 ]
 
-SEASONS = [2021, 2022, 2023]
+DEFAULT_SEASONS = [2021, 2022, 2023, 2024]
+DEFAULT_STATES = ["Kansas", "Missouri", "Oklahoma", "Texas", "Nebraska", "Colorado"]
 
 
 def clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, value))
 
 
-def build_rows(rows_per_state_season: int, seed: int):
+def _season_shift_for_index(idx: int) -> float:
+    shifts = [-8.0, -2.5, 5.0, 1.5, 6.0]
+    return shifts[idx % len(shifts)]
+
+
+def build_rows(rows_per_state_season: int, seed: int, seasons: list[int], states: list[str]):
     random.seed(seed)
     field_counter = 100000
 
-    for season in SEASONS:
-        for state, cfg in STATE_CONFIG.items():
-            seasonal_shift = {
-                2021: -8.0,
-                2022: -2.5,
-                2023: 5.0,
-            }[season]
+    for season_idx, season in enumerate(seasons):
+        seasonal_shift = _season_shift_for_index(season_idx)
+        for state in states:
+            cfg = STATE_CONFIG[state]
 
             for _ in range(rows_per_state_season):
                 field_counter += 1
@@ -102,7 +107,7 @@ def main() -> int:
     parser.add_argument(
         "--rows-per-state-season",
         type=int,
-        default=140,
+        default=220,
         help="Rows per state x season cell.",
     )
     parser.add_argument(
@@ -111,12 +116,36 @@ def main() -> int:
         default=42,
         help="Random seed for reproducible output.",
     )
+    parser.add_argument(
+        "--seasons",
+        default=",".join(str(x) for x in DEFAULT_SEASONS),
+        help="Comma-separated season years. Example: 2021,2022,2023,2024",
+    )
+    parser.add_argument(
+        "--states",
+        default=",".join(DEFAULT_STATES),
+        help=f"Comma-separated states. Available: {', '.join(STATE_CONFIG.keys())}",
+    )
     args = parser.parse_args()
+
+    seasons = [int(s.strip()) for s in str(args.seasons).split(",") if s.strip()]
+    states = [s.strip() for s in str(args.states).split(",") if s.strip()]
+    invalid_states = [s for s in states if s not in STATE_CONFIG]
+    if invalid_states:
+        print(f"Invalid states: {invalid_states}")
+        print(f"Allowed states: {sorted(STATE_CONFIG.keys())}")
+        return 1
+    if not seasons:
+        print("No seasons provided.")
+        return 1
+    if not states:
+        print("No states provided.")
+        return 1
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    rows = list(build_rows(args.rows_per_state_season, args.seed))
+    rows = list(build_rows(args.rows_per_state_season, args.seed, seasons=seasons, states=states))
     if not rows:
         print("No rows generated.")
         return 1
