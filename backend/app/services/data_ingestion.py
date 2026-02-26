@@ -49,6 +49,7 @@ class DataIngestionService:
         Ingest a CSV file into the database.
         """
         source_filename = source_filename or os.path.basename(csv_path)
+        self._source_filename = source_filename
         file_hash = self.compute_file_hash(csv_path)
 
         # Check if already ingested
@@ -251,7 +252,7 @@ class DataIngestionService:
             'totalN_per_ac': float(totalN) if pd.notna(totalN) else None,
             'totalP_per_ac': float(totalP) if pd.notna(totalP) else None,
             'totalK_per_ac': float(totalK) if pd.notna(totalK) else None,
-            'record_source': source_filename,
+            'record_source': self._source_filename,
             'data_quality_score': 1.0,
         }
 
@@ -262,17 +263,19 @@ class DataIngestionService:
                     setattr(existing_fs, key, value)
             self.db.commit()
             action = 'updated'
+            field_season_id = existing_fs.field_season_id
         else:
             # Create new field-season
             fs = models.FieldSeason(**fs_data)
             self.db.add(fs)
             self.db.flush()  # To get field_season_id
             action = 'inserted'
+            field_season_id = fs.field_season_id
 
         # Now create management event if row represents an operation
         event_type = str(row.get('type', '')).strip()
         if event_type and pd.notna(event_type):
-            self._create_management_event(row, fs.field_season_id, row_num)
+            self._create_management_event(row, field_season_id, row_num)
 
         return action
 

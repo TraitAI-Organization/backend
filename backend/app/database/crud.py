@@ -10,6 +10,23 @@ import json
 from . import models, schemas
 
 
+def _as_payload_dict(payload: Any) -> Dict[str, Any]:
+    """
+    Accept pydantic models, dicts, or lightweight objects and normalize to dict.
+    """
+    if payload is None:
+        return {}
+    if isinstance(payload, dict):
+        return payload
+    if hasattr(payload, "model_dump"):
+        return payload.model_dump()
+    if hasattr(payload, "dict"):
+        return payload.dict()
+    if hasattr(payload, "__dict__"):
+        return {k: v for k, v in vars(payload).items() if not k.startswith("_")}
+    raise TypeError(f"Unsupported payload type: {type(payload)}")
+
+
 # ==================== Fields ====================
 
 def get_field(db: Session, field_id: int) -> Optional[models.Field]:
@@ -44,7 +61,7 @@ def get_fields(
 
 
 def create_field(db: Session, field: schemas.FieldCreate) -> models.Field:
-    db_field = models.Field(**field.model_dump())
+    db_field = models.Field(**_as_payload_dict(field))
     db.add(db_field)
     db.commit()
     db.refresh(db_field)
@@ -83,7 +100,7 @@ def get_crops(db: Session, active_only: bool = True) -> List[models.Crop]:
 
 
 def create_crop(db: Session, crop: schemas.CropCreate) -> models.Crop:
-    db_crop = models.Crop(**crop.model_dump())
+    db_crop = models.Crop(**_as_payload_dict(crop))
     db.add(db_crop)
     db.commit()
     db.refresh(db_crop)
@@ -111,7 +128,7 @@ def get_variety_by_name_and_crop(db: Session, variety_name: str, crop_id: int) -
 
 
 def create_variety(db: Session, variety: schemas.VarietyCreate) -> models.Variety:
-    db_variety = models.Variety(**variety.model_dump())
+    db_variety = models.Variety(**_as_payload_dict(variety))
     db.add(db_variety)
     db.commit()
     db.refresh(db_variety)
@@ -133,7 +150,7 @@ def get_seasons(db: Session) -> List[models.Season]:
 
 
 def create_season(db: Session, season: schemas.SeasonCreate) -> models.Season:
-    db_season = models.Season(**season.model_dump())
+    db_season = models.Season(**_as_payload_dict(season))
     db.add(db_season)
     db.commit()
     db.refresh(db_season)
@@ -258,7 +275,7 @@ def get_field_season_with_details(
 
 
 def create_field_season(db: Session, fs: schemas.FieldSeasonCreate) -> models.FieldSeason:
-    db_fs = models.FieldSeason(**fs.model_dump())
+    db_fs = models.FieldSeason(**_as_payload_dict(fs))
     db.add(db_fs)
     db.commit()
     db.refresh(db_fs)
@@ -301,7 +318,7 @@ def get_management_events_by_field_season(
 def create_management_event(
     db: Session, event: schemas.ManagementEventCreate
 ) -> models.ManagementEvent:
-    db_event = models.ManagementEvent(**event.model_dump())
+    db_event = models.ManagementEvent(**_as_payload_dict(event))
     db.add(db_event)
     db.commit()
     db.refresh(db_event)
@@ -330,7 +347,7 @@ def get_ingestion_by_hash(db: Session, file_hash: str) -> Optional[models.DataIn
 def create_ingestion_log(
     db: Session, log: schemas.IngestionLogCreate
 ) -> models.DataIngestionLog:
-    db_log = models.DataIngestionLog(**log.model_dump())
+    db_log = models.DataIngestionLog(**_as_payload_dict(log))
     db.add(db_log)
     db.commit()
     db.refresh(db_log)
@@ -398,7 +415,7 @@ def get_model_versions(
 def create_model_version(
     db: Session, mv: schemas.ModelVersionCreate
 ) -> models.ModelVersion:
-    db_mv = models.ModelVersion(**mv.model_dump())
+    db_mv = models.ModelVersion(**_as_payload_dict(mv))
     db.add(db_mv)
     db.commit()
     db.refresh(db_mv)
@@ -427,7 +444,7 @@ def set_production_model(db: Session, model_version_id: int) -> Optional[models.
 def create_prediction(
     db: Session, prediction: schemas.ModelPredictionCreate
 ) -> models.ModelPrediction:
-    db_pred = models.ModelPrediction(**prediction.model_dump())
+    db_pred = models.ModelPrediction(**_as_payload_dict(prediction))
     db.add(db_pred)
     db.commit()
     db.refresh(db_pred)
