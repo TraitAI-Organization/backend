@@ -23,7 +23,10 @@ def _safe_float(value):
     if value is None:
         return None
     try:
-        return float(value)
+        num = float(value)
+        if not math.isfinite(num):
+            return None
+        return num
     except (TypeError, ValueError):
         return None
 
