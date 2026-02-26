@@ -143,6 +143,18 @@ def derive_season_name(season_year):
         return "Unknown"
 
 
+def field_season_key(value):
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    try:
+        return str(int(value))
+    except Exception:
+        return str(value) if value is not None else None
+
+
 @st.cache_data(ttl=120)
 def get_model_versions(limit: int = 200):
     try:
@@ -539,8 +551,13 @@ with tab_analytics:
 
         with bottom_right:
             preview_map = st.session_state.get("analytics_preview_predictions", {})
-            if preview_map and "field_season_id" in df.columns:
-                df["predicted_yield_preview"] = df["field_season_id"].map(preview_map)
+            if "field_season_id" in df.columns:
+                df["_field_season_key"] = df["field_season_id"].apply(field_season_key)
+            else:
+                df["_field_season_key"] = None
+
+            if preview_map and "_field_season_key" in df.columns:
+                df["predicted_yield_preview"] = df["_field_season_key"].map(preview_map)
                 if "predicted_yield" in df.columns:
                     df["predicted_yield_effective"] = df["predicted_yield"].fillna(df["predicted_yield_preview"])
                 else:
@@ -578,10 +595,12 @@ with tab_analytics:
                 st.info("No records with both observed and predicted yield yet.")
                 st.caption("Run backfill to store predictions, or use preview generation below.")
                 if st.button("Generate preview predictions for current view", key="analytics_preview_btn"):
-                    req_df = df.dropna(subset=["crop", "acres", "lat", "long", "season"]).copy()
-                    req_df = req_df.head(200)
+                    req_df = df.dropna(
+                        subset=["field_season_id", "crop", "acres", "lat", "long", "season", "yield_bu_ac"]
+                    ).copy()
+                    req_df = req_df.head(300)
                     payloads = []
-                    index_to_field_id = []
+                    index_to_field_key = []
                     for _, row in req_df.iterrows():
                         payloads.append({
                             "crop": row.get("crop"),
@@ -596,10 +615,10 @@ with tab_analytics:
                             "county": row.get("county") if pd.notna(row.get("county")) else None,
                             "state": row.get("state") if pd.notna(row.get("state")) else None,
                         })
-                        index_to_field_id.append(row.get("field_season_id"))
+                        index_to_field_key.append(field_season_key(row.get("field_season_id")))
 
                     if not payloads:
-                        st.warning("Not enough complete rows (crop/acres/lat/long/season) to run preview predictions.")
+                        st.warning("Not enough rows with observed yield + complete inputs to run preview predictions.")
                     else:
                         with st.spinner("Generating preview predictions..."):
                             batch_results = get_batch_predictions(payloads)
@@ -608,14 +627,15 @@ with tab_analytics:
                             if not isinstance(pred, dict):
                                 continue
                             y = pred.get("predicted_yield")
-                            fs_id = index_to_field_id[idx] if idx < len(index_to_field_id) else None
-                            if fs_id is None or y is None:
+                            fs_key = index_to_field_key[idx] if idx < len(index_to_field_key) else None
+                            if fs_key is None or y is None:
                                 continue
-                            preview_map[fs_id] = y
+                            preview_map[fs_key] = y
                             added += 1
                         st.session_state.analytics_preview_predictions = preview_map
                         st.success(f"Generated {added} preview predictions.")
-                        st.rerun()
+                        if added > 0:
+                            st.rerun()
 
         with st.expander("Additional plot: Yield vs. Total Nitrogen Applied", expanded=False):
             scatter_df = df.dropna(subset=["yield_bu_ac", "totalN_per_ac"]).copy()
