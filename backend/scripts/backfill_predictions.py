@@ -77,11 +77,17 @@ def main():
             print("DRY RUN - would backfill predictions for these field-seasons.")
             return 0
 
-        offset = 0
+        last_field_season_id = 0
         processed = 0
 
-        while offset < total:
-            batch = query.offset(offset).limit(args.batch_size).all()
+        while True:
+            batch = (
+                query
+                .filter(models.FieldSeason.field_season_id > last_field_season_id)
+                .order_by(models.FieldSeason.field_season_id.asc())
+                .limit(args.batch_size)
+                .all()
+            )
             if not batch:
                 break
 
@@ -123,8 +129,9 @@ def main():
                     continue
 
             db.commit()
-            offset += len(batch)
-            print(f"  Progress: {offset:,} / {total:,} ({offset/total*100:.1f}%)")
+            last_field_season_id = batch[-1].field_season_id
+            progress_pct = (processed / total * 100.0) if total else 100.0
+            print(f"  Progress: {processed:,} / {total:,} ({progress_pct:.1f}%)")
 
         print(f"\n✓ Backfilled {processed:,} predictions.")
         return 0
