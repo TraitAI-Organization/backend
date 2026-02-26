@@ -23,7 +23,23 @@ def _as_payload_dict(payload: Any) -> Dict[str, Any]:
     if hasattr(payload, "dict"):
         return payload.dict()
     if hasattr(payload, "__dict__"):
-        return {k: v for k, v in vars(payload).items() if not k.startswith("_")}
+        data = {k: v for k, v in vars(payload).items() if not k.startswith("_")}
+        if data:
+            return data
+    # Support lightweight objects that expose data as class attributes.
+    data = {}
+    for key in dir(payload):
+        if key.startswith("_"):
+            continue
+        try:
+            value = getattr(payload, key)
+        except Exception:
+            continue
+        if callable(value):
+            continue
+        data[key] = value
+    if data:
+        return data
     raise TypeError(f"Unsupported payload type: {type(payload)}")
 
 
