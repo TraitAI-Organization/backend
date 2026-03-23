@@ -6,6 +6,8 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
+import Alert from '@mui/material/Alert';
+import Divider from '@mui/material/Divider';
 
 import MainCard from 'components/MainCard';
 
@@ -21,8 +23,13 @@ export default function Predict() {
     season: '',
     waterApplied: '',
     state: '',
-    county: ''
+    county: '',
+    variety: ''
   });
+
+  const [predictionResult, setPredictionResult] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const seasonYears = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -93,6 +100,53 @@ export default function Predict() {
     }));
   };
 
+  const buildPayload = () => {
+    return {
+      crop: formValues.crop,
+      variety: formValues.variety || null,
+      acres: formValues.acres === '' ? null : Number(formValues.acres),
+      lat: formValues.latitude === '' ? null : Number(formValues.latitude),
+      long: formValues.longitude === '' ? null : Number(formValues.longitude),
+      season: formValues.season === '' ? null : Number(formValues.season),
+      totalN_per_ac: formValues.totalN === '' ? null : Number(formValues.totalN),
+      totalP_per_ac: formValues.totalP === '' ? null : Number(formValues.totalP),
+      totalK_per_ac: formValues.totalK === '' ? null : Number(formValues.totalK),
+      water_applied_mm: formValues.waterApplied === '' ? null : Number(formValues.waterApplied),
+      state: formValues.state || null,
+      county: formValues.county || null
+    };
+  };
+
+  const handleSubmit = async () => {
+    setErrorMessage('');
+    setPredictionResult(null);
+    setIsSubmitting(true);
+
+    try {
+      const payload = buildPayload();
+
+      const response = await fetch('https://traitharvest.ai/api/v1/predict', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Request failed: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      setPredictionResult(result);
+    } catch (error) {
+      setErrorMessage(error.message || 'Something went wrong while requesting a prediction.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <MainCard title="Yield Intelligence Prediction">
       <Stack spacing={2.5}>
@@ -100,6 +154,7 @@ export default function Predict() {
           Select an existing field or enter crop, location, season, N/P/K manually; submit to get predicted yield, confidence interval, and
           key factors.
         </Typography>
+
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
@@ -124,42 +179,56 @@ export default function Predict() {
               </TextField>
             </Stack>
           </Grid>
+
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Stack spacing={1}>
+              <Typography variant="subtitle2">Variety</Typography>
+              <TextField fullWidth name="variety" placeholder="Pioneer 86P20" value={formValues.variety} onChange={handleChange} />
+            </Stack>
+          </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2">Latitude</Typography>
               <TextField fullWidth name="latitude" placeholder="00.000000" value={formValues.latitude} onChange={handleChange} />
             </Stack>
           </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2">Longitude</Typography>
               <TextField fullWidth name="longitude" placeholder="000.000000" value={formValues.longitude} onChange={handleChange} />
             </Stack>
           </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2">Total N (lb/ac)</Typography>
               <TextField fullWidth name="totalN" placeholder="00.00" value={formValues.totalN} onChange={handleChange} />
             </Stack>
           </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2">Total P (lb/ac)</Typography>
               <TextField fullWidth name="totalP" placeholder="00.00" value={formValues.totalP} onChange={handleChange} />
             </Stack>
           </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2">Total K (lb/ac)</Typography>
               <TextField fullWidth name="totalK" placeholder="00.00" value={formValues.totalK} onChange={handleChange} />
             </Stack>
           </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2">Acres</Typography>
               <TextField fullWidth name="acres" placeholder="00.00" value={formValues.acres} onChange={handleChange} />
             </Stack>
           </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2">Season</Typography>
@@ -185,12 +254,14 @@ export default function Predict() {
               </TextField>
             </Stack>
           </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2">Water Applied (mm)</Typography>
               <TextField fullWidth name="waterApplied" placeholder="00.00" value={formValues.waterApplied} onChange={handleChange} />
             </Stack>
           </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2">State</Typography>
@@ -202,7 +273,7 @@ export default function Predict() {
                 onChange={handleChange}
                 SelectProps={{
                   displayEmpty: true,
-                  renderValue: (selected) => selected || 'Select States'
+                  renderValue: (selected) => selected || 'Select State'
                 }}
               >
                 <MenuItem value="" disabled>
@@ -216,18 +287,54 @@ export default function Predict() {
               </TextField>
             </Stack>
           </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2">County</Typography>
               <TextField fullWidth name="county" placeholder="County" value={formValues.county} onChange={handleChange} />
             </Stack>
           </Grid>
+
           <Grid size={12}>
             <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
-              <Button variant="contained">Run Yield Intelligence</Button>
+              <Button variant="contained" onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? 'Running...' : 'Run Yield Intelligence'}
+              </Button>
             </Stack>
           </Grid>
         </Grid>
+
+        {errorMessage && <Alert severity="error">{errorMessage}</Alert>}
+
+        {predictionResult && (
+          <>
+            <Divider />
+            <Stack spacing={1.5}>
+              <Typography variant="h6">Prediction Result</Typography>
+              <Typography>
+                <strong>Predicted Yield:</strong> {predictionResult.predicted_yield}
+              </Typography>
+              <Typography>
+                <strong>Confidence Interval:</strong> {predictionResult.confidence_interval?.[0]} -{' '}
+                {predictionResult.confidence_interval?.[1]}
+              </Typography>
+              <Typography>
+                <strong>Model Version:</strong> {predictionResult.model_version}
+              </Typography>
+
+              {predictionResult.explainability?.top_features?.length > 0 && (
+                <Stack spacing={0.5}>
+                  <Typography variant="subtitle1">Top Features</Typography>
+                  {predictionResult.explainability.top_features.map((feature, index) => (
+                    <Typography key={`${feature.feature}-${index}`}>
+                      {feature.feature}: {String(feature.value)} ({feature.direction}, importance: {feature.importance})
+                    </Typography>
+                  ))}
+                </Stack>
+              )}
+            </Stack>
+          </>
+        )}
       </Stack>
     </MainCard>
   );
