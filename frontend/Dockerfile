@@ -1,24 +1,35 @@
-# Streamlit Frontend Dockerfile
-FROM python:3.11-slim
+# Stage 1: Build the React/Vite app
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    netcat-openbsd \
-    && rm -rf /var/lib/apt/lists/*
+# Copy package files first for better layer caching
+COPY package*.json ./
 
-# Copy requirements
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies
+RUN npm ci
 
-# Copy application code
+# Copy the rest of the frontend source
 COPY . .
 
-# Expose port
-EXPOSE 8501
+# Build-time API URL for Vite
+ARG VITE_API_URL=http://backend:8000
+ENV VITE_API_URL=$VITE_API_URL
 
-# Run Streamlit
-CMD ["streamlit", "run", "app.py", "--server.port", "8501", "--server.address", "0.0.0.0", "--browser.gatherUsageStats", "false"]
+# Build the production bundle
+RUN npm run build
+
+# Stage 2: Serve the built files with nginx
+FROM nginx:stable-alpine
+
+# Copy custom nginx config if you want SPA routing support
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy the build output from the builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Expose nginx port
+EXPOSE 80
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

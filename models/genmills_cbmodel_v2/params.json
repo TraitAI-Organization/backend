@@ -1,0 +1,10 @@
+{
+  "model_type": "catboost",
+  "loss_function": "RMSE",
+  "iterations": 5000,
+  "learning_rate": 0.03,
+  "depth": 10,
+  "l2_leaf_reg": 8,
+  "early_stopping_rounds": 200,
+  "source": "GenMills modelling report"
+}

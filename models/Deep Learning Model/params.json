@@ -1,0 +1,6 @@
+{
+  "model_type": "deep_learning_pytorch",
+  "source": "auto_sync",
+  "notes": "Auto-generated params placeholder by sync_models.py",
+  "artifact_file": "model.pth"
+}

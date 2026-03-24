@@ -1,0 +1,52 @@
+{
+  "manual_entry": {
+    "dropdowns": {
+      "crop_name_en": [
+        "Wheat, Hard Winter",
+        "Corn",
+        "Sorghum",
+        "Fallow",
+        "Other"
+      ],
+      "state": [
+        "Kansas",
+        "Nebraska",
+        "Oklahoma",
+        "Texas",
+        "Colorado",
+        "Other"
+      ],
+      "type": [
+        "Manual Entry",
+        "Planting/Seeding",
+        "Fertilizing",
+        "Spraying",
+        "Irrigation",
+        "Harvesting",
+        "Other"
+      ],
+      "status": [
+        "Completed",
+        "In Progress",
+        "Failed",
+        "Cancelled"
+      ],
+      "irrigation_method": [
+        "None",
+        "Center Pivot",
+        "Drip",
+        "Flood",
+        "Sprinkler",
+        "Other"
+      ]
+    },
+    "custom_fields": []
+  },
+  "prediction": {
+    "dropdowns": {
+      "crop": [],
+      "state": []
+    },
+    "custom_fields": []
+  }
+}
