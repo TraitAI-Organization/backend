@@ -111,4 +111,4 @@ dist
 
 #
 .env/
-.env
+.envmodels/genmills_cbmodel_v2/model.cbm
