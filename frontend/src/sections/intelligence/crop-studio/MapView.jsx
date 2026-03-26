@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { alpha, useTheme } from '@mui/material/styles';
 import Box from '@mui/material/Box';
@@ -9,13 +9,166 @@ import Typography from '@mui/material/Typography';
 
 import MainCard from 'components/MainCard';
 
-const FIELD_LOCATIONS = [
-  { id: 1, name: 'North Pivot 12', crop: 'Sorghum', season: 2024, yield: 161.3, latitude: 39.2012, longitude: -96.5853 },
-  { id: 2, name: 'West Ridge 3', crop: 'Winter Wheat', season: 2023, yield: 73.2, latitude: 38.4831, longitude: -97.1234 },
-  { id: 3, name: 'South Creek 8', crop: 'Grain', season: 2024, yield: 129.4, latitude: 37.8921, longitude: -98.2042 },
-  { id: 4, name: 'East Block 5', crop: 'Winter Wheat', season: 2022, yield: 68.9, latitude: 40.1186, longitude: -95.9208 },
-  { id: 5, name: 'Central Flat 1', crop: 'Sorghum', season: 2025, yield: 172.6, latitude: 38.7791, longitude: -99.4427 }
-];
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
+const MAX_LOCATIONS = 15;
+const US_CENTER = { latitude: 39.8283, longitude: -98.5795 };
+
+const STATE_COORDINATES = {
+  Alabama: { latitude: 32.806671, longitude: -86.79113 },
+  Alaska: { latitude: 61.370716, longitude: -152.404419 },
+  Arizona: { latitude: 33.729759, longitude: -111.431221 },
+  Arkansas: { latitude: 34.969704, longitude: -92.373123 },
+  California: { latitude: 36.116203, longitude: -119.681564 },
+  Colorado: { latitude: 39.059811, longitude: -105.311104 },
+  Connecticut: { latitude: 41.597782, longitude: -72.755371 },
+  Delaware: { latitude: 39.318523, longitude: -75.507141 },
+  Florida: { latitude: 27.766279, longitude: -81.686783 },
+  Georgia: { latitude: 33.040619, longitude: -83.643074 },
+  Hawaii: { latitude: 21.094318, longitude: -157.498337 },
+  Idaho: { latitude: 44.240459, longitude: -114.478828 },
+  Illinois: { latitude: 40.349457, longitude: -88.986137 },
+  Indiana: { latitude: 39.849426, longitude: -86.258278 },
+  Iowa: { latitude: 42.011539, longitude: -93.210526 },
+  Kansas: { latitude: 38.5266, longitude: -96.726486 },
+  Kentucky: { latitude: 37.66814, longitude: -84.670067 },
+  Louisiana: { latitude: 31.169546, longitude: -91.867805 },
+  Maine: { latitude: 44.693947, longitude: -69.381927 },
+  Maryland: { latitude: 39.063946, longitude: -76.802101 },
+  Massachusetts: { latitude: 42.230171, longitude: -71.530106 },
+  Michigan: { latitude: 43.326618, longitude: -84.536095 },
+  Minnesota: { latitude: 45.694454, longitude: -93.900192 },
+  Mississippi: { latitude: 32.741646, longitude: -89.678696 },
+  Missouri: { latitude: 38.456085, longitude: -92.288368 },
+  Montana: { latitude: 46.921925, longitude: -110.454353 },
+  Nebraska: { latitude: 41.12537, longitude: -98.268082 },
+  Nevada: { latitude: 38.313515, longitude: -117.055374 },
+  'New Hampshire': { latitude: 43.452492, longitude: -71.563896 },
+  'New Jersey': { latitude: 40.298904, longitude: -74.521011 },
+  'New Mexico': { latitude: 34.840515, longitude: -106.248482 },
+  'New York': { latitude: 42.165726, longitude: -74.948051 },
+  'North Carolina': { latitude: 35.630066, longitude: -79.806419 },
+  'North Dakota': { latitude: 47.528912, longitude: -99.784012 },
+  Ohio: { latitude: 40.388783, longitude: -82.764915 },
+  Oklahoma: { latitude: 35.565342, longitude: -96.928917 },
+  Oregon: { latitude: 44.572021, longitude: -122.070938 },
+  Pennsylvania: { latitude: 40.590752, longitude: -77.209755 },
+  'Rhode Island': { latitude: 41.680893, longitude: -71.51178 },
+  'South Carolina': { latitude: 33.856892, longitude: -80.945007 },
+  'South Dakota': { latitude: 44.299782, longitude: -99.438828 },
+  Tennessee: { latitude: 35.747845, longitude: -86.692345 },
+  Texas: { latitude: 31.054487, longitude: -97.563461 },
+  Utah: { latitude: 40.150032, longitude: -111.862434 },
+  Vermont: { latitude: 44.045876, longitude: -72.710686 },
+  Virginia: { latitude: 37.769337, longitude: -78.169968 },
+  Washington: { latitude: 47.400902, longitude: -121.490494 },
+  'West Virginia': { latitude: 38.491226, longitude: -80.954453 },
+  Wisconsin: { latitude: 44.268543, longitude: -89.616508 },
+  Wyoming: { latitude: 42.755966, longitude: -107.30249 }
+};
+
+const STATE_ABBR_TO_NAME = {
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming'
+};
+
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function resolveStateCoordinates(stateValue) {
+  const rawState = stateValue?.trim();
+  if (!rawState) return US_CENTER;
+  const normalizedState = rawState.length === 2 ? STATE_ABBR_TO_NAME[rawState.toUpperCase()] || rawState : rawState;
+  return STATE_COORDINATES[normalizedState] || US_CENTER;
+}
+
+async function fetchMapFields(signal) {
+  const params = new URLSearchParams({
+    page: '1',
+    limit: String(MAX_LOCATIONS)
+  });
+  const response = await fetch(`${API_BASE_URL}/fields?${params.toString()}`, { signal });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to load map locations (${response.status}): ${errorText}`);
+  }
+
+  const payload = await response.json();
+  const rows = Array.isArray(payload?.data) ? payload.data.slice(0, MAX_LOCATIONS) : [];
+
+  return rows.map((row, index) => {
+    const latFromField = toNumberOrNull(row.lat);
+    const longFromField = toNumberOrNull(row.long);
+    const stateCoords = resolveStateCoordinates(row.state);
+    const latitude = latFromField ?? stateCoords.latitude;
+    const longitude = longFromField ?? stateCoords.longitude;
+    const yieldValue = toNumberOrNull(row.yield_bu_ac) ?? toNumberOrNull(row.predicted_yield);
+
+    return {
+      id: row.field_season_id ?? row.field_number ?? `field-${index + 1}`,
+      name: row.field_number ? `Field ${row.field_number}` : `Field ${index + 1}`,
+      crop: row.crop || 'Unknown',
+      season: row.season ?? 'N/A',
+      yield: yieldValue,
+      latitude,
+      longitude,
+      usedStateFallback: latFromField === null || longFromField === null,
+      state: row.state || 'N/A',
+      county: row.county || 'N/A'
+    };
+  });
+}
 
 function cropColor(crop, theme) {
   if (crop === 'Sorghum') return theme.palette.success.main;
@@ -25,21 +178,52 @@ function cropColor(crop, theme) {
 
 export default function MapView() {
   const theme = useTheme();
-  const [hoveredField, setHoveredField] = useState(FIELD_LOCATIONS[0]);
+  const [fields, setFields] = useState([]);
+  const [hoveredField, setHoveredField] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  const fields = useMemo(
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadMapFields = async () => {
+      setIsLoading(true);
+      setLoadError('');
+      try {
+        const data = await fetchMapFields(controller.signal);
+        setFields(data);
+        setHoveredField(data[0] ?? null);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setLoadError(error.message || 'Failed to load map locations.');
+          setFields([]);
+          setHoveredField(null);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadMapFields();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  const fieldsWithColor = useMemo(
     () =>
-      FIELD_LOCATIONS.map((field) => ({
+      fields.map((field) => ({
         ...field,
         color: cropColor(field.crop, theme)
       })),
-    [theme]
+    [fields, theme]
   );
 
   const satelliteUrl = useMemo(() => {
     if (!hoveredField) return '';
-    const ll = `${hoveredField.latitude},${hoveredField.longitude}`;
-    return `https://maps.google.com/maps?output=embed&t=k&z=12&ll=${encodeURIComponent(ll)}`;
+    const locationQuery = `${hoveredField.latitude},${hoveredField.longitude}`;
+    return `https://maps.google.com/maps?output=embed&t=k&z=12&q=${encodeURIComponent(locationQuery)}`;
   }, [hoveredField]);
 
   return (
@@ -73,19 +257,22 @@ export default function MapView() {
               position: 'absolute',
               left: 12,
               top: 12,
+              zIndex: 2,
               p: 1.25,
               borderColor: 'divider',
-              backgroundColor: alpha(theme.palette.background.paper, 0.9),
-              backdropFilter: 'blur(2px)'
+              backgroundColor: 'background.paper'
             }}
           >
             <Stack spacing={0.5}>
               <Typography variant="subtitle2">{hoveredField.name}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {hoveredField.latitude.toFixed(4)}, {hoveredField.longitude.toFixed(4)}
-              </Typography>
               <Typography variant="body2">
-                {hoveredField.crop} | Season {hoveredField.season} | {hoveredField.yield.toFixed(1)} bu/ac
+                {hoveredField.crop} | Season {hoveredField.season} |{' '}
+                {typeof hoveredField.yield === 'number' && Number.isFinite(hoveredField.yield)
+                  ? `${hoveredField.yield.toFixed(1)} bu/ac`
+                  : 'Yield N/A'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {hoveredField.county}, {hoveredField.state}
               </Typography>
             </Stack>
           </Paper>
@@ -99,7 +286,7 @@ export default function MapView() {
             top: 12,
             width: { xs: 'calc(100% - 24px)', sm: 380 },
             maxHeight: { xs: 220, md: 536 },
-            overflow: 'auto',
+            overflowY: 'auto',
             borderColor: 'divider',
             backgroundColor: alpha(theme.palette.background.paper, 0.92),
             backdropFilter: 'blur(2px)'
@@ -107,14 +294,30 @@ export default function MapView() {
         >
           <Stack spacing={1} sx={{ p: 1.5 }}>
             <Typography variant="subtitle2" color="text.secondary">
-              Mock Field Locations
+              Field Locations
             </Typography>
-            {fields.map((field) => {
+            {isLoading ? (
+              <Typography variant="body2" color="text.secondary">
+                Loading locations...
+              </Typography>
+            ) : null}
+            {loadError ? (
+              <Typography variant="body2" color="error.main">
+                {loadError}
+              </Typography>
+            ) : null}
+            {!isLoading && !loadError && fieldsWithColor.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No locations available.
+              </Typography>
+            ) : null}
+            {fieldsWithColor.map((field) => {
               const selected = hoveredField?.id === field.id;
               return (
                 <Box
                   key={field.id}
                   onMouseEnter={() => setHoveredField(field)}
+                  onClick={() => setHoveredField(field)}
                   sx={{
                     p: 1.25,
                     borderRadius: 1,
@@ -129,11 +332,18 @@ export default function MapView() {
                   </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                     {field.latitude.toFixed(4)}, {field.longitude.toFixed(4)}
+                    {field.usedStateFallback ? ' (state fallback)' : ''}
                   </Typography>
                   <Stack direction="row" spacing={0.75} sx={{ mt: 1, flexWrap: 'nowrap' }}>
                     <Chip size="small" label={field.crop} />
                     <Chip size="small" variant="outlined" label={`Season ${field.season}`} />
-                    <Chip size="small" color="primary" label={`${field.yield.toFixed(1)} bu/ac`} />
+                    <Chip
+                      size="small"
+                      color="primary"
+                      label={
+                        typeof field.yield === 'number' && Number.isFinite(field.yield) ? `${field.yield.toFixed(1)} bu/ac` : 'Yield N/A'
+                      }
+                    />
                   </Stack>
                 </Box>
               );
