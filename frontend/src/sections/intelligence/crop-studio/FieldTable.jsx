@@ -106,15 +106,17 @@ function hasPlaceholderText(value) {
 }
 
 function isDemoReadyRow(row) {
-  if (hasPlaceholderText(row.crop)) return false;
-  if (hasPlaceholderText(row.variety)) return false;
-  if (hasPlaceholderText(row.location)) return false;
-  if (typeof row.observedYield !== 'number' || !Number.isFinite(row.observedYield)) return false;
-  if (typeof row.predictedYield !== 'number' || !Number.isFinite(row.predictedYield)) return false;
-  if (typeof row.n !== 'number' || !Number.isFinite(row.n)) return false;
-  if (typeof row.p !== 'number' || !Number.isFinite(row.p)) return false;
-  if (typeof row.k !== 'number' || !Number.isFinite(row.k)) return false;
-  return true;
+  const hasBadCrop = hasPlaceholderText(row.crop);
+  const hasBadVariety = hasPlaceholderText(row.variety);
+  const hasBadLocation = hasPlaceholderText(row.location);
+  const hasBadObservedYield = typeof row.observedYield !== 'number' || !Number.isFinite(row.observedYield);
+  const hasBadPredictedYield = typeof row.predictedYield !== 'number' || !Number.isFinite(row.predictedYield);
+  const hasBadN = typeof row.n !== 'number' || !Number.isFinite(row.n);
+  const hasBadP = typeof row.p !== 'number' || !Number.isFinite(row.p);
+  const hasBadK = typeof row.k !== 'number' || !Number.isFinite(row.k);
+
+  // Temporary demo filter: require complete data across all displayed quality-sensitive columns.
+  return !hasBadCrop && !hasBadVariety && !hasBadLocation && !hasBadObservedYield && !hasBadPredictedYield && !hasBadN && !hasBadP && !hasBadK;
 }
 
 export default function FieldTable() {
