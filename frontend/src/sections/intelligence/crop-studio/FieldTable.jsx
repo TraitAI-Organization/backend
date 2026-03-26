@@ -65,32 +65,21 @@ function getComparator(order, orderBy) {
 }
 
 async function fetchFieldRows(signal) {
-  const limit = 500;
-  let page = 1;
-  let totalPages = 1;
-  const allRows = [];
+  const params = new URLSearchParams({
+    page: '1',
+    limit: '100'
+  });
+  const response = await fetch(`${API_BASE_URL}/fields?${params.toString()}`, { signal });
 
-  do {
-    const params = new URLSearchParams({
-      page: String(page),
-      limit: String(limit)
-    });
-    const response = await fetch(`${API_BASE_URL}/fields?${params.toString()}`, { signal });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to load field records (${response.status}): ${errorText}`);
+  }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to load field records (${response.status}): ${errorText}`);
-    }
+  const payload = await response.json();
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
 
-    const payload = await response.json();
-    const pageRows = Array.isArray(payload?.data) ? payload.data : [];
-    allRows.push(...pageRows);
-
-    totalPages = Number(payload?.pages) || 1;
-    page += 1;
-  } while (page <= totalPages);
-
-  return allRows.map((row) => ({
+  return rows.map((row) => ({
     rowId: row.field_season_id ?? `${row.field_number ?? 'unknown'}-${row.season ?? 'unknown'}`,
     fieldId: row.field_number ?? row.field_season_id ?? 'N/A',
     crop: row.crop || 'N/A',
@@ -234,13 +223,15 @@ export default function FieldTable() {
           sx={{
             width: '100%',
             overflowX: 'auto',
+            overflowY: 'auto',
+            maxHeight: { xs: 420, md: 500 },
             border: 1,
             borderColor: 'divider',
             borderRadius: 1,
             bgcolor: 'background.paper'
           }}
         >
-          <Table size="small">
+          <Table size="small" stickyHeader>
             <TableHead>
               <TableRow sx={{ '& .MuiTableCell-root': { borderBottomWidth: 3 } }}>
                 {columns.map((column) => (
