@@ -8,7 +8,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nutrition} -d ${POSTGRES_DB:-nutrition_ai}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-nutrition} -d ${POSTGRES_DB:-nutrition_ai}']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,7 +26,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-nutrition}:${POSTGRES_PASSWORD:-securepassword123}@postgres:5432/${POSTGRES_DB:-nutrition_ai}
       MODEL_PATH: /app/models
       ENVIRONMENT: production
-      DEBUG: "false"
+      DEBUG: 'false'
       REDIS_URL: redis://redis:6379/0
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       UI_CONFIG_PATH: ${UI_CONFIG_PATH:-data/ui_config.json}
@@ -44,7 +44,7 @@ services:
       redis:
         condition: service_started
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -55,12 +55,12 @@ services:
     build:
       context: ./frontend
       args:
-          VITE_API_URL: http://backend:8000
+        VITE_API_URL: /api/v1
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/health']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -75,8 +75,8 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
     volumes:
       - ./configs/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
