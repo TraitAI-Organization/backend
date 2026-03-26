@@ -162,12 +162,16 @@ async function fetchMapFields(signal) {
       const latitude = latFromField ?? stateCoords.latitude;
       const longitude = longFromField ?? stateCoords.longitude;
       const yieldValue = toNumberOrNull(row.yield_bu_ac) ?? toNumberOrNull(row.predicted_yield);
+      const acresValue = toNumberOrNull(row.acres);
+      const varietyValue = row.variety || row.variety_name_en || row.variety_name || 'N/A';
 
       return {
         id: row.field_season_id ?? row.field_number ?? `field-${index + 1}`,
         name: row.field_number ? `Field ${row.field_number}` : `Field ${index + 1}`,
         crop: row.crop || 'Unknown',
         season: row.season ?? 'N/A',
+        acres: acresValue,
+        variety: varietyValue,
         yield: yieldValue,
         latitude,
         longitude,
@@ -180,10 +184,10 @@ async function fetchMapFields(signal) {
       (row) =>
         hasTextValue(row.crop) &&
         hasTextValue(row.season) &&
-        typeof row.yield === 'number' &&
-        Number.isFinite(row.yield) &&
-        hasTextValue(row.state) &&
-        hasTextValue(row.county)
+        typeof row.acres === 'number' &&
+        Number.isFinite(row.acres) &&
+        hasTextValue(row.variety) &&
+        hasTextValue(row.state)
     )
     .slice(0, MAX_LOCATIONS);
 }
