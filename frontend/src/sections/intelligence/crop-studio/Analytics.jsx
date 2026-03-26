@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -13,40 +13,56 @@ import { BarChart, ScatterChart } from '@mui/x-charts';
 
 import MainCard from 'components/MainCard';
 
-const cropOptions = ['Sorghum', 'Winter Wheat', 'Grain', 'Corn', 'Soybean'];
-const stateOptions = ['Kansas', 'Nebraska', 'Iowa', 'Oklahoma', 'Texas'];
-const seasonOptions = [2021, 2022, 2023, 2024, 2025];
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
-function buildMockRows() {
-  const rows = [];
-  let id = 1;
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
 
-  for (let seasonIndex = 0; seasonIndex < seasonOptions.length; seasonIndex += 1) {
-    for (let cropIndex = 0; cropIndex < cropOptions.length; cropIndex += 1) {
-      for (let stateIndex = 0; stateIndex < stateOptions.length; stateIndex += 1) {
-        const baseYield = 48 + cropIndex * 11 + seasonIndex * 4 + stateIndex * 3;
-        const observedYield = Number((baseYield + ((id * 7) % 22)).toFixed(1));
-        const predictedYield = Number((observedYield + (((id * 13) % 15) - 7) * 0.8).toFixed(1));
+async function fetchAnalyticsRows(signal) {
+  const limit = 500;
+  let page = 1;
+  let pages = 1;
+  const allRows = [];
 
-        rows.push({
-          id,
-          crop: cropOptions[cropIndex],
-          state: stateOptions[stateIndex],
-          season: seasonOptions[seasonIndex],
-          fieldId: 1000 + id,
-          observedYield,
-          predictedYield
-        });
-        id += 1;
-      }
+  while (page <= pages) {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit)
+    });
+    const response = await fetch(`${API_BASE_URL}/fields?${params.toString()}`, { signal });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to load analytics records (${response.status}): ${errorText}`);
     }
+
+    const payload = await response.json();
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    allRows.push(...rows);
+
+    const reportedPages = Number(payload?.pages) || 0;
+    pages = reportedPages > 0 ? reportedPages : 1;
+    page += 1;
+
+    if (reportedPages === 0) break;
   }
 
-  return rows;
+  return allRows.map((row, index) => ({
+    id: row.field_season_id ?? row.field_number ?? `field-${index + 1}`,
+    crop: row.crop || '',
+    state: row.state || '',
+    season: toNumberOrNull(row.season),
+    observedYield: toNumberOrNull(row.yield_bu_ac),
+    predictedYield: toNumberOrNull(row.predicted_yield)
+  }));
 }
 
 export default function Analytics() {
   const theme = useTheme();
+  const palette = theme.vars?.palette ?? theme.palette;
   const chartHeight = 340;
   const chartMargin = { top: 16, right: 14, bottom: 26, left: 30 };
   const [filters, setFilters] = useState({
@@ -54,8 +70,59 @@ export default function Analytics() {
     state: '',
     season: ''
   });
+  const [rows, setRows] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  const rows = useMemo(() => buildMockRows(), []);
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadRows = async () => {
+      setIsLoading(true);
+      setLoadError('');
+      try {
+        const data = await fetchAnalyticsRows(controller.signal);
+        setRows(data);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setLoadError(error.message || 'Failed to load analytics records.');
+          setRows([]);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadRows();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  const cropOptions = useMemo(
+    () =>
+      Array.from(new Set(rows.map((row) => row.crop).filter((crop) => typeof crop === 'string' && crop.trim().length > 0))).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' })
+      ),
+    [rows]
+  );
+
+  const seasonOptions = useMemo(
+    () =>
+      Array.from(new Set(rows.map((row) => row.season).filter((season) => typeof season === 'number' && Number.isFinite(season)))).sort(
+        (a, b) => b - a
+      ),
+    [rows]
+  );
+
+  const stateOptions = useMemo(
+    () =>
+      Array.from(new Set(rows.map((row) => row.state).filter((state) => typeof state === 'string' && state.trim().length > 0))).sort(
+        (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })
+      ),
+    [rows]
+  );
 
   const filteredRows = useMemo(
     () =>
@@ -68,13 +135,35 @@ export default function Analytics() {
     [filters.crop, filters.season, filters.state, rows]
   );
 
+  const observedRows = useMemo(
+    () => filteredRows.filter((row) => typeof row.observedYield === 'number' && Number.isFinite(row.observedYield)),
+    [filteredRows]
+  );
+
+  const predictedRows = useMemo(
+    () => filteredRows.filter((row) => typeof row.predictedYield === 'number' && Number.isFinite(row.predictedYield)),
+    [filteredRows]
+  );
+
+  const scatterRows = useMemo(
+    () =>
+      filteredRows.filter(
+        (row) =>
+          typeof row.observedYield === 'number' &&
+          Number.isFinite(row.observedYield) &&
+          typeof row.predictedYield === 'number' &&
+          Number.isFinite(row.predictedYield)
+      ),
+    [filteredRows]
+  );
+
   const histogram = useMemo(() => {
-    if (filteredRows.length === 0) {
-      return { labels: [], counts: [], min: 0, max: 0 };
+    if (observedRows.length === 0) {
+      return { labels: [], counts: [] };
     }
 
     const binSize = 10;
-    const values = filteredRows.map((row) => row.observedYield);
+    const values = observedRows.map((row) => row.observedYield);
     const min = Math.floor(Math.min(...values) / binSize) * binSize;
     const max = Math.ceil(Math.max(...values) / binSize) * binSize + binSize;
 
@@ -91,44 +180,46 @@ export default function Analytics() {
       counts[bucketIndex] += 1;
     });
 
-    return { labels, counts, min, max };
-  }, [filteredRows]);
+    return { labels, counts };
+  }, [observedRows]);
 
-  const scatterData = useMemo(
-    () => filteredRows.map((row) => ({ id: row.id, x: row.observedYield, y: row.predictedYield })),
-    [filteredRows]
-  );
+  const scatterData = useMemo(() => scatterRows.map((row) => ({ id: row.id, x: row.observedYield, y: row.predictedYield })), [scatterRows]);
 
   const scatterBounds = useMemo(() => {
-    if (filteredRows.length === 0) {
+    if (scatterRows.length === 0) {
       return { min: 0, max: 120 };
     }
 
-    const allValues = filteredRows.flatMap((row) => [row.observedYield, row.predictedYield]);
+    const allValues = scatterRows.flatMap((row) => [row.observedYield, row.predictedYield]);
     const min = Math.floor(Math.min(...allValues) / 10) * 10 - 5;
     const max = Math.ceil(Math.max(...allValues) / 10) * 10 + 5;
     return { min, max };
-  }, [filteredRows]);
+  }, [scatterRows]);
 
   const avgObservedYield = useMemo(() => {
-    if (filteredRows.length === 0) return 0;
-    return filteredRows.reduce((sum, row) => sum + row.observedYield, 0) / filteredRows.length;
-  }, [filteredRows]);
+    if (observedRows.length === 0) return 0;
+    return observedRows.reduce((sum, row) => sum + row.observedYield, 0) / observedRows.length;
+  }, [observedRows]);
 
   const avgPredictedYield = useMemo(() => {
-    if (filteredRows.length === 0) return 0;
-    return filteredRows.reduce((sum, row) => sum + row.predictedYield, 0) / filteredRows.length;
-  }, [filteredRows]);
+    if (predictedRows.length === 0) return 0;
+    return predictedRows.reduce((sum, row) => sum + row.predictedYield, 0) / predictedRows.length;
+  }, [predictedRows]);
+
+  const allRowsWithPrediction = useMemo(
+    () => rows.filter((row) => typeof row.predictedYield === 'number' && Number.isFinite(row.predictedYield)),
+    [rows]
+  );
 
   const baselineRows = useMemo(() => {
-    const scoped = rows.filter((row) => {
+    const scoped = allRowsWithPrediction.filter((row) => {
       if (filters.state && row.state !== filters.state) return false;
       if (filters.season && String(row.season) !== String(filters.season)) return false;
       return true;
     });
 
-    return scoped.length > 0 ? scoped : rows;
-  }, [filters.season, filters.state, rows]);
+    return scoped.length > 0 ? scoped : allRowsWithPrediction;
+  }, [allRowsWithPrediction, filters.season, filters.state]);
 
   const regionalSeasonAvg = useMemo(() => {
     if (baselineRows.length === 0) return 0;
@@ -138,11 +229,10 @@ export default function Analytics() {
   const deltaFromRegionalSeasonAvg = avgPredictedYield - regionalSeasonAvg;
 
   const confidencePct = useMemo(() => {
-    if (filteredRows.length === 0) return 0;
-    const mae =
-      filteredRows.reduce((sum, row) => sum + Math.abs(row.predictedYield - row.observedYield), 0) / filteredRows.length;
+    if (scatterRows.length === 0) return 0;
+    const mae = scatterRows.reduce((sum, row) => sum + Math.abs(row.predictedYield - row.observedYield), 0) / scatterRows.length;
     return Math.max(55, Math.min(99, Math.round(100 - mae * 2.2)));
-  }, [filteredRows]);
+  }, [scatterRows]);
 
   const confidenceColor = confidencePct >= 85 ? 'success' : confidencePct >= 70 ? 'warning' : 'error';
   const confidenceLabel = confidencePct >= 85 ? 'High confidence' : confidencePct >= 70 ? 'Moderate confidence' : 'Lower confidence';
@@ -159,8 +249,19 @@ export default function Analytics() {
     <MainCard title="Analytics">
       <Stack spacing={2.5}>
         <Typography variant="body1" color="text.primary">
-          Yield distribution histogram and Predicted vs Observed scatter plot from filtered field-season data.
+          Yield distribution histogram and Predicted vs Observed scatter plot from live field-season data.
         </Typography>
+
+        {loadError ? (
+          <Typography variant="body2" color="error.main">
+            {loadError}
+          </Typography>
+        ) : null}
+        {isLoading ? (
+          <Typography variant="body2" color="text.secondary">
+            Loading analytics records...
+          </Typography>
+        ) : null}
 
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 4 }}>
@@ -172,6 +273,7 @@ export default function Analytics() {
                 name="crop"
                 value={filters.crop}
                 onChange={handleFilterChange}
+                disabled={isLoading}
                 SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'All Crops' }}
               >
                 <MenuItem value="">All Crops</MenuItem>
@@ -193,6 +295,7 @@ export default function Analytics() {
                 name="season"
                 value={filters.season}
                 onChange={handleFilterChange}
+                disabled={isLoading}
                 SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'All Seasons' }}
               >
                 <MenuItem value="">All Seasons</MenuItem>
@@ -214,6 +317,7 @@ export default function Analytics() {
                 name="state"
                 value={filters.state}
                 onChange={handleFilterChange}
+                disabled={isLoading}
                 SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'All States' }}
               >
                 <MenuItem value="">All States</MenuItem>
@@ -251,11 +355,7 @@ export default function Analytics() {
             }}
           >
             <Typography variant="subtitle2" sx={{ color: '#C7ECF0' }}>
-              Avg Observed Yield:{' '}
-              {filteredRows.length > 0
-                ? (filteredRows.reduce((sum, row) => sum + row.observedYield, 0) / filteredRows.length).toFixed(1)
-                : '0.0'}{' '}
-              bu/ac
+              Avg Observed Yield: {avgObservedYield.toFixed(1)} bu/ac
             </Typography>
           </Box>
         </Stack>
@@ -269,7 +369,7 @@ export default function Analytics() {
                     hideLegend
                     height={chartHeight}
                     grid={{ horizontal: true }}
-                    series={[{ data: histogram.counts, label: 'Field Count', color: theme.vars.palette.primary.main }]}
+                    series={[{ data: histogram.counts, label: 'Field Count', color: palette.primary.main }]}
                     xAxis={[
                       {
                         data: histogram.labels,
@@ -285,10 +385,10 @@ export default function Analytics() {
                     margin={chartMargin}
                     sx={{
                       '& .MuiBarElement-root': {
-                        filter: `drop-shadow(0 0 6px ${theme.vars.palette.primary.main})`
+                        filter: `drop-shadow(0 0 6px ${palette.primary.main})`
                       },
                       '& .MuiBarElement-root:hover': { opacity: 0.7 },
-                      '& .MuiChartsGrid-line': { stroke: theme.vars.palette.divider, strokeDasharray: '4 4' },
+                      '& .MuiChartsGrid-line': { stroke: palette.divider, strokeDasharray: '4 4' },
                       '& .MuiChartsAxis-root.MuiChartsAxis-directionX .MuiChartsAxis-tick': { stroke: 'transparent' },
                       '& .MuiChartsAxis-root.MuiChartsAxis-directionY .MuiChartsAxis-tick': { stroke: 'transparent' }
                     }}
@@ -306,7 +406,7 @@ export default function Analytics() {
               ) : (
                 <Box sx={{ p: 3 }}>
                   <Typography variant="body2" color="text.secondary">
-                    No rows match the active filters.
+                    No rows with observed yield match the active filters.
                   </Typography>
                 </Box>
               )}
@@ -321,15 +421,15 @@ export default function Analytics() {
                     hideLegend
                     height={chartHeight}
                     grid={{ horizontal: true, vertical: true }}
-                    series={[{ label: 'Field-Season', data: scatterData, markerSize: 7, color: theme.vars.palette.info.main }]}
+                    series={[{ label: 'Field-Season', data: scatterData, markerSize: 7, color: palette.info.main }]}
                     xAxis={[{ min: scatterBounds.min, max: scatterBounds.max, label: 'Observed Yield (bu/ac)' }]}
                     yAxis={[{ min: scatterBounds.min, max: scatterBounds.max, label: 'Predicted Yield (bu/ac)' }]}
                     margin={chartMargin}
                     sx={{
                       '& .MuiMarkElement-root': {
-                        filter: `drop-shadow(0 0 5px ${theme.vars.palette.info.main})`
+                        filter: `drop-shadow(0 0 5px ${palette.info.main})`
                       },
-                      '& .MuiChartsGrid-line': { stroke: theme.vars.palette.divider, strokeDasharray: '4 4' }
+                      '& .MuiChartsGrid-line': { stroke: palette.divider, strokeDasharray: '4 4' }
                     }}
                   />
                   <Stack
@@ -350,7 +450,7 @@ export default function Analytics() {
               ) : (
                 <Box sx={{ p: 3 }}>
                   <Typography variant="body2" color="text.secondary">
-                    No rows match the active filters.
+                    No rows with both observed and predicted yield match the active filters.
                   </Typography>
                 </Box>
               )}
@@ -397,7 +497,8 @@ export default function Analytics() {
                   />
                 </Stack>
                 <Typography variant="caption" color="text.secondary">
-                  Baseline predicted average: {regionalSeasonAvg.toFixed(1)} bu/ac | Current filtered average: {avgPredictedYield.toFixed(1)} bu/ac
+                  Baseline predicted average: {regionalSeasonAvg.toFixed(1)} bu/ac | Current filtered average:{' '}
+                  {avgPredictedYield.toFixed(1)} bu/ac
                 </Typography>
               </Stack>
             </Grid>
