@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
 import SearchOutlined from '@ant-design/icons/SearchOutlined';
@@ -14,9 +14,10 @@ import TableRow from '@mui/material/TableRow';
 import TableSortLabel from '@mui/material/TableSortLabel';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import Box from '@mui/material/Box';
 
 import MainCard from 'components/MainCard';
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
 const columns = [
   { id: 'fieldId', label: 'Field ID' },
@@ -31,127 +32,125 @@ const columns = [
   { id: 'k', label: 'K (lb/ac)' }
 ];
 
-const mockRows = [
-  {
-    fieldId: 1001,
-    crop: 'Sorghum',
-    variety: 'SG-21',
-    season: 2024,
-    location: 'Finney, KS',
-    observedYield: 88.6,
-    predictedYield: 90.2,
-    n: 142,
-    p: 48,
-    k: 76
-  },
-  {
-    fieldId: 1002,
-    crop: 'Winter Wheat',
-    variety: 'HW-74',
-    season: 2024,
-    location: 'Salina, KS',
-    observedYield: 73.2,
-    predictedYield: 71.9,
-    n: 126,
-    p: 52,
-    k: 69
-  },
-  {
-    fieldId: 1003,
-    crop: 'Corn',
-    variety: 'CR-310',
-    season: 2025,
-    location: 'Polk, IA',
-    observedYield: 109.1,
-    predictedYield: 107.8,
-    n: 168,
-    p: 61,
-    k: 92
-  },
-  {
-    fieldId: 1004,
-    crop: 'Soybean',
-    variety: 'SB-8',
-    season: 2025,
-    location: 'Hall, NE',
-    observedYield: 66.5,
-    predictedYield: 68.1,
-    n: 98,
-    p: 44,
-    k: 57
-  },
-  {
-    fieldId: 1005,
-    crop: 'Grain',
-    variety: 'GR-5',
-    season: 2023,
-    location: 'Kingfisher, OK',
-    observedYield: 64.7,
-    predictedYield: 63.4,
-    n: 118,
-    p: 40,
-    k: 62
-  },
-  {
-    fieldId: 1006,
-    crop: 'Winter Wheat',
-    variety: 'HW-92',
-    season: 2022,
-    location: 'Scurry, TX',
-    observedYield: 58.9,
-    predictedYield: 60.5,
-    n: 112,
-    p: 39,
-    k: 55
-  },
-  {
-    fieldId: 1007,
-    crop: 'Sorghum',
-    variety: 'SG-18',
-    season: 2023,
-    location: 'Morton, KS',
-    observedYield: 84.2,
-    predictedYield: 83.7,
-    n: 138,
-    p: 46,
-    k: 73
-  },
-  {
-    fieldId: 1008,
-    crop: 'Corn',
-    variety: 'CR-502',
-    season: 2024,
-    location: 'Buffalo, NE',
-    observedYield: 102.3,
-    predictedYield: 100.1,
-    n: 160,
-    p: 58,
-    k: 89
-  }
-];
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
 
-function descendingComparator(a, b, orderBy) {
-  if (b[orderBy] < a[orderBy]) return -1;
-  if (b[orderBy] > a[orderBy]) return 1;
-  return 0;
+function toLocation(county, state) {
+  const normalizedCounty = county?.trim();
+  const normalizedState = state?.trim();
+  if (normalizedCounty && normalizedState) return `${normalizedCounty}, ${normalizedState}`;
+  return normalizedCounty || normalizedState || 'N/A';
+}
+
+function compareValues(left, right) {
+  const leftIsNull = left === null || left === undefined;
+  const rightIsNull = right === null || right === undefined;
+
+  if (leftIsNull && rightIsNull) return 0;
+  if (leftIsNull) return 1;
+  if (rightIsNull) return -1;
+
+  if (typeof left === 'number' && typeof right === 'number') return left - right;
+  return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: 'base' });
 }
 
 function getComparator(order, orderBy) {
-  return order === 'desc' ? (a, b) => descendingComparator(a, b, orderBy) : (a, b) => -descendingComparator(a, b, orderBy);
+  if (order === 'desc') {
+    return (a, b) => compareValues(b[orderBy], a[orderBy]);
+  }
+  return (a, b) => compareValues(a[orderBy], b[orderBy]);
+}
+
+async function fetchFieldRows(signal) {
+  const limit = 500;
+  let page = 1;
+  let totalPages = 1;
+  const allRows = [];
+
+  do {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit)
+    });
+    const response = await fetch(`${API_BASE_URL}/fields?${params.toString()}`, { signal });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to load field records (${response.status}): ${errorText}`);
+    }
+
+    const payload = await response.json();
+    const pageRows = Array.isArray(payload?.data) ? payload.data : [];
+    allRows.push(...pageRows);
+
+    totalPages = Number(payload?.pages) || 1;
+    page += 1;
+  } while (page <= totalPages);
+
+  return allRows.map((row) => ({
+    rowId: row.field_season_id ?? `${row.field_number ?? 'unknown'}-${row.season ?? 'unknown'}`,
+    fieldId: row.field_number ?? row.field_season_id ?? 'N/A',
+    crop: row.crop || 'N/A',
+    variety: row.variety || 'N/A',
+    season: row.season ?? 'N/A',
+    location: toLocation(row.county, row.state),
+    observedYield: toNumberOrNull(row.yield_bu_ac),
+    predictedYield: toNumberOrNull(row.predicted_yield),
+    n: toNumberOrNull(row.totalN_per_ac),
+    p: toNumberOrNull(row.totalP_per_ac),
+    k: toNumberOrNull(row.totalK_per_ac)
+  }));
+}
+
+function formatMetric(value, decimals = 1) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return value.toFixed(decimals);
 }
 
 export default function FieldTable() {
+  const [rows, setRows] = useState([]);
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('fieldId');
   const [searchValue, setSearchValue] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadRows = async () => {
+      setIsLoading(true);
+      setLoadError('');
+      try {
+        const data = await fetchFieldRows(controller.signal);
+        setRows(data);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setLoadError(error.message || 'Failed to load field records.');
+          setRows([]);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadRows();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
 
   const filteredRows = useMemo(() => {
     const normalizedSearch = searchValue.trim().toLowerCase();
 
-    return mockRows.filter((row) =>
+    return rows.filter((row) =>
       !normalizedSearch ? true : Object.values(row).some((value) => String(value).toLowerCase().includes(normalizedSearch))
     );
-  }, [searchValue]);
+  }, [rows, searchValue]);
 
   const sortedRows = useMemo(() => [...filteredRows].sort(getComparator(order, orderBy)), [filteredRows, order, orderBy]);
 
@@ -167,7 +166,8 @@ export default function FieldTable() {
       .map((row) =>
         columns
           .map((column) => {
-            const cell = String(row[column.id]);
+            const rawValue = row[column.id];
+            const cell = rawValue === null || rawValue === undefined ? '' : String(rawValue);
             return `"${cell.replace(/"/g, '""')}"`;
           })
           .join(',')
@@ -189,6 +189,11 @@ export default function FieldTable() {
         <Typography variant="body1" color="text.primary">
           Sortable table of field-season records (crop, variety, season, location, observed/predicted yield, N/P/K) filtered by topbar.
         </Typography>
+        {loadError ? (
+          <Typography variant="body2" color="error.main">
+            {loadError}
+          </Typography>
+        ) : null}
 
         <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 1.5, justifyContent: 'space-between', alignItems: { sm: 'center' } }}>
           <TextField
@@ -254,24 +259,33 @@ export default function FieldTable() {
 
             <TableBody>
               {sortedRows.map((row) => (
-                <TableRow key={row.fieldId} hover>
+                <TableRow key={row.rowId} hover>
                   <TableCell>{row.fieldId}</TableCell>
                   <TableCell>{row.crop}</TableCell>
                   <TableCell>{row.variety}</TableCell>
                   <TableCell>{row.season}</TableCell>
                   <TableCell>{row.location}</TableCell>
-                  <TableCell>{row.observedYield.toFixed(1)}</TableCell>
-                  <TableCell>{row.predictedYield.toFixed(1)}</TableCell>
-                  <TableCell>{row.n}</TableCell>
-                  <TableCell>{row.p}</TableCell>
-                  <TableCell>{row.k}</TableCell>
+                  <TableCell>{formatMetric(row.observedYield)}</TableCell>
+                  <TableCell>{formatMetric(row.predictedYield)}</TableCell>
+                  <TableCell>{formatMetric(row.n)}</TableCell>
+                  <TableCell>{formatMetric(row.p)}</TableCell>
+                  <TableCell>{formatMetric(row.k)}</TableCell>
                 </TableRow>
               ))}
-              {sortedRows.length === 0 ? (
+              {!isLoading && sortedRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={columns.length}>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
                       No records match the current search and filters.
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : null}
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={columns.length}>
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                      Loading field records...
                     </Typography>
                   </TableCell>
                 </TableRow>

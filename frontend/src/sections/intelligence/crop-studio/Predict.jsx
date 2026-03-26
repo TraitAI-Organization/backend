@@ -11,6 +11,8 @@ import Divider from '@mui/material/Divider';
 
 import MainCard from 'components/MainCard';
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
+
 export default function Predict() {
   const [formValues, setFormValues] = useState({
     crop: '',
@@ -125,7 +127,7 @@ export default function Predict() {
     try {
       const payload = buildPayload();
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/predict`, {
+      const response = await fetch(`${API_BASE_URL}/predict`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
