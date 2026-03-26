@@ -99,6 +99,24 @@ function formatMetric(value, decimals = 1) {
   return value.toFixed(decimals);
 }
 
+function hasPlaceholderText(value) {
+  if (value === null || value === undefined) return true;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === '' || normalized === 'n/a' || normalized === 'na' || normalized === 'unknown';
+}
+
+function isDemoReadyRow(row) {
+  if (hasPlaceholderText(row.crop)) return false;
+  if (hasPlaceholderText(row.variety)) return false;
+  if (hasPlaceholderText(row.location)) return false;
+  if (typeof row.observedYield !== 'number' || !Number.isFinite(row.observedYield)) return false;
+  if (typeof row.predictedYield !== 'number' || !Number.isFinite(row.predictedYield)) return false;
+  if (typeof row.n !== 'number' || !Number.isFinite(row.n)) return false;
+  if (typeof row.p !== 'number' || !Number.isFinite(row.p)) return false;
+  if (typeof row.k !== 'number' || !Number.isFinite(row.k)) return false;
+  return true;
+}
+
 export default function FieldTable() {
   const [rows, setRows] = useState([]);
   const [order, setOrder] = useState('asc');
@@ -137,7 +155,8 @@ export default function FieldTable() {
     const normalizedSearch = searchValue.trim().toLowerCase();
 
     return rows.filter((row) =>
-      !normalizedSearch ? true : Object.values(row).some((value) => String(value).toLowerCase().includes(normalizedSearch))
+      isDemoReadyRow(row) &&
+      (!normalizedSearch ? true : Object.values(row).some((value) => String(value).toLowerCase().includes(normalizedSearch)))
     );
   }, [rows, searchValue]);
 
