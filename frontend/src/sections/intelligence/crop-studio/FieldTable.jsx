@@ -99,26 +99,6 @@ function formatMetric(value, decimals = 1) {
   return value.toFixed(decimals);
 }
 
-function hasPlaceholderText(value) {
-  if (value === null || value === undefined) return true;
-  const normalized = String(value).trim().toLowerCase();
-  return normalized === '' || normalized === 'n/a' || normalized === 'na' || normalized === 'unknown';
-}
-
-function isDemoReadyRow(row) {
-  const hasBadCrop = hasPlaceholderText(row.crop);
-  const hasBadVariety = hasPlaceholderText(row.variety);
-  const hasBadLocation = hasPlaceholderText(row.location);
-  const hasBadObservedYield = typeof row.observedYield !== 'number' || !Number.isFinite(row.observedYield);
-  const hasBadPredictedYield = typeof row.predictedYield !== 'number' || !Number.isFinite(row.predictedYield);
-  const hasBadN = typeof row.n !== 'number' || !Number.isFinite(row.n);
-  const hasBadP = typeof row.p !== 'number' || !Number.isFinite(row.p);
-  const hasBadK = typeof row.k !== 'number' || !Number.isFinite(row.k);
-
-  // Temporary demo filter: require complete data across all displayed quality-sensitive columns.
-  return !hasBadCrop && !hasBadVariety && !hasBadLocation && !hasBadObservedYield && !hasBadPredictedYield && !hasBadN && !hasBadP && !hasBadK;
-}
-
 export default function FieldTable() {
   const [rows, setRows] = useState([]);
   const [order, setOrder] = useState('asc');
@@ -157,8 +137,7 @@ export default function FieldTable() {
     const normalizedSearch = searchValue.trim().toLowerCase();
 
     return rows.filter((row) =>
-      isDemoReadyRow(row) &&
-      (!normalizedSearch ? true : Object.values(row).some((value) => String(value).toLowerCase().includes(normalizedSearch)))
+      !normalizedSearch ? true : Object.values(row).some((value) => String(value).toLowerCase().includes(normalizedSearch))
     );
   }, [rows, searchValue]);
 
