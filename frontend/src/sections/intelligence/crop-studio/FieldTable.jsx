@@ -67,7 +67,7 @@ function getComparator(order, orderBy) {
 async function fetchFieldRows(signal) {
   const params = new URLSearchParams({
     page: '1',
-    limit: '100'
+    limit: '500'
   });
   const response = await fetch(`${API_BASE_URL}/fields?${params.toString()}`, { signal });
 
