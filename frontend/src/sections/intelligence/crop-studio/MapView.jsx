@@ -11,6 +11,7 @@ import MainCard from 'components/MainCard';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 const MAX_LOCATIONS = 15;
+const FETCH_LIMIT = 100;
 const US_CENTER = { latitude: 39.8283, longitude: -98.5795 };
 
 const STATE_COORDINATES = {
@@ -125,6 +126,12 @@ function toNumberOrNull(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function hasTextValue(value) {
+  if (value === null || value === undefined) return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized !== '' && normalized !== 'n/a' && normalized !== 'na' && normalized !== 'unknown';
+}
+
 function resolveStateCoordinates(stateValue) {
   const rawState = stateValue?.trim();
   if (!rawState) return US_CENTER;
@@ -135,7 +142,7 @@ function resolveStateCoordinates(stateValue) {
 async function fetchMapFields(signal) {
   const params = new URLSearchParams({
     page: '1',
-    limit: String(MAX_LOCATIONS)
+    limit: String(FETCH_LIMIT)
   });
   const response = await fetch(`${API_BASE_URL}/fields?${params.toString()}`, { signal });
 
@@ -145,29 +152,40 @@ async function fetchMapFields(signal) {
   }
 
   const payload = await response.json();
-  const rows = Array.isArray(payload?.data) ? payload.data.slice(0, MAX_LOCATIONS) : [];
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
 
-  return rows.map((row, index) => {
-    const latFromField = toNumberOrNull(row.lat);
-    const longFromField = toNumberOrNull(row.long);
-    const stateCoords = resolveStateCoordinates(row.state);
-    const latitude = latFromField ?? stateCoords.latitude;
-    const longitude = longFromField ?? stateCoords.longitude;
-    const yieldValue = toNumberOrNull(row.yield_bu_ac) ?? toNumberOrNull(row.predicted_yield);
+  return rows
+    .map((row, index) => {
+      const latFromField = toNumberOrNull(row.lat);
+      const longFromField = toNumberOrNull(row.long);
+      const stateCoords = resolveStateCoordinates(row.state);
+      const latitude = latFromField ?? stateCoords.latitude;
+      const longitude = longFromField ?? stateCoords.longitude;
+      const yieldValue = toNumberOrNull(row.yield_bu_ac) ?? toNumberOrNull(row.predicted_yield);
 
-    return {
-      id: row.field_season_id ?? row.field_number ?? `field-${index + 1}`,
-      name: row.field_number ? `Field ${row.field_number}` : `Field ${index + 1}`,
-      crop: row.crop || 'Unknown',
-      season: row.season ?? 'N/A',
-      yield: yieldValue,
-      latitude,
-      longitude,
-      usedStateFallback: latFromField === null || longFromField === null,
-      state: row.state || 'N/A',
-      county: row.county || 'N/A'
-    };
-  });
+      return {
+        id: row.field_season_id ?? row.field_number ?? `field-${index + 1}`,
+        name: row.field_number ? `Field ${row.field_number}` : `Field ${index + 1}`,
+        crop: row.crop || 'Unknown',
+        season: row.season ?? 'N/A',
+        yield: yieldValue,
+        latitude,
+        longitude,
+        usedStateFallback: latFromField === null || longFromField === null,
+        state: row.state || 'N/A',
+        county: row.county || 'N/A'
+      };
+    })
+    .filter(
+      (row) =>
+        hasTextValue(row.crop) &&
+        hasTextValue(row.season) &&
+        typeof row.yield === 'number' &&
+        Number.isFinite(row.yield) &&
+        hasTextValue(row.state) &&
+        hasTextValue(row.county)
+    )
+    .slice(0, MAX_LOCATIONS);
 }
 
 function cropColor(crop, theme) {
@@ -229,7 +247,7 @@ export default function MapView() {
   return (
     <MainCard title="Map View">
       <Typography variant="body1" color="text.primary" sx={{ mb: 2 }}>
-        Map of field locations (lat/long) with hover for crop, season, and yield.
+        Map of field locations (lat/long) with click-to-focus for crop, season, and yield.
       </Typography>
       <Box
         sx={{
@@ -316,7 +334,6 @@ export default function MapView() {
               return (
                 <Box
                   key={field.id}
-                  onMouseEnter={() => setHoveredField(field)}
                   onClick={() => setHoveredField(field)}
                   sx={{
                     p: 1.25,
