@@ -1,10 +1,10 @@
 // assets
-import { DashboardOutlined } from '@ant-design/icons';
+// import { DashboardOutlined } from '@ant-design/icons';
 
 // icons
-const icons = {
-  DashboardOutlined
-};
+// const icons = {
+//   DashboardOutlined
+// };
 
 // ==============================|| MENU ITEMS - DASHBOARD ||============================== //
 
@@ -13,14 +13,15 @@ const overviewTab = {
   title: 'Overview',
   type: 'group',
   children: [
-    {
-      id: 'dashboard',
-      title: 'Control Center',
-      type: 'item',
-      url: '/dashboard/default',
-      icon: icons.DashboardOutlined,
-      breadcrumbs: true
-    }
+    // Temporarily hidden
+    // {
+    //   id: 'dashboard',
+    //   title: 'Control Center',
+    //   type: 'item',
+    //   url: '/dashboard/default',
+    //   icon: icons.DashboardOutlined,
+    //   breadcrumbs: true
+    // }
   ]
 };
 
