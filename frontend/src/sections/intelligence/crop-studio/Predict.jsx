@@ -15,18 +15,18 @@ const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, 
 
 export default function Predict() {
   const [formValues, setFormValues] = useState({
-    crop: '',
-    latitude: '',
-    longitude: '',
-    totalN: '',
-    totalP: '',
-    totalK: '',
-    acres: '',
-    season: '',
+    crop: 'Sorghum',
+    latitude: '37.567',
+    longitude: '-99.936',
+    totalN: '65.6',
+    totalP: '45.2',
+    totalK: '30.1',
+    acres: '47.07',
+    season: 2025,
     waterApplied: '',
     state: '',
     county: '',
-    variety: ''
+    variety: 'Pioneer 86P20'
   });
 
   const [predictionResult, setPredictionResult] = useState(null);
