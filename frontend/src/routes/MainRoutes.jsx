@@ -25,7 +25,7 @@ const MainRoutes = {
   children: [
     {
       path: '/',
-      element: <DashboardDefault />
+      element: <CropStudioDefault />
     },
     {
       path: 'dashboard',
