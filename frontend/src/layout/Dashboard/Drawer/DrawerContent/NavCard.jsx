@@ -13,7 +13,11 @@ import avatar from 'assets/images/users/avatar-group.png';
 import AnimateButton from 'components/@extended/AnimateButton';
 
 // ==============================|| DRAWER CONTENT - NAVIGATION CARD ||============================== //
+export default function NavCard() {
+  return null;
+}
 
+/*
 export default function NavCard() {
   return (
     <MainCard sx={{ bgcolor: 'grey.50', m: 3 }}>
@@ -34,3 +38,4 @@ export default function NavCard() {
     </MainCard>
   );
 }
+*/
