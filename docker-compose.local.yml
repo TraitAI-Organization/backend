@@ -8,9 +8,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"  # Changed from 5432 to 5433 to avoid conflict
+      - '5433:5432' # Changed from 5432 to 5433 to avoid conflict
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nutrition -d nutrition_ai"]
+      test: ['CMD-SHELL', 'pg_isready -U nutrition -d nutrition_ai']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -20,22 +20,22 @@ services:
     environment:
       DATABASE_URL: postgresql://nutrition:securepassword123@postgres:5432/nutrition_ai
       MODEL_PATH: /app/models
-      ENVIRONMENT: production
-      DEBUG: "false"
+      ENVIRONMENT: local
+      DEBUG: 'true'
       REDIS_URL: redis://redis:6379/0
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       UI_CONFIG_PATH: ${UI_CONFIG_PATH:-data/ui_config.json}
     volumes:
       - ./backend:/app
-      - ./models:/app/models  # Persist trained models
-      - ./data:/app/data      # CSV data
+      - ./models:/app/models # Persist trained models
+      - ./data:/app/data # CSV data
     ports:
-      - "8001:8000"  # Changed from 8000 to 8001 to avoid conflict
+      - '8001:8000' # Changed from 8000 to 8001 to avoid conflict
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -48,24 +48,27 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
-    environment:
-      API_URL: http://backend:8000
-    volumes:
-      - ./frontend:/app
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api/v1
     ports:
-      - "8502:8501"
+      - '3000:80'
     depends_on:
       backend:
         condition: service_healthy
-    command: >
-      streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --browser.gatherUsageStats false
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/health']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6380:6379"  # Changed from 6379 to 6380 to avoid conflict
+      - '6380:6379' # Changed from 6379 to 6380 to avoid conflict
     volumes:
       - redis_data:/data
     restart: unless-stopped
