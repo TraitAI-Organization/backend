@@ -13,22 +13,50 @@ export default defineConfig(({ mode }) => {
     server: {
       open: true,
       port: PORT,
-      host: true
+      host: true,
+
+      // 👇 ADD THIS BLOCK
+      proxy: {
+        '/api/v1': {
+          target: 'http://localhost:8001',
+          changeOrigin: true
+        },
+        '/health': {
+          target: 'http://localhost:8001',
+          changeOrigin: true
+        },
+        '/docs': {
+          target: 'http://localhost:8001',
+          changeOrigin: true
+        },
+        '/redoc': {
+          target: 'http://localhost:8001',
+          changeOrigin: true
+        },
+        '/openapi.json': {
+          target: 'http://localhost:8001',
+          changeOrigin: true
+        }
+      }
     },
+
     preview: {
       open: true,
       host: true
     },
+
     define: {
       global: 'window'
     },
+
     resolve: {
       alias: {
         '@ant-design/icons': path.resolve(__dirname, 'node_modules/@ant-design/icons')
-        // Add more aliases as needed
       }
     },
+
     plugins: [react(), jsconfigPaths()],
+
     build: {
       chunkSizeWarningLimit: 1000,
       sourcemap: true,
@@ -45,19 +73,17 @@ export default defineConfig(({ mode }) => {
             if (/\.(woff2?|eot|ttf|otf)$/.test(name)) return `fonts/[name]-[hash].${ext}`;
             return `assets/[name]-[hash].${ext}`;
           }
-          // manualChunks: { ... } // Add if you want custom chunk splitting
         }
       },
-      // Only drop console/debugger in production
+
       ...(mode === 'production' && {
         esbuild: {
           drop: ['console', 'debugger'],
           pure: ['console.log', 'console.info', 'console.debug', 'console.warn']
         }
       })
-      // No need to set build.target unless you need to support older browsers
-      // target: 'baseline-widely-available', // This is now the default
     },
+
     optimizeDeps: {
       include: ['@mui/material/Tooltip', 'react', 'react-dom', 'react-router-dom']
     }

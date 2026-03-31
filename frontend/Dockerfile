@@ -13,8 +13,16 @@ RUN npm ci
 COPY . .
 
 # Build-time API URL for Vite
-ARG VITE_API_URL=http://backend:8000
+
+# Default: use relative API path (works with nginx proxy in Docker + production)
+ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=$VITE_API_URL
+
+# Alternative (not recommended for Docker builds):
+# ARG VITE_API_URL=http://localhost:8001/api/v1
+# ENV VITE_API_URL=$VITE_API_URL
+# This would require the backend to be accessible at localhost:8001 
+# → only useful when frontend runs outside Docker (npm run dev without proxy)
 
 # Build the production bundle
 RUN npm run build
