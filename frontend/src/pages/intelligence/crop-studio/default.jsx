@@ -3,13 +3,12 @@ import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
-import Typography from '@mui/material/Typography';
 
 import MainCard from 'components/MainCard';
 import Analytics from 'sections/intelligence/crop-studio/Analytics';
-import DataUpload from 'sections/intelligence/crop-studio/DataUpload';
+// import DataUpload from 'sections/intelligence/crop-studio/DataUpload';
 import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
-import MapView from 'sections/intelligence/crop-studio/MapView';
+// import MapView from 'sections/intelligence/crop-studio/MapView';
 import Overview from 'sections/intelligence/crop-studio/Overview';
 import Predict from 'sections/intelligence/crop-studio/Predict';
 
@@ -28,10 +27,11 @@ export default function CropStudioDefault() {
     () => [
       { label: 'Overview', component: <Overview /> },
       { label: 'Field Records', component: <FieldTable /> },
-      { label: 'Map View', component: <MapView /> },
-      { label: 'Analytics', component: <Analytics /> },
+      // { label: 'Map View', component: <MapView /> },
       { label: 'Predict', component: <Predict /> },
-      { label: 'Data Upload', component: <DataUpload /> }
+      { label: 'Analytics', component: <Analytics /> }
+
+      // { label: 'Data Upload', component: <DataUpload /> }
     ],
     []
   );

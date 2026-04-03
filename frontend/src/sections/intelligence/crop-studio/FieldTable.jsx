@@ -22,11 +22,12 @@ const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, 
 const columns = [
   { id: 'fieldId', label: 'Field ID' },
   { id: 'crop', label: 'Crop' },
+  { id: 'acres', label: 'acres' },
   { id: 'variety', label: 'Variety' },
   { id: 'season', label: 'Season' },
   { id: 'location', label: 'Location' },
   { id: 'observedYield', label: 'Observed Yield (bu/ac)' },
-  { id: 'predictedYield', label: 'Predicted Yield (bu/ac)' },
+  // { id: 'predictedYield', label: 'Predicted Yield (bu/ac)' },
   { id: 'n', label: 'N (lb/ac)' },
   { id: 'p', label: 'P (lb/ac)' },
   { id: 'k', label: 'K (lb/ac)' }
@@ -83,11 +84,11 @@ async function fetchFieldRows(signal) {
     rowId: row.field_season_id ?? `${row.field_number ?? 'unknown'}-${row.season ?? 'unknown'}`,
     fieldId: row.field_number ?? row.field_season_id ?? 'N/A',
     crop: row.crop || 'N/A',
+    acres: toNumberOrNull(row.acres),
     variety: row.variety || 'N/A',
     season: row.season ?? 'N/A',
     location: toLocation(row.county, row.state),
     observedYield: toNumberOrNull(row.yield_bu_ac),
-    predictedYield: toNumberOrNull(row.predicted_yield),
     n: toNumberOrNull(row.totalN_per_ac),
     p: toNumberOrNull(row.totalP_per_ac),
     k: toNumberOrNull(row.totalK_per_ac)
@@ -176,7 +177,7 @@ export default function FieldTable() {
     <MainCard title="Field Records">
       <Stack spacing={2}>
         <Typography variant="body1" color="text.primary">
-          Sortable table of field-season records (crop, variety, season, location, observed/predicted yield, N/P/K) filtered by topbar.
+          Sortable table of field-season records (crop, acres, variety, season, location, observed yield, N/P/K) filtered by topbar.
         </Typography>
         {loadError ? (
           <Typography variant="body2" color="error.main">
@@ -253,11 +254,11 @@ export default function FieldTable() {
                 <TableRow key={row.rowId} hover>
                   <TableCell>{row.fieldId}</TableCell>
                   <TableCell>{row.crop}</TableCell>
+                  <TableCell>{formatMetric(row.acres, 2)}</TableCell>
                   <TableCell>{row.variety}</TableCell>
                   <TableCell>{row.season}</TableCell>
                   <TableCell>{row.location}</TableCell>
                   <TableCell>{formatMetric(row.observedYield)}</TableCell>
-                  <TableCell>{formatMetric(row.predictedYield)}</TableCell>
                   <TableCell>{formatMetric(row.n)}</TableCell>
                   <TableCell>{formatMetric(row.p)}</TableCell>
                   <TableCell>{formatMetric(row.k)}</TableCell>
