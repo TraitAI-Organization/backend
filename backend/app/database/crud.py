@@ -578,6 +578,8 @@ def get_overview_stats(db: Session) -> Dict[str, Any]:
     """
     total_fields = db.query(func.count(models.Field.field_id)).scalar()
     total_field_seasons = db.query(func.count(models.FieldSeason.field_season_id)).scalar()
+    total_acres_raw = db.query(func.sum(models.Field.acres)).scalar()
+    total_acres = float(total_acres_raw) if total_acres_raw is not None else 0.0
 
     seasons = (
         db.query(models.Season.season_year)
@@ -640,6 +642,7 @@ def get_overview_stats(db: Session) -> Dict[str, Any]:
     return {
         "total_field_seasons": total_field_seasons or 0,
         "total_fields": total_fields or 0,
+        "total_acres": total_acres,
         "seasons_available": seasons_available,
         "crops_available": crops_available,
         "states_available": states_available,
