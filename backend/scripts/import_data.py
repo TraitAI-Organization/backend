@@ -9,12 +9,19 @@ import os
 from sqlalchemy.orm import Session
 from app.database.session import SessionLocal
 from app.services.data_ingestion import DataIngestionService
+from app.services.data_ingestionV2 import DataIngestionServiceV2
 
 def main():
     parser = argparse.ArgumentParser(description="Import agricultural data CSV into PostgreSQL")
     parser.add_argument('--csv', required=True, help='Path to CSV file')
     parser.add_argument('--source-filename', help='Source filename for tracking (defaults to CSV basename)')
     parser.add_argument('--chunk-size', type=int, default=10000, help='Process N rows at a time')
+    parser.add_argument(
+        '--ingestion-version',
+        choices=['v1', 'v2'],
+        default='v2',
+        help='Ingestion version: v1 (legacy full ingestion) or v2 (table-focused ingestion)',
+    )
 
     args = parser.parse_args()
 
@@ -22,10 +29,10 @@ def main():
         print(f"Error: CSV file not found: {args.csv}")
         return 1
 
-    print(f"Importing {args.csv}...")
+    print(f"Importing {args.csv} with {args.ingestion_version}...")
     db: Session = SessionLocal()
     try:
-        service = DataIngestionService(db)
+        service = DataIngestionServiceV2(db) if args.ingestion_version == 'v2' else DataIngestionService(db)
         result = service.ingest_csv(
             csv_path=args.csv,
             source_filename=args.source_filename,

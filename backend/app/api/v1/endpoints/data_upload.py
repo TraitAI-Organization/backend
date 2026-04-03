@@ -10,6 +10,7 @@ from typing import Optional
 
 from app.database.session import get_db
 from app.services.data_ingestion import DataIngestionService
+from app.services.data_ingestionV2 import DataIngestionServiceV2
 from app.database import models
 from app.database.models import DataIngestionLog
 
@@ -20,6 +21,10 @@ router = APIRouter()
 async def upload_csv(
     file: UploadFile = File(..., description="CSV file to import"),
     source_filename: Optional[str] = Form(None, description="Optional source filename for tracking"),
+    ingestion_version: str = Form(
+        "v2",
+        description="Ingestion version: 'v1' (legacy full ingestion) or 'v2' (table-focused ingestion)",
+    ),
     db: Session = Depends(get_db)
 ):
     """
@@ -52,7 +57,17 @@ async def upload_csv(
 
     try:
         # Process the file
-        service = DataIngestionService(db)
+        normalized_version = (ingestion_version or "v2").strip().lower()
+        if normalized_version == "v2":
+            service = DataIngestionServiceV2(db)
+        elif normalized_version == "v1":
+            service = DataIngestionService(db)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid ingestion_version. Use 'v1' or 'v2'.",
+            )
+
         result = service.ingest_csv(
             csv_path=tmp_path,
             source_filename=source_filename or file.filename
@@ -63,6 +78,11 @@ async def upload_csv(
 
         return result
 
+    except HTTPException:
+        # Clean up temp file on validation errors
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
     except Exception as e:
         # Clean up temp file on error
         if os.path.exists(tmp_path):
