@@ -1,7 +1,7 @@
 // project import
 // import overviewTab from './overview/overview-tab';
 import intelligenceTab from './intelligence/intelligence-tab';
-import coPilotTab from './copilot/copilot-tab';
+// import coPilotTab from './copilot/copilot-tab';
 // import pages from './page';
 // import utilities from './utilities';
 // import support from './support';
@@ -12,7 +12,8 @@ import coPilotTab from './copilot/copilot-tab';
 //   items: [overviewTab, intelligenceTab, coPilotTab, pages, utilities, support]
 // };
 const menuItems = {
-  items: [intelligenceTab, coPilotTab]
+  // items: [intelligenceTab, coPilotTab]
+  items: [intelligenceTab]
 };
 
 export default menuItems;
