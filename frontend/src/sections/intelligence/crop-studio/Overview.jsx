@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -10,6 +10,8 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import MainCard from 'components/MainCard';
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
 function MetricTile({ label, value, helper }) {
   return (
@@ -30,32 +32,80 @@ function MetricTile({ label, value, helper }) {
 }
 
 export default function Overview() {
-  const overview = useMemo(
-    () => ({
-      total_field_seasons: 1280,
-      total_fields: 214,
-      seasons_available: [2021, 2022, 2023, 2024, 2025],
-      crops_available: ['Sorghum', 'Winter Wheat', 'Grain', 'Corn', 'Soybean'],
-      yield_range: {
-        min: 38.7,
-        max: 109.4,
-        avg: 74.2
-      },
-      prediction_stats: {
-        field_seasons_with_predictions: 1196,
-        total_predictions: 9624,
-        predicted_yield_avg: 76.8,
-        predicted_yield_min: 36.1,
-        predicted_yield_max: 112.3
+  const [overview, setOverview] = useState({
+    total_field_seasons: 0,
+    total_fields: 0,
+    seasons_available: [],
+    crops_available: [],
+    yield_range: { min: 0, max: 0, avg: 0 },
+    prediction_stats: {
+      field_seasons_with_predictions: 0,
+      total_predictions: 0,
+      predicted_yield_avg: 0,
+      predicted_yield_min: 0,
+      predicted_yield_max: 0
+    }
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadOverview = async () => {
+      setIsLoading(true);
+      setLoadError('');
+      try {
+        const response = await fetch(`${API_BASE_URL}/fields/overview`, { signal: controller.signal });
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to load overview (${response.status}): ${errorText}`);
+        }
+
+        const payload = await response.json();
+        setOverview({
+          total_field_seasons: payload?.total_field_seasons || 0,
+          total_fields: payload?.total_fields || 0,
+          seasons_available: Array.isArray(payload?.seasons_available) ? payload.seasons_available : [],
+          crops_available: Array.isArray(payload?.crops_available) ? payload.crops_available : [],
+          yield_range: {
+            min: Number(payload?.yield_range?.min) || 0,
+            max: Number(payload?.yield_range?.max) || 0,
+            avg: Number(payload?.yield_range?.avg) || 0
+          },
+          prediction_stats: {
+            field_seasons_with_predictions: payload?.prediction_stats?.field_seasons_with_predictions || 0,
+            total_predictions: payload?.prediction_stats?.total_predictions || 0,
+            predicted_yield_avg: Number(payload?.prediction_stats?.predicted_yield_avg) || 0,
+            predicted_yield_min: Number(payload?.prediction_stats?.predicted_yield_min) || 0,
+            predicted_yield_max: Number(payload?.prediction_stats?.predicted_yield_max) || 0
+          }
+        });
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setLoadError(error.message || 'Failed to load overview metrics.');
+        }
+      } finally {
+        setIsLoading(false);
       }
-    }),
-    []
-  );
+    };
+
+    loadOverview();
+
+    return () => controller.abort();
+  }, []);
 
   const predStats = overview.prediction_stats || {};
   const totalFieldSeasons = overview.total_field_seasons || 0;
   const withPredictions = predStats.field_seasons_with_predictions || 0;
   const coveragePct = totalFieldSeasons ? (100 * withPredictions) / totalFieldSeasons : 0;
+  const cropsHelper = useMemo(() => {
+    if (!Array.isArray(overview.crops_available)) return '';
+    return overview.crops_available
+      .map((crop) => (typeof crop === 'string' ? crop : crop?.crop_name))
+      .filter(Boolean)
+      .join(', ');
+  }, [overview.crops_available]);
 
   return (
     <MainCard title="Overview">
@@ -63,12 +113,19 @@ export default function Overview() {
         <Stack spacing={0.75}>
           {/* <Typography variant="h5">Project Overview</Typography> */}
           <Typography variant="body2" color="text.primary">
-            Summary metrics (field-seasons, crops, seasons), observed yield range, and prediction statistics (coverage, avg predicted
+            Summary Metrics (field-seasons, crops, seasons), observed yield range, and prediction statistics (coverage, avg predicted
             yield).
           </Typography>
-          <Typography variant="subtitle2" color="text.secondary">
-            Nutrition AI - Agricultural Yield Prediction Platform
-          </Typography>
+          {loadError ? (
+            <Typography variant="caption" color="error.main">
+              {loadError}
+            </Typography>
+          ) : null}
+          {isLoading ? (
+            <Typography variant="caption" color="text.secondary">
+              Loading overview metrics...
+            </Typography>
+          ) : null}
         </Stack>
 
         <Grid container spacing={2}>
@@ -86,7 +143,7 @@ export default function Overview() {
             <MetricTile label="Seasons" value={String(overview.seasons_available.length)} helper={overview.seasons_available.join(', ')} />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-            <MetricTile label="Crops" value={String(overview.crops_available.length)} helper={overview.crops_available.join(', ')} />
+            <MetricTile label="Crops" value={String(overview.crops_available.length)} helper={cropsHelper} />
           </Grid>
         </Grid>
 
