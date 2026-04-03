@@ -296,6 +296,7 @@ class ModelPredictionResponse(ModelPredictionBase):
 class OverviewResponse(BaseSchema):
     model_config = ConfigDict(protected_namespaces=())
     total_field_seasons: int
+    total_fields: int
     seasons_available: List[int]
     crops_available: List[Dict[str, Any]]  # [{"crop_id": 1, "crop_name": "Sorghum", "count": 8000}]
     states_available: List[str]
