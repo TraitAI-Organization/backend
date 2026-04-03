@@ -60,8 +60,7 @@ async def list_field_seasons(
     season: Optional[List[int]] = Query(None, description="Season year(s)"),
     state: Optional[str] = Query(None, description="State name"),
     county: Optional[str] = Query(None, description="County name"),
-    min_acres: Optional[float] = Query(None, ge=0, description="Minimum acres"),
-    max_acres: Optional[float] = Query(None, ge=0, description="Maximum acres"),
+    acres: Optional[float] = Query(None, ge=0, description="Exact acres"),
     has_prediction: Optional[bool] = Query(None, description="Filter by prediction availability"),
     min_yield: Optional[float] = Query(None, description="Minimum predicted yield (requires has_prediction=true)"),
     max_yield: Optional[float] = Query(None, description="Maximum predicted yield (requires has_prediction=true)"),
@@ -78,7 +77,7 @@ async def list_field_seasons(
     - `season` (e.g., 2025, [2024, 2025])
     - `state` (e.g., "Kansas")
     - `county` (e.g., "Ford")
-    - `min_acres`, `max_acres` (field size range)
+    - `acres` (exact field size)
     - `has_prediction` (true/false - only show fields with predictions)
     - `min_yield`, `max_yield` (predicted yield range)
 
@@ -91,6 +90,9 @@ async def list_field_seasons(
 
     Returns paginated results with total count.
     """
+    min_acres = acres if acres is not None else None
+    max_acres = acres if acres is not None else None
+
     skip = (page - 1) * limit
 
     # Get total count for pagination
