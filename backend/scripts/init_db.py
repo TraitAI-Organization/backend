@@ -4,6 +4,7 @@ Initialize database - create tables
 """
 import sys
 from pathlib import Path
+from sqlalchemy import inspect
 
 # Ensure backend root is importable when run as `python scripts/init_db.py`.
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +21,14 @@ def init_database():
     print(f"Database URL: {settings.database_url}")
 
     try:
+        inspector = inspect(engine)
+        existing_tables = set(inspector.get_table_names())
+        expected_tables = set(Base.metadata.tables.keys())
+
+        if expected_tables.issubset(existing_tables):
+            print("✓ Database tables already exist. Skipping creation.")
+            return True
+
         Base.metadata.create_all(bind=engine)
         print("✓ Database tables created successfully.")
         return True
