@@ -35,6 +35,7 @@ export default function Overview() {
   const [overview, setOverview] = useState({
     total_field_seasons: 0,
     total_fields: 0,
+    total_acres: 0,
     seasons_available: [],
     crops_available: [],
     yield_range: { min: 0, max: 0, avg: 0 },
@@ -66,6 +67,7 @@ export default function Overview() {
         setOverview({
           total_field_seasons: payload?.total_field_seasons || 0,
           total_fields: payload?.total_fields || 0,
+          total_acres: Number(payload?.total_acres) || 0,
           seasons_available: Array.isArray(payload?.seasons_available) ? payload.seasons_available : [],
           crops_available: Array.isArray(payload?.crops_available) ? payload.crops_available : [],
           yield_range: {
@@ -113,7 +115,7 @@ export default function Overview() {
         <Stack spacing={0.75}>
           {/* <Typography variant="h5">Project Overview</Typography> */}
           <Typography variant="body2" color="text.primary">
-            Summary Metrics (field-seasons, crops, seasons), observed yield range, and prediction statistics (coverage, avg predicted
+            Summary Metrics (acres, fields, crops, seasons), observed yield range, and prediction statistics (coverage, avg predicted
             yield).
           </Typography>
           {loadError ? (
@@ -131,9 +133,9 @@ export default function Overview() {
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
             <MetricTile
-              label="Total Field-Seasons"
-              value={overview.total_field_seasons.toLocaleString()}
-              helper="All tracked field-season records"
+              label="Total Acres"
+              value={overview.total_acres.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              helper="Sum of acres across all fields"
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
