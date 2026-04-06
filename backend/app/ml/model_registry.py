@@ -41,6 +41,49 @@ class ModelRegistry:
         # Ensure models directory exists
         os.makedirs(self.models_dir, exist_ok=True)
 
+    def _resolve_version_dir(self, version_tag: str) -> str:
+        """
+        Resolve a model directory for version_tag.
+        Supports both:
+        - <MODEL_PATH>/<version_tag>
+        - nested layouts such as <MODEL_PATH>/<crop>/<version_tag>
+        """
+        direct_dir = os.path.join(self.models_dir, version_tag)
+        if os.path.isdir(direct_dir):
+            return direct_dir
+
+        # Try DB metadata source path if available.
+        db_row = (
+            self.db.query(crud.models.ModelVersion)
+            .filter(crud.models.ModelVersion.version_tag == version_tag)
+            .first()
+        )
+        if db_row and isinstance(db_row.preprocessing_steps, dict):
+            source_path = db_row.preprocessing_steps.get("source")
+            if isinstance(source_path, str) and source_path.strip():
+                source_path = source_path.strip()
+                if not os.path.isabs(source_path):
+                    source_path = os.path.join(self.models_dir, source_path)
+                if os.path.isdir(source_path):
+                    return source_path
+
+        # Fallback: find nested folder by exact directory name.
+        artifact_markers = ("model.pkl", "model.cbm", "model.pth")
+        candidates = []
+        for root, dirs, _ in os.walk(self.models_dir):
+            for dirname in dirs:
+                if dirname != version_tag:
+                    continue
+                candidate = os.path.join(root, dirname)
+                if any(os.path.exists(os.path.join(candidate, marker)) for marker in artifact_markers):
+                    candidates.append(candidate)
+
+        if candidates:
+            candidates.sort()
+            return candidates[0]
+
+        return direct_dir
+
     def save_model_version(
         self,
         model,
@@ -119,7 +162,7 @@ class ModelRegistry:
             feature_list: List of feature names
             metadata: Dict with model params, metrics, preprocessing steps
         """
-        version_dir = os.path.join(self.models_dir, version_tag)
+        version_dir = self._resolve_version_dir(version_tag)
         model_path = os.path.join(version_dir, "model.pkl")
         catboost_model_path = os.path.join(version_dir, "model.cbm")
         pytorch_model_path = os.path.join(version_dir, "model.pth")
@@ -246,7 +289,7 @@ class ModelRegistry:
                 self.db.commit()
 
             # Delete from disk
-            version_dir = os.path.join(self.models_dir, version_tag)
+            version_dir = self._resolve_version_dir(version_tag)
             if os.path.exists(version_dir):
                 import shutil
                 shutil.rmtree(version_dir)
