@@ -347,3 +347,45 @@ async def list_seasons(
         {"season_id": s.season_id, "season_year": s.season_year, "is_current": s.is_current}
         for s in seasons
     ]
+
+
+@router.get("/states/", summary="List states")
+async def list_states(
+    db: Session = Depends(get_db),
+):
+    """
+    Get distinct states from field records.
+    """
+    from app.database import models
+
+    states = (
+        db.query(models.Field.state)
+        .filter(models.Field.state.isnot(None))
+        .filter(models.Field.state != "")
+        .distinct()
+        .order_by(models.Field.state)
+        .all()
+    )
+    return [{"state": state[0]} for state in states if state and state[0]]
+
+
+@router.get("/counties/", summary="List counties")
+async def list_counties(
+    db: Session = Depends(get_db),
+    state: Optional[str] = Query(None, description="Optional state filter"),
+):
+    """
+    Get distinct counties from field records, optionally filtered by state.
+    """
+    from app.database import models
+
+    query = (
+        db.query(models.Field.county)
+        .filter(models.Field.county.isnot(None))
+        .filter(models.Field.county != "")
+    )
+    if state:
+        query = query.filter(models.Field.state == state)
+
+    counties = query.distinct().order_by(models.Field.county).all()
+    return [{"county": county[0]} for county in counties if county and county[0]]
