@@ -7,7 +7,7 @@ import ListItemText from '@mui/material/ListItemText';
 
 // assets
 import EditOutlined from '@ant-design/icons/EditOutlined';
-import ProfileOutlined from '@ant-design/icons/ProfileOutlined';
+// import ProfileOutlined from '@ant-design/icons/ProfileOutlined';
 import LogoutOutlined from '@ant-design/icons/LogoutOutlined';
 import UserOutlined from '@ant-design/icons/UserOutlined';
 import WalletOutlined from '@ant-design/icons/WalletOutlined';
@@ -30,12 +30,12 @@ export default function ProfileTab() {
         <ListItemText primary="View Profile" />
       </ListItemButton>
 
-      <ListItemButton>
+      {/* <ListItemButton>
         <ListItemIcon>
           <ProfileOutlined />
         </ListItemIcon>
         <ListItemText primary="Social Profile" />
-      </ListItemButton>
+      </ListItemButton> */}
       <ListItemButton>
         <ListItemIcon>
           <WalletOutlined />

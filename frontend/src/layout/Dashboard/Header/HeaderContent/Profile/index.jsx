@@ -108,7 +108,14 @@ export default function Profile() {
       >
         {({ TransitionProps }) => (
           <Transitions type="grow" position="top-right" in={open} {...TransitionProps}>
-            <Paper sx={(theme) => ({ boxShadow: theme.vars.customShadows.z1, width: 290, minWidth: 240, maxWidth: { xs: 250, md: 290 } })}>
+            <Paper
+              sx={(theme) => ({
+                boxShadow: theme.vars.customShadows.z1,
+                width: 290,
+                minWidth: 240,
+                maxWidth: { xs: 250, md: 290 }
+              })}
+            >
               <ClickAwayListener onClickAway={handleClose}>
                 <MainCard elevation={0} border={false} content={false}>
                   <CardContent sx={{ px: 2.5, pt: 3 }}>
@@ -117,9 +124,9 @@ export default function Profile() {
                         <Stack direction="row" sx={{ gap: 1.25, alignItems: 'center' }}>
                           <Avatar alt="profile user" src={avatar1} sx={{ width: 32, height: 32 }} />
                           <Stack>
-                            <Typography variant="h6">John Doe</Typography>
+                            <Typography variant="h6">Nadia Shakoor</Typography>
                             <Typography variant="body2" color="text.secondary">
-                              UI/UX Designer
+                              Principal Investigator
                             </Typography>
                           </Stack>
                         </Stack>
