@@ -10,7 +10,7 @@ import Analytics from 'sections/intelligence/crop-studio/Analytics';
 import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
 // import MapView from 'sections/intelligence/crop-studio/MapView';
 import Overview from 'sections/intelligence/crop-studio/Overview';
-import Predict from 'sections/intelligence/crop-studio/Predict';
+import PredictionWizard from 'sections/intelligence/crop-studio/PredictionWizard';
 
 function TabPanel({ children, value, index }) {
   return (
@@ -28,7 +28,7 @@ export default function CropStudioDefault() {
       { label: 'Overview', component: <Overview /> },
       { label: 'Field Records', component: <FieldTable /> },
       // { label: 'Map View', component: <MapView /> },
-      { label: 'Predict', component: <Predict /> },
+      { label: 'Predict', component: <PredictionWizard /> },
       { label: 'Analytics', component: <Analytics /> }
 
       // { label: 'Data Upload', component: <DataUpload /> }
