@@ -42,6 +42,19 @@ class FolderState:
     model_type: str = "catboost"
 
 
+MODEL_MARKER_FILES = {
+    "model.cbm",
+    "model.pkl",
+    "model.pth",
+    "features.json",
+    "metrics.json",
+    "params.json",
+    "feature_columns.json",
+    "categorical_features.json",
+    "category_sizes.json",
+}
+
+
 def _sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -76,6 +89,52 @@ def _copy_if_needed(src: Path, dst: Path) -> bool:
         return False
     shutil.copy2(src, dst)
     return True
+
+
+def _looks_like_model_folder(folder: Path) -> bool:
+    if any((folder / marker).exists() for marker in MODEL_MARKER_FILES):
+        return True
+    for pattern in ("*.cbm", "*.pkl", "*.pth", "*.pt"):
+        if any(folder.glob(pattern)):
+            return True
+    return False
+
+
+def _collect_candidate_folders(models_dir: Path) -> List[Path]:
+    """
+    Collect likely model folders under models_dir.
+    Supports both layouts:
+    - models/<version_tag>/...
+    - models/<crop>/<version_tag>/...
+    """
+    direct_folders = sorted([p for p in models_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
+    candidates: List[Path] = []
+
+    for folder in direct_folders:
+        # Direct model folder (even if it has helper subdirs like catboost_info).
+        if _looks_like_model_folder(folder):
+            candidates.append(folder)
+            continue
+
+        # Grouped folder (for example: models/wheat/<version_tag>).
+        child_folders = sorted([p for p in folder.iterdir() if p.is_dir() and not p.name.startswith(".")])
+        if not child_folders:
+            candidates.append(folder)
+            continue
+
+        model_children = [child for child in child_folders if _looks_like_model_folder(child)]
+        candidates.extend(model_children or child_folders)
+
+    # Preserve order while removing duplicates.
+    deduped: List[Path] = []
+    seen: set[Path] = set()
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        deduped.append(path)
+    return deduped
 
 
 def _reference_feature_schema(models_dir: Path, current_folder: Path) -> tuple[List[str], List[str]]:
@@ -117,8 +176,8 @@ def _normalize_catboost_folder(folder: Path) -> bool:
     """
     changed = False
 
-    # Skip CatBoost normalization for deep-learning folders.
-    if (folder / "model.pth").exists() or _find_first(folder, ["*.pth", "*.pt"]) or (folder / "category_sizes.json").exists():
+    # Skip CatBoost normalization for actual deep-learning folders.
+    if (folder / "model.pth").exists() or _find_first(folder, ["*.pth", "*.pt"]):
         return changed
 
     model_dst = folder / "model.cbm"
@@ -153,27 +212,51 @@ def _normalize_catboost_folder(folder: Path) -> bool:
         if crop_stats_src:
             changed = _copy_if_needed(crop_stats_src, crop_stats_dst) or changed
 
-    # Create features.json if missing and feature columns are available.
+    # Ensure features.json aligns with CatBoost runtime metadata when feature schema is available.
     features_dst = folder / "features.json"
-    if not features_dst.exists() and feature_columns_dst.exists():
-        feature_columns = _read_json(feature_columns_dst, [])
-        categorical_features = _read_json(categorical_dst, [])
-        if isinstance(feature_columns, list):
-            payload = {
-                "feature_names": feature_columns,
-                "preprocessing": {
-                    "external_model": True,
-                    "external_model_type": "catboost",
-                    "skip_feature_engineering": True,
-                    "source": str(folder),
-                    "categorical_features": categorical_features if isinstance(categorical_features, list) else [],
-                    "crop_statistics_file": "crop_statistics.csv" if crop_stats_dst.exists() else None,
-                    "target_standardization": "crop_zscore" if crop_stats_dst.exists() else None,
-                    "input_aliases": {"crop": "crop_name_en", "variety": "variety_name_en"},
-                    "notes": "Auto-normalized by sync_models.py",
-                },
-            }
-            features_dst.write_text(json.dumps(payload, indent=2))
+    feature_columns = _read_json(feature_columns_dst, []) if feature_columns_dst.exists() else []
+    categorical_features = _read_json(categorical_dst, []) if categorical_dst.exists() else []
+    if isinstance(feature_columns, list) and feature_columns:
+        existing_features_payload = _read_json(features_dst, {}) if features_dst.exists() else {}
+        if not isinstance(existing_features_payload, dict):
+            existing_features_payload = {}
+        existing_preprocessing = existing_features_payload.get("preprocessing", {})
+        if not isinstance(existing_preprocessing, dict):
+            existing_preprocessing = {}
+
+        normalized_preprocessing = dict(existing_preprocessing)
+        normalized_preprocessing["external_model"] = True
+        normalized_preprocessing["external_model_type"] = "catboost"
+        normalized_preprocessing["skip_feature_engineering"] = True
+        normalized_preprocessing["source"] = str(folder)
+        normalized_preprocessing["categorical_features"] = (
+            categorical_features if isinstance(categorical_features, list) else []
+        )
+        normalized_preprocessing["crop_statistics_file"] = (
+            "crop_statistics.csv" if crop_stats_dst.exists() else None
+        )
+        normalized_preprocessing["target_standardization"] = (
+            "crop_zscore" if crop_stats_dst.exists() else None
+        )
+        normalized_preprocessing["input_aliases"] = {
+            "crop": "crop_name_en",
+            "variety": "variety_name_en",
+        }
+        normalized_preprocessing["notes"] = "Auto-normalized by sync_models.py"
+        # Remove DL-only keys from accidental prior normalization.
+        normalized_preprocessing.pop("category_sizes", None)
+        normalized_preprocessing.pop("numeric_features", None)
+        normalized_preprocessing.pop("numeric_scaler_file", None)
+        normalized_preprocessing.pop("category_sizes_file", None)
+        normalized_preprocessing.pop("categorical_encoding", None)
+
+        normalized_features_payload = {
+            "feature_names": feature_columns,
+            "preprocessing": normalized_preprocessing,
+        }
+        serialized = json.dumps(normalized_features_payload, indent=2)
+        if not features_dst.exists() or features_dst.read_text() != serialized:
+            features_dst.write_text(serialized)
             changed = True
 
     metrics_dst = folder / "metrics.json"
@@ -182,17 +265,16 @@ def _normalize_catboost_folder(folder: Path) -> bool:
         changed = True
 
     params_dst = folder / "params.json"
-    if not params_dst.exists():
-        params_dst.write_text(
-            json.dumps(
-                {
-                    "model_type": "catboost",
-                    "source": "auto_sync",
-                    "notes": "Auto-generated params placeholder by sync_models.py",
-                },
-                indent=2,
-            )
-        )
+    params_payload = _read_json(params_dst, {})
+    if not isinstance(params_payload, dict):
+        params_payload = {}
+    params_payload["model_type"] = "catboost"
+    params_payload["artifact_file"] = "model.cbm"
+    params_payload.setdefault("source", "auto_sync")
+    params_payload.setdefault("notes", "Auto-generated params placeholder by sync_models.py")
+    params_serialized = json.dumps(params_payload, indent=2)
+    if not params_dst.exists() or params_dst.read_text() != params_serialized:
+        params_dst.write_text(params_serialized)
         changed = True
 
     return changed
@@ -204,6 +286,10 @@ def _normalize_deep_learning_folder(folder: Path, models_dir: Path) -> bool:
     Returns True if any file changed.
     """
     changed = False
+
+    # Treat folders with CatBoost or sklearn artifacts as non-DL.
+    if (folder / "model.cbm").exists() or _find_first(folder, ["*.cbm"]) or (folder / "model.pkl").exists():
+        return changed
 
     model_pth_dst = folder / "model.pth"
     if not model_pth_dst.exists():
@@ -454,7 +540,7 @@ def main() -> int:
 
     db: Session = SessionLocal()
     try:
-        folders = sorted([p for p in models_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
+        folders = _collect_candidate_folders(models_dir)
         print(f"Scanning model folders under: {models_dir}")
 
         states: List[FolderState] = []
