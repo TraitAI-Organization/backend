@@ -43,6 +43,7 @@ services:
     command: >
       sh -c "
         python -m scripts.init_db &&
+        python -m scripts.sync_models --models-dir /app/models --set-production-if-missing &&
         python -m app.main
       "
     restart: unless-stopped
