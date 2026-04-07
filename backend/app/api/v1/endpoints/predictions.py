@@ -77,7 +77,7 @@ async def predict_yield(
     - variety: Optional variety name
     - acres: Field size in acres
     - lat, long: Field coordinates (WGS84)
-    - season: Year (e.g., 2025)
+    - season: Optional year (e.g., 2025)
     - totalN_per_ac: Total nitrogen applied (lb/ac)
     - totalP_per_ac: Total phosphorus applied (lb/ac)
     - totalK_per_ac: Total potassium applied (lb/ac)
@@ -112,7 +112,7 @@ async def predict_yield(
         state = request.state if hasattr(request, 'state') and request.state else None
 
         # If county/state not provided, try to infer from lat/long
-        if not county or not state:
+        if not county or not state or request.season is None:
             # Could use reverse geocoding here (future enhancement)
             regional_comparison = None
         else:
@@ -226,7 +226,7 @@ async def predict_yield_specific_model(
 
         county = request.county if hasattr(request, 'county') and request.county else None
         state = request.state if hasattr(request, 'state') and request.state else None
-        if not county or not state:
+        if not county or not state or request.season is None:
             regional_comparison = None
         else:
             regional_stats = RegionalStatsService(db)

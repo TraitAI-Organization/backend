@@ -188,7 +188,7 @@ class PredictionRequest(BaseSchema):
     acres: float
     lat: float
     long: float
-    season: int
+    season: Optional[int] = None
     totalN_per_ac: float
     totalP_per_ac: float
     totalK_per_ac: float
