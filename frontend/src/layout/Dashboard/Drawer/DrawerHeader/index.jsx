@@ -10,13 +10,15 @@ export default function DrawerHeader({ open }) {
   return (
     <DrawerHeaderStyled
       open={open}
-      sx={{
-        minHeight: { xs: '72px', sm: '76px', md: '80px' },
+      sx={(theme) => ({
         width: 'initial',
-        paddingTop: '8px',
-        paddingBottom: '8px',
-        paddingLeft: open ? '24px' : 0
-      }}
+        borderBottom: '1px solid',
+        marginTop: '1px',
+        borderBottomColor: 'rgb(64, 102, 140)',
+        boxSizing: 'border-box',
+        paddingLeft: open ? '24px' : 0,
+        minHeight: theme.mixins.toolbar.minHeight
+      })}
     >
       <Logo isIcon={!open} sx={{ width: open ? 'auto' : 35, height: 35 }} />
     </DrawerHeaderStyled>
