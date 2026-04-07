@@ -211,7 +211,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               ...tableScrollbarSx
             }}
           >
-            <Table stickyHeader size="small">
+            <Table stickyHeader size="small" sx={{ minWidth: 1700 }}>
               <TableHead>
                 <TableRow
                   sx={{
@@ -219,7 +219,8 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                       borderBottomWidth: 3,
                       borderBottomColor: accentBlue,
                       bgcolor: headerBlue,
-                      color: theme.palette.text.primary
+                      color: theme.palette.text.primary,
+                      whiteSpace: 'nowrap'
                     }
                   }}
                 >
