@@ -1,15 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
 import LinearProgress from '@mui/material/LinearProgress';
-import MenuItem from '@mui/material/MenuItem';
+import Paper from '@mui/material/Paper';
+import Radio from '@mui/material/Radio';
 import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
-import { useTheme } from '@mui/material/styles';
-import { BarChart, ScatterChart } from '@mui/x-charts';
+import { alpha, useTheme } from '@mui/material/styles';
+import { BarChart } from '@mui/x-charts';
 
 import MainCard from 'components/MainCard';
 
@@ -21,489 +30,325 @@ function toNumberOrNull(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-async function fetchAnalyticsRows(signal) {
-  const limit = 500;
-  let page = 1;
-  let pages = 1;
-  const allRows = [];
+function formatNumber(value, decimals = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '—';
+  return numeric.toFixed(decimals);
+}
 
-  while (page <= pages) {
-    const params = new URLSearchParams({
-      page: String(page),
-      limit: String(limit)
-    });
-    const response = await fetch(`${API_BASE_URL}/fields?${params.toString()}`, { signal });
+function formatDateTime(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+}
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to load analytics records (${response.status}): ${errorText}`);
-    }
-
-    const payload = await response.json();
-    const rows = Array.isArray(payload?.data) ? payload.data : [];
-    allRows.push(...rows);
-
-    const reportedPages = Number(payload?.pages) || 0;
-    pages = reportedPages > 0 ? reportedPages : 1;
-    page += 1;
-
-    if (reportedPages === 0) break;
+async function fetchPredictionRuns(signal) {
+  const response = await fetch(`${API_BASE_URL}/predict/history?limit=500&page=1`, { signal });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to load prediction runs (${response.status}): ${errorText}`);
   }
 
-  return allRows.map((row, index) => ({
-    id: row.field_season_id ?? row.field_number ?? `field-${index + 1}`,
+  const payload = await response.json();
+  const rows = Array.isArray(payload) ? payload : [];
+
+  return rows.map((row) => ({
+    predictionRunId: row.prediction_run_id,
+    createdAt: row.created_at,
+    modelVersionTag: row.model_version_tag || '',
+    modelVersionId: row.model_version_id,
     crop: row.crop || '',
-    state: row.state || '',
+    variety: row.variety || '',
     season: toNumberOrNull(row.season),
-    observedYield: toNumberOrNull(row.yield_bu_ac),
-    predictedYield: toNumberOrNull(row.predicted_yield)
+    state: row.state || '',
+    county: row.county || '',
+    acres: toNumberOrNull(row.acres),
+    totalN: toNumberOrNull(row.totalN_per_ac),
+    totalP: toNumberOrNull(row.totalP_per_ac),
+    totalK: toNumberOrNull(row.totalK_per_ac),
+    waterApplied: toNumberOrNull(row.water_applied_mm),
+    predictedYield: toNumberOrNull(row.predicted_yield),
+    confidenceLower: toNumberOrNull(row.confidence_lower),
+    confidenceUpper: toNumberOrNull(row.confidence_upper),
+    regionalAvgYield: toNumberOrNull(row?.regional_comparison?.avg_yield),
+    requestPayload: row.request_payload || {},
+    responsePayload: row.response_payload || {}
   }));
 }
 
-export default function Analytics() {
+function MetricCard({ label, value, helper }) {
+  return (
+    <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
+      <Stack spacing={0.5}>
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+        <Typography variant="h6">{value}</Typography>
+        {helper ? (
+          <Typography variant="caption" color="text.secondary">
+            {helper}
+          </Typography>
+        ) : null}
+      </Stack>
+    </Paper>
+  );
+}
+
+export default function Analytics({ preselectedPredictionRunId = null }) {
   const theme = useTheme();
-  const palette = theme.vars?.palette ?? theme.palette;
-  const chartHeight = 340;
-  const chartMargin = { top: 16, right: 14, bottom: 26, left: 30 };
-  const [filters, setFilters] = useState({
-    crop: '',
-    state: '',
-    season: ''
-  });
-  const [rows, setRows] = useState([]);
+  const accentBlue = alpha(theme.palette.primary.main, 0.45);
+  const headerBlue = `color-mix(in srgb, ${theme.palette.primary.main} 45%, ${theme.palette.background.paper})`;
+  const [predictionRuns, setPredictionRuns] = useState([]);
+  const [selectedPredictionRunId, setSelectedPredictionRunId] = useState(null);
+  const [analyzedPrediction, setAnalyzedPrediction] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     const controller = new AbortController();
 
-    const loadRows = async () => {
+    const loadPredictionRuns = async () => {
       setIsLoading(true);
       setLoadError('');
       try {
-        const data = await fetchAnalyticsRows(controller.signal);
-        setRows(data);
+        const rows = await fetchPredictionRuns(controller.signal);
+        setPredictionRuns(rows);
       } catch (error) {
         if (error.name !== 'AbortError') {
-          setLoadError(error.message || 'Failed to load analytics records.');
-          setRows([]);
+          setLoadError(error.message || 'Failed to load saved predictions.');
+          setPredictionRuns([]);
         }
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadRows();
+    loadPredictionRuns();
 
-    return () => {
-      controller.abort();
-    };
+    return () => controller.abort();
   }, []);
 
-  const cropOptions = useMemo(
-    () =>
-      Array.from(new Set(rows.map((row) => row.crop).filter((crop) => typeof crop === 'string' && crop.trim().length > 0))).sort((a, b) =>
-        a.localeCompare(b, undefined, { sensitivity: 'base' })
-      ),
-    [rows]
-  );
-
-  const seasonOptions = useMemo(
-    () =>
-      Array.from(new Set(rows.map((row) => row.season).filter((season) => typeof season === 'number' && Number.isFinite(season)))).sort(
-        (a, b) => b - a
-      ),
-    [rows]
-  );
-
-  const stateOptions = useMemo(
-    () =>
-      Array.from(new Set(rows.map((row) => row.state).filter((state) => typeof state === 'string' && state.trim().length > 0))).sort(
-        (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })
-      ),
-    [rows]
-  );
-
-  const filteredRows = useMemo(
-    () =>
-      rows.filter((row) => {
-        if (filters.crop && row.crop !== filters.crop) return false;
-        if (filters.state && row.state !== filters.state) return false;
-        if (filters.season && String(row.season) !== String(filters.season)) return false;
-        return true;
-      }),
-    [filters.crop, filters.season, filters.state, rows]
-  );
-
-  const observedRows = useMemo(
-    () => filteredRows.filter((row) => typeof row.observedYield === 'number' && Number.isFinite(row.observedYield)),
-    [filteredRows]
-  );
-
-  const predictedRows = useMemo(
-    () => filteredRows.filter((row) => typeof row.predictedYield === 'number' && Number.isFinite(row.predictedYield)),
-    [filteredRows]
-  );
-
-  const scatterRows = useMemo(
-    () =>
-      filteredRows.filter(
-        (row) =>
-          typeof row.observedYield === 'number' &&
-          Number.isFinite(row.observedYield) &&
-          typeof row.predictedYield === 'number' &&
-          Number.isFinite(row.predictedYield)
-      ),
-    [filteredRows]
-  );
-
-  const histogram = useMemo(() => {
-    if (observedRows.length === 0) {
-      return { labels: [], counts: [] };
+  useEffect(() => {
+    if (!preselectedPredictionRunId) return;
+    const matched = predictionRuns.find((row) => String(row.predictionRunId) === String(preselectedPredictionRunId));
+    if (matched) {
+      setSelectedPredictionRunId(matched.predictionRunId);
     }
+  }, [preselectedPredictionRunId, predictionRuns]);
 
-    const binSize = 10;
-    const values = observedRows.map((row) => row.observedYield);
-    const min = Math.floor(Math.min(...values) / binSize) * binSize;
-    const max = Math.ceil(Math.max(...values) / binSize) * binSize + binSize;
-
-    const labels = [];
-    const counts = [];
-
-    for (let start = min; start < max; start += binSize) {
-      labels.push(`${start}-${start + binSize}`);
-      counts.push(0);
-    }
-
-    values.forEach((value) => {
-      const bucketIndex = Math.min(Math.floor((value - min) / binSize), counts.length - 1);
-      counts[bucketIndex] += 1;
-    });
-
-    return { labels, counts };
-  }, [observedRows]);
-
-  const scatterData = useMemo(() => scatterRows.map((row) => ({ id: row.id, x: row.observedYield, y: row.predictedYield })), [scatterRows]);
-
-  const scatterBounds = useMemo(() => {
-    if (scatterRows.length === 0) {
-      return { min: 0, max: 120 };
-    }
-
-    const allValues = scatterRows.flatMap((row) => [row.observedYield, row.predictedYield]);
-    const min = Math.floor(Math.min(...allValues) / 10) * 10 - 5;
-    const max = Math.ceil(Math.max(...allValues) / 10) * 10 + 5;
-    return { min, max };
-  }, [scatterRows]);
-
-  const avgObservedYield = useMemo(() => {
-    if (observedRows.length === 0) return 0;
-    return observedRows.reduce((sum, row) => sum + row.observedYield, 0) / observedRows.length;
-  }, [observedRows]);
-
-  const avgPredictedYield = useMemo(() => {
-    if (predictedRows.length === 0) return 0;
-    return predictedRows.reduce((sum, row) => sum + row.predictedYield, 0) / predictedRows.length;
-  }, [predictedRows]);
-
-  const allRowsWithPrediction = useMemo(
-    () => rows.filter((row) => typeof row.predictedYield === 'number' && Number.isFinite(row.predictedYield)),
-    [rows]
+  const selectedPrediction = useMemo(
+    () => predictionRuns.find((row) => row.predictionRunId === selectedPredictionRunId) || null,
+    [predictionRuns, selectedPredictionRunId]
   );
 
-  const baselineRows = useMemo(() => {
-    const scoped = allRowsWithPrediction.filter((row) => {
-      if (filters.state && row.state !== filters.state) return false;
-      if (filters.season && String(row.season) !== String(filters.season)) return false;
-      return true;
-    });
+  const nutrientSeries = useMemo(() => {
+    if (!analyzedPrediction) return [];
+    return [analyzedPrediction.totalN ?? 0, analyzedPrediction.totalP ?? 0, analyzedPrediction.totalK ?? 0];
+  }, [analyzedPrediction]);
 
-    return scoped.length > 0 ? scoped : allRowsWithPrediction;
-  }, [allRowsWithPrediction, filters.season, filters.state]);
+  const yieldContextSeries = useMemo(() => {
+    if (!analyzedPrediction) return [];
+    return [
+      analyzedPrediction.confidenceLower ?? 0,
+      analyzedPrediction.predictedYield ?? 0,
+      analyzedPrediction.confidenceUpper ?? 0,
+      analyzedPrediction.regionalAvgYield ?? 0
+    ];
+  }, [analyzedPrediction]);
 
-  const regionalSeasonAvg = useMemo(() => {
-    if (baselineRows.length === 0) return 0;
-    return baselineRows.reduce((sum, row) => sum + row.predictedYield, 0) / baselineRows.length;
-  }, [baselineRows]);
-
-  const deltaFromRegionalSeasonAvg = avgPredictedYield - regionalSeasonAvg;
-
-  const confidencePct = useMemo(() => {
-    if (scatterRows.length === 0) return 0;
-    const mae = scatterRows.reduce((sum, row) => sum + Math.abs(row.predictedYield - row.observedYield), 0) / scatterRows.length;
-    return Math.max(55, Math.min(99, Math.round(100 - mae * 2.2)));
-  }, [scatterRows]);
-
-  const confidenceColor = confidencePct >= 85 ? 'success' : confidencePct >= 70 ? 'warning' : 'error';
-  const confidenceLabel = confidencePct >= 85 ? 'High confidence' : confidencePct >= 70 ? 'Moderate confidence' : 'Lower confidence';
-
-  const handleFilterChange = (event) => {
-    const { name, value } = event.target;
-    setFilters((prev) => ({
-      ...prev,
-      [name]: value
-    }));
+  const handleAnalyzePrediction = () => {
+    if (!selectedPrediction) return;
+    setAnalyzedPrediction(selectedPrediction);
   };
 
   return (
     <MainCard title="Analytics">
       <Stack spacing={2.5}>
         <Typography variant="body1" color="text.primary">
-          Yield distribution histogram and Predicted vs Observed scatter plot from live field-season data.
+          Select a saved prediction from the table, then run analysis using the exact values used for that prediction.
         </Typography>
 
-        {loadError ? (
-          <Typography variant="body2" color="error.main">
-            {loadError}
-          </Typography>
-        ) : null}
-        {isLoading ? (
-          <Typography variant="body2" color="text.secondary">
-            Loading analytics records...
-          </Typography>
-        ) : null}
+        {loadError ? <Alert severity="error">{loadError}</Alert> : null}
 
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Stack spacing={1}>
-              <Typography variant="subtitle2">Crop</Typography>
-              <TextField
-                select
-                fullWidth
-                name="crop"
-                value={filters.crop}
-                onChange={handleFilterChange}
-                disabled={isLoading}
-                SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'All Crops' }}
-              >
-                <MenuItem value="">All Crops</MenuItem>
-                {cropOptions.map((crop) => (
-                  <MenuItem key={crop} value={crop}>
-                    {crop}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Stack>
-          </Grid>
+        <Paper variant="outlined">
+          <Stack spacing={1.5} sx={{ p: 2 }}>
+            <Typography variant="h6">Predictions Table</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Only one prediction can be selected at a time.
+            </Typography>
+          </Stack>
 
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Stack spacing={1}>
-              <Typography variant="subtitle2">Season</Typography>
-              <TextField
-                select
-                fullWidth
-                name="season"
-                value={filters.season}
-                onChange={handleFilterChange}
-                disabled={isLoading}
-                SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'All Seasons' }}
-              >
-                <MenuItem value="">All Seasons</MenuItem>
-                {seasonOptions.map((season) => (
-                  <MenuItem key={season} value={season}>
-                    {season}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Stack>
-          </Grid>
+          {isLoading ? <LinearProgress /> : null}
 
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Stack spacing={1}>
-              <Typography variant="subtitle2">State</Typography>
-              <TextField
-                select
-                fullWidth
-                name="state"
-                value={filters.state}
-                onChange={handleFilterChange}
-                disabled={isLoading}
-                SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'All States' }}
-              >
-                <MenuItem value="">All States</MenuItem>
-                {stateOptions.map((state) => (
-                  <MenuItem key={state} value={state}>
-                    {state}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Stack>
-          </Grid>
-        </Grid>
-
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-          <Box
+          <TableContainer
             sx={{
-              px: 1.5,
-              py: 0.75,
-              borderRadius: 1,
-              bgcolor: 'rgb(17, 26, 34)',
-              border: '1px solid rgb(64, 102, 140)'
+              maxHeight: 360,
+              borderTop: 2,
+              borderBottom: 2,
+              borderColor: accentBlue,
+              boxShadow: `0 10px 30px ${alpha(theme.palette.primary.main, 0.12)}`
             }}
           >
-            <Typography variant="subtitle2" sx={{ color: '#C7ECF0' }}>
-              Records: {filteredRows.length}
-            </Typography>
-          </Box>
-          <Box
-            sx={{
-              px: 1.5,
-              py: 0.75,
-              borderRadius: 1,
-              bgcolor: 'rgb(17, 26, 34)',
-              border: '1px solid rgb(64, 102, 140)'
-            }}
-          >
-            <Typography variant="subtitle2" sx={{ color: '#C7ECF0' }}>
-              Avg Observed Yield: {avgObservedYield.toFixed(1)} bu/ac
-            </Typography>
-          </Box>
-        </Stack>
+            <Table stickyHeader size="small">
+              <TableHead>
+                <TableRow
+                  sx={{
+                    '& .MuiTableCell-root': {
+                      borderBottomWidth: 3,
+                      borderBottomColor: accentBlue,
+                      bgcolor: headerBlue,
+                      color: theme.palette.text.primary
+                    }
+                  }}
+                >
+                  <TableCell sx={{ width: 56 }}>Select</TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Model</TableCell>
+                  <TableCell>Crop</TableCell>
+                  <TableCell>Variety</TableCell>
+                  <TableCell>Season</TableCell>
+                  <TableCell>State</TableCell>
+                  <TableCell>County</TableCell>
+                  <TableCell align="right">Predicted Yield</TableCell>
+                  <TableCell align="right">Acres</TableCell>
+                  <TableCell align="right">N</TableCell>
+                  <TableCell align="right">P</TableCell>
+                  <TableCell align="right">K</TableCell>
+                  <TableCell align="right">Water (mm)</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {!isLoading && predictionRuns.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={14}>
+                      <Stack spacing={0.5} sx={{ py: 1 }}>
+                        <Typography variant="body2">No saved predictions found.</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Run a prediction from the Predict tab to get started.
+                        </Typography>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ) : null}
 
-        <Grid container spacing={2.5}>
-          <Grid size={{ xs: 12, lg: 6 }}>
-            <MainCard title="Yield Distribution Histogram" content={false}>
-              {histogram.counts.length > 0 ? (
-                <Box>
-                  <BarChart
-                    hideLegend
-                    height={chartHeight}
-                    grid={{ horizontal: true }}
-                    series={[{ data: histogram.counts, label: 'Field Count', color: palette.primary.main }]}
-                    xAxis={[
-                      {
-                        data: histogram.labels,
-                        scaleType: 'band',
-                        tickSize: 6,
-                        disableLine: true,
-                        categoryGapRatio: 0.18,
-                        tickLabelInterval: () => true,
-                        tickLabelStyle: { fontSize: 11 }
-                      }
-                    ]}
-                    yAxis={[{ label: 'Field-Season Count', tickSize: 6, disableLine: true }]}
-                    margin={chartMargin}
-                    sx={{
-                      '& .MuiBarElement-root': {
-                        filter: `drop-shadow(0 0 6px ${palette.primary.main})`
-                      },
-                      '& .MuiBarElement-root:hover': { opacity: 0.7 },
-                      '& .MuiChartsGrid-line': { stroke: palette.divider, strokeDasharray: '4 4' },
-                      '& .MuiChartsAxis-root.MuiChartsAxis-directionX .MuiChartsAxis-tick': { stroke: 'transparent' },
-                      '& .MuiChartsAxis-root.MuiChartsAxis-directionY .MuiChartsAxis-tick': { stroke: 'transparent' }
-                    }}
-                  />
-                  <Stack
-                    direction="row"
-                    sx={{ gap: 1.25, alignItems: 'center', justifyContent: 'center', py: 1, borderTop: 1, borderColor: 'divider' }}
-                  >
-                    <Box sx={{ width: 12, height: 12, borderRadius: 0.75, bgcolor: 'primary.main' }} />
-                    <Typography variant="caption" color="text.secondary">
-                      Field Count by Yield Bin
-                    </Typography>
-                  </Stack>
-                </Box>
-              ) : (
-                <Box sx={{ p: 3 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No rows with observed yield match the active filters.
-                  </Typography>
-                </Box>
-              )}
-            </MainCard>
-          </Grid>
+                {predictionRuns.map((row) => {
+                  const isSelected = row.predictionRunId === selectedPredictionRunId;
+                  return (
+                    <TableRow
+                      key={row.predictionRunId}
+                      hover
+                      selected={isSelected}
+                      onClick={() => setSelectedPredictionRunId(row.predictionRunId)}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell padding="checkbox">
+                        <Radio checked={isSelected} onChange={() => setSelectedPredictionRunId(row.predictionRunId)} />
+                      </TableCell>
+                      <TableCell>{formatDateTime(row.createdAt)}</TableCell>
+                      <TableCell>{row.modelVersionTag || '—'}</TableCell>
+                      <TableCell>{row.crop || '—'}</TableCell>
+                      <TableCell>{row.variety || '—'}</TableCell>
+                      <TableCell>{row.season ?? '—'}</TableCell>
+                      <TableCell>{row.state || '—'}</TableCell>
+                      <TableCell>{row.county || '—'}</TableCell>
+                      <TableCell align="right">{formatNumber(row.predictedYield)}</TableCell>
+                      <TableCell align="right">{formatNumber(row.acres)}</TableCell>
+                      <TableCell align="right">{formatNumber(row.totalN)}</TableCell>
+                      <TableCell align="right">{formatNumber(row.totalP)}</TableCell>
+                      <TableCell align="right">{formatNumber(row.totalK)}</TableCell>
+                      <TableCell align="right">{formatNumber(row.waterApplied)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
 
-          <Grid size={{ xs: 12, lg: 6 }}>
-            <MainCard title="Predicted vs Observed Scatter" content={false}>
-              {scatterData.length > 0 ? (
-                <Box>
-                  <ScatterChart
-                    hideLegend
-                    height={chartHeight}
-                    grid={{ horizontal: true, vertical: true }}
-                    series={[{ label: 'Field-Season', data: scatterData, markerSize: 7, color: palette.info.main }]}
-                    xAxis={[{ min: scatterBounds.min, max: scatterBounds.max, label: 'Observed Yield (bu/ac)' }]}
-                    yAxis={[{ min: scatterBounds.min, max: scatterBounds.max, label: 'Predicted Yield (bu/ac)' }]}
-                    margin={chartMargin}
-                    sx={{
-                      '& .MuiMarkElement-root': {
-                        filter: `drop-shadow(0 0 5px ${palette.info.main})`
-                      },
-                      '& .MuiChartsGrid-line': { stroke: palette.divider, strokeDasharray: '4 4' }
-                    }}
-                  />
-                  <Stack
-                    direction="row"
-                    sx={{ gap: 2.25, alignItems: 'center', justifyContent: 'center', py: 1, borderTop: 1, borderColor: 'divider' }}
-                  >
-                    <Stack direction="row" sx={{ gap: 0.75, alignItems: 'center' }}>
-                      <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: 'info.main' }} />
-                      <Typography variant="caption" color="text.secondary">
-                        Field-Season Points
-                      </Typography>
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary">
-                      X: Observed Yield | Y: Predicted Yield
-                    </Typography>
-                  </Stack>
-                </Box>
-              ) : (
-                <Box sx={{ p: 3 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No rows with both observed and predicted yield match the active filters.
-                  </Typography>
-                </Box>
-              )}
-            </MainCard>
-          </Grid>
-        </Grid>
+          <Stack direction="row" sx={{ justifyContent: 'flex-end', p: 2 }}>
+            <Button variant="contained" disabled={!selectedPrediction || isLoading} onClick={handleAnalyzePrediction}>
+              Analyze Prediction
+            </Button>
+          </Stack>
+        </Paper>
 
-        <MainCard title="Model Signal Snapshot">
-          <Grid container spacing={2.5}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Stack spacing={1.25}>
-                <Typography variant="subtitle1">Uncertainty / Confidence Indicator</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {confidenceLabel} based on prediction error spread across the active filter set.
-                </Typography>
-                <LinearProgress color={confidenceColor} variant="determinate" value={confidencePct} sx={{ height: 10, borderRadius: 2 }} />
-                <Typography variant="h6">{confidencePct}% confidence score</Typography>
-              </Stack>
+        <Divider />
+
+        {!analyzedPrediction ? (
+          <Alert severity="info">
+            Select one prediction from the table above and click <strong>Analyze Prediction</strong> to populate this section.
+          </Alert>
+        ) : (
+          <Stack spacing={2.5}>
+            <Typography variant="h6">Prediction Analysis</Typography>
+
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+              <Chip label={`Prediction #${analyzedPrediction.predictionRunId}`} color="primary" />
+              <Chip label={`Model: ${analyzedPrediction.modelVersionTag || 'Unknown'}`} variant="outlined" />
+              <Chip label={`Crop: ${analyzedPrediction.crop || 'Unknown'}`} variant="outlined" />
+            </Stack>
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <MetricCard label="Predicted Yield" value={`${formatNumber(analyzedPrediction.predictedYield)} bu/ac`} />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <MetricCard
+                  label="Confidence Interval"
+                  value={`${formatNumber(analyzedPrediction.confidenceLower)} - ${formatNumber(analyzedPrediction.confidenceUpper)}`}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <MetricCard
+                  label="Regional Average"
+                  value={`${formatNumber(analyzedPrediction.regionalAvgYield)} bu/ac`}
+                  helper="From regional comparison at prediction time"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <MetricCard label="Created At" value={formatDateTime(analyzedPrediction.createdAt)} />
+              </Grid>
             </Grid>
-            <Grid
-              size={{ xs: 12, md: 6 }}
-              sx={{
-                borderTop: { xs: 1, md: 0 },
-                borderLeft: { xs: 0, md: 1 },
-                borderColor: 'divider',
-                pt: { xs: 2.5, md: 0 },
-                pl: { xs: 0, md: 2.5 }
-              }}
-            >
-              <Stack spacing={1.25}>
-                <Typography variant="subtitle1">Difference From Regional / Season Average</Typography>
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, lg: 6 }}>
+                <MainCard title="Nutrient Inputs" content={false}>
+                  <Box sx={{ p: 2 }}>
+                    <BarChart
+                      height={280}
+                      xAxis={[{ scaleType: 'band', data: ['N (lb/ac)', 'P (lb/ac)', 'K (lb/ac)'] }]}
+                      series={[{ data: nutrientSeries, label: 'Input Amount' }]}
+                    />
+                  </Box>
+                </MainCard>
+              </Grid>
+              <Grid size={{ xs: 12, lg: 6 }}>
+                <MainCard title="Yield Context" content={false}>
+                  <Box sx={{ p: 2 }}>
+                    <BarChart
+                      height={280}
+                      xAxis={[{ scaleType: 'band', data: ['Lower CI', 'Predicted', 'Upper CI', 'Regional Avg'] }]}
+                      series={[{ data: yieldContextSeries, label: 'Yield (bu/ac)' }]}
+                    />
+                  </Box>
+                </MainCard>
+              </Grid>
+            </Grid>
+
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={0.75}>
+                <Typography variant="subtitle2">Prediction Inputs Used</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Delta compares the current filtered predicted average to the regional-season baseline.
+                  State: {analyzedPrediction.state || '—'} | County: {analyzedPrediction.county || '—'} | Season:{' '}
+                  {analyzedPrediction.season ?? '—'} | Acres: {formatNumber(analyzedPrediction.acres)}
                 </Typography>
-                <Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}>
-                  <Typography variant="h4" color={deltaFromRegionalSeasonAvg >= 0 ? 'success.main' : 'error.main'}>
-                    {deltaFromRegionalSeasonAvg >= 0 ? '+' : ''}
-                    {deltaFromRegionalSeasonAvg.toFixed(1)} bu/ac
-                  </Typography>
-                  <Chip
-                    size="small"
-                    color={deltaFromRegionalSeasonAvg >= 0 ? 'success' : 'error'}
-                    label={deltaFromRegionalSeasonAvg >= 0 ? 'Above baseline' : 'Below baseline'}
-                  />
-                </Stack>
-                <Typography variant="caption" color="text.secondary">
-                  Baseline predicted average: {regionalSeasonAvg.toFixed(1)} bu/ac | Current filtered average:{' '}
-                  {avgPredictedYield.toFixed(1)} bu/ac
+                <Typography variant="body2" color="text.secondary">
+                  Water Applied: {formatNumber(analyzedPrediction.waterApplied)} mm
                 </Typography>
               </Stack>
-            </Grid>
-          </Grid>
-        </MainCard>
+            </Paper>
+          </Stack>
+        )}
       </Stack>
     </MainCard>
   );
