@@ -14,6 +14,7 @@ import TableRow from '@mui/material/TableRow';
 import TableSortLabel from '@mui/material/TableSortLabel';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { alpha, useTheme } from '@mui/material/styles';
 
 import MainCard from 'components/MainCard';
 
@@ -101,6 +102,9 @@ function formatMetric(value, decimals = 1) {
 }
 
 export default function FieldTable() {
+  const theme = useTheme();
+  const accentBlue = alpha(theme.palette.primary.main, 0.45);
+  const headerBlue = `color-mix(in srgb, ${theme.palette.primary.main} 45%, ${theme.palette.background.paper})`;
   const [rows, setRows] = useState([]);
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('fieldId');
@@ -215,7 +219,21 @@ export default function FieldTable() {
               }
             }}
           />
-          <Button variant="outlined" startIcon={<DownloadOutlined />} onClick={handleDownload}>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadOutlined />}
+            onClick={handleDownload}
+            sx={{
+              borderColor: accentBlue,
+              color: theme.palette.primary.main,
+              bgcolor: alpha(theme.palette.primary.main, 0.08),
+              '&:hover': {
+                borderColor: theme.palette.primary.main,
+                bgcolor: alpha(theme.palette.primary.main, 0.2),
+                boxShadow: `0 0 0 1px ${alpha(theme.palette.primary.main, 0.45)}`
+              }
+            }}
+          >
             Download
           </Button>
         </Stack>
@@ -226,15 +244,31 @@ export default function FieldTable() {
             overflowX: 'auto',
             overflowY: 'auto',
             maxHeight: { xs: 420, md: 500 },
-            border: 1,
-            borderColor: 'divider',
+            border: 2,
+            borderColor: accentBlue,
             borderRadius: 1,
-            bgcolor: 'background.paper'
+            bgcolor: 'background.paper',
+            boxShadow: `0 10px 30px ${alpha(theme.palette.primary.main, 0.14)}`
           }}
         >
           <Table size="small" stickyHeader>
             <TableHead>
-              <TableRow sx={{ '& .MuiTableCell-root': { borderBottomWidth: 3 } }}>
+              <TableRow
+                sx={{
+                  '& .MuiTableCell-root': {
+                    borderBottomWidth: 3,
+                    borderBottomColor: accentBlue,
+                    bgcolor: headerBlue,
+                    color: theme.palette.text.primary
+                  },
+                  '& .MuiTableSortLabel-root': {
+                    color: `${theme.palette.text.primary} !important`
+                  },
+                  '& .MuiTableSortLabel-icon': {
+                    color: `${theme.palette.text.primary} !important`
+                  }
+                }}
+              >
                 {columns.map((column) => (
                   <TableCell key={column.id} sortDirection={orderBy === column.id ? order : false} sx={{ whiteSpace: 'nowrap' }}>
                     <TableSortLabel
