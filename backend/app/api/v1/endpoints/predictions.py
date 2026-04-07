@@ -3,7 +3,7 @@ Prediction endpoints - ML model inference
 """
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import logging
 
 from app.database.session import get_db
@@ -14,6 +14,7 @@ from app.database.schemas import (
     FeatureContribution,
     MultiModelPredictionResponse,
     MultiModelPredictionItem,
+    PredictionRunResponse,
 )
 from app.ml.predictor import PredictionService
 from app.ml.explainability import ExplainabilityEngine
@@ -22,6 +23,44 @@ from app.services.regional_stats import RegionalStatsService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _to_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _serialize_prediction_run(run: db_models.PredictionRun) -> Dict[str, Any]:
+    return {
+        "prediction_run_id": run.prediction_run_id,
+        "model_version_id": run.model_version_id,
+        "model_version_tag": run.model_version_tag,
+        "crop": run.crop,
+        "variety": run.variety,
+        "season": run.season,
+        "state": run.state,
+        "county": run.county,
+        "acres": _to_float(run.acres),
+        "lat": _to_float(run.lat),
+        "long": _to_float(run.long),
+        "totalN_per_ac": _to_float(run.totalN_per_ac),
+        "totalP_per_ac": _to_float(run.totalP_per_ac),
+        "totalK_per_ac": _to_float(run.totalK_per_ac),
+        "water_applied_mm": _to_float(run.water_applied_mm),
+        "event_count": run.event_count,
+        "predicted_yield": _to_float(run.predicted_yield) or 0.0,
+        "confidence_lower": _to_float(run.confidence_lower),
+        "confidence_upper": _to_float(run.confidence_upper),
+        "regional_comparison": run.regional_comparison,
+        "feature_contributions": run.feature_contributions or [],
+        "request_payload": run.request_payload or {},
+        "response_payload": run.response_payload or {},
+        "created_at": run.created_at,
+    }
 
 
 @router.post("", response_model=PredictionResponse, summary="Predict yield")
@@ -124,6 +163,20 @@ async def predict_yield(
             recommendations=None,  # Future: fertilizer recommendations
         )
 
+        request_payload = request.model_dump(mode="json")
+        response_payload = response.model_dump(mode="json")
+        top_features = (response_payload.get("explainability") or {}).get("top_features", [])
+
+        db_run = crud.create_prediction_run(
+            db,
+            request_payload=request_payload,
+            response_payload=response_payload,
+            model_version=model_version,
+            regional_comparison=regional_comparison,
+            feature_contributions=top_features,
+        )
+        response.prediction_run_id = db_run.prediction_run_id
+
         # Optionally log prediction for future analysis (background task)
         background_tasks.add_task(
             log_prediction_request,
@@ -218,6 +271,20 @@ async def predict_yield_specific_model(
             },
             recommendations=None,
         )
+
+        request_payload = request.model_dump(mode="json")
+        response_payload = response.model_dump(mode="json")
+        top_features = (response_payload.get("explainability") or {}).get("top_features", [])
+
+        db_run = crud.create_prediction_run(
+            db,
+            request_payload=request_payload,
+            response_payload=response_payload,
+            model_version=model_version,
+            regional_comparison=regional_comparison,
+            feature_contributions=top_features,
+        )
+        response.prediction_run_id = db_run.prediction_run_id
 
         background_tasks.add_task(
             log_prediction_request,
@@ -386,6 +453,31 @@ async def batch_predict_yield(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Batch prediction failed: {str(e)}"
         )
+
+
+@router.get("/history", response_model=List[PredictionRunResponse], summary="List saved prediction runs")
+async def list_prediction_runs(
+    db: Session = Depends(get_db),
+    limit: int = 100,
+    page: int = 1,
+    crop: Optional[str] = None,
+    model_version_id: Optional[int] = None,
+):
+    """
+    List persisted ad-hoc prediction runs created by prediction endpoints.
+    """
+    safe_limit = min(max(limit, 1), 500)
+    safe_page = max(page, 1)
+    skip = (safe_page - 1) * safe_limit
+
+    runs = crud.get_prediction_runs(
+        db,
+        skip=skip,
+        limit=safe_limit,
+        crop=crop,
+        model_version_id=model_version_id,
+    )
+    return [_serialize_prediction_run(run) for run in runs]
 
 
 # Helper function for logging
