@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -22,19 +22,23 @@ function TabPanel({ children, value, index }) {
 
 export default function CropStudioDefault() {
   const [tabValue, setTabValue] = useState(0);
+  const [preselectedPredictionRunId, setPreselectedPredictionRunId] = useState(null);
+  const analyticsTabIndex = 3;
 
-  const tabs = useMemo(
-    () => [
-      { label: 'Overview', component: <Overview /> },
-      { label: 'Field Records', component: <FieldTable /> },
-      // { label: 'Map View', component: <MapView /> },
-      { label: 'Predict', component: <PredictionWizard /> },
-      { label: 'Analytics', component: <Analytics /> }
+  const handleOpenPredictionsTable = (predictionRunId = null) => {
+    setPreselectedPredictionRunId(predictionRunId);
+    setTabValue(analyticsTabIndex);
+  };
 
-      // { label: 'Data Upload', component: <DataUpload /> }
-    ],
-    []
-  );
+  const tabs = [
+    { label: 'Overview', component: <Overview /> },
+    { label: 'Field Records', component: <FieldTable /> },
+    // { label: 'Map View', component: <MapView /> },
+    { label: 'Predict', component: <PredictionWizard onOpenPredictionsTable={handleOpenPredictionsTable} /> },
+    { label: 'Analytics', component: <Analytics preselectedPredictionRunId={preselectedPredictionRunId} /> }
+
+    // { label: 'Data Upload', component: <DataUpload /> }
+  ];
 
   const handleChange = (_, newValue) => {
     setTabValue(newValue);
