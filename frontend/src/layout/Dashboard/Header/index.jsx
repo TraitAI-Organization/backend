@@ -43,7 +43,8 @@ export default function Header() {
         variant="light"
         sx={(theme) => ({
           color: 'text.primary',
-          bgcolor: drawerOpen ? 'transparent' : 'grey.100',
+          bgcolor: drawerOpen ? 'transparent' : 'rgba(64, 102, 140, 0.2)',
+          border: drawerOpen ? '1px solid transparent' : '1px solid rgba(64, 102, 140, 0.45)',
           ml: { xs: 0, lg: -2 }
         })}
       >

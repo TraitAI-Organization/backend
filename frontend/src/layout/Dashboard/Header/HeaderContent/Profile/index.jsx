@@ -50,6 +50,17 @@ function a11yProps(index) {
 
 export default function Profile() {
   const theme = useTheme();
+  const themedTooltipSlotProps = {
+    tooltip: {
+      sx: {
+        bgcolor: 'rgb(1, 6, 8)',
+        color: theme.palette.text.primary,
+        border: '1px solid rgb(64, 102, 140)',
+        boxShadow: `0 8px 20px rgba(29, 56, 72, 0.35)`,
+        fontSize: theme.typography.caption.fontSize
+      }
+    }
+  };
 
   const anchorRef = useRef(null);
   const [open, setOpen] = useState(false);
@@ -72,7 +83,7 @@ export default function Profile() {
 
   return (
     <Box sx={{ flexShrink: 0, ml: 'auto' }}>
-      <Tooltip title="Profile" disableInteractive>
+      <Tooltip title="Profile" disableInteractive slotProps={themedTooltipSlotProps}>
         <ButtonBase
           sx={(theme) => ({
             p: 0.25,
@@ -111,6 +122,8 @@ export default function Profile() {
             <Paper
               sx={(theme) => ({
                 boxShadow: theme.vars.customShadows.z1,
+                border: '1px solid',
+                borderColor: 'rgb(64, 102, 140)',
                 width: 290,
                 minWidth: 240,
                 maxWidth: { xs: 250, md: 290 }
@@ -132,7 +145,7 @@ export default function Profile() {
                         </Stack>
                       </Grid>
                       <Grid>
-                        <Tooltip title="Logout">
+                        <Tooltip title="Logout" slotProps={themedTooltipSlotProps}>
                           <IconButton size="large" sx={{ color: 'text.primary' }}>
                             <LogoutOutlined />
                           </IconButton>
