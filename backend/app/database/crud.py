@@ -467,6 +467,69 @@ def create_prediction(
     return db_pred
 
 
+def create_prediction_run(
+    db: Session,
+    *,
+    request_payload: Dict[str, Any],
+    response_payload: Dict[str, Any],
+    model_version: models.ModelVersion,
+    regional_comparison: Optional[Dict[str, Any]] = None,
+    feature_contributions: Optional[List[Dict[str, Any]]] = None,
+) -> models.PredictionRun:
+    request_payload = request_payload or {}
+    response_payload = response_payload or {}
+
+    confidence_interval = response_payload.get("confidence_interval") or []
+    confidence_lower = confidence_interval[0] if len(confidence_interval) > 0 else None
+    confidence_upper = confidence_interval[1] if len(confidence_interval) > 1 else None
+
+    db_run = models.PredictionRun(
+        model_version_id=model_version.model_version_id,
+        model_version_tag=model_version.version_tag,
+        crop=request_payload.get("crop"),
+        variety=request_payload.get("variety"),
+        season=request_payload.get("season"),
+        state=request_payload.get("state"),
+        county=request_payload.get("county"),
+        acres=request_payload.get("acres"),
+        lat=request_payload.get("lat"),
+        long=request_payload.get("long"),
+        totalN_per_ac=request_payload.get("totalN_per_ac"),
+        totalP_per_ac=request_payload.get("totalP_per_ac"),
+        totalK_per_ac=request_payload.get("totalK_per_ac"),
+        water_applied_mm=request_payload.get("water_applied_mm"),
+        event_count=request_payload.get("event_count"),
+        predicted_yield=response_payload.get("predicted_yield"),
+        confidence_lower=confidence_lower,
+        confidence_upper=confidence_upper,
+        regional_comparison=regional_comparison,
+        feature_contributions=feature_contributions or [],
+        request_payload=request_payload,
+        response_payload=response_payload,
+    )
+    db.add(db_run)
+    db.commit()
+    db.refresh(db_run)
+    return db_run
+
+
+def get_prediction_runs(
+    db: Session,
+    *,
+    skip: int = 0,
+    limit: int = 100,
+    crop: Optional[str] = None,
+    model_version_id: Optional[int] = None,
+) -> List[models.PredictionRun]:
+    query = db.query(models.PredictionRun)
+    if crop:
+        query = query.filter(models.PredictionRun.crop.ilike(crop))
+    if model_version_id is not None:
+        query = query.filter(models.PredictionRun.model_version_id == model_version_id)
+    query = query.order_by(desc(models.PredictionRun.created_at))
+    return query.offset(skip).limit(limit).all()
+
+
 def get_predictions_by_field_season(
     db: Session, field_season_id: int
 ) -> List[models.ModelPrediction]:
