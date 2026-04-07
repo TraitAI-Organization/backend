@@ -235,6 +235,7 @@ class ModelVersion(Base):
 
     # Relationships
     predictions = relationship("ModelPrediction", back_populates="model_version")
+    prediction_runs = relationship("PredictionRun", back_populates="model_version")
     training_runs = relationship("TrainingRun", back_populates="model_version")
 
 
@@ -272,6 +273,50 @@ class ModelPrediction(Base):
         UniqueConstraint('field_season_id', 'model_version_id', name='uq_prediction_field_model'),
         Index('idx_model_predictions_field_season', 'field_season_id'),
         Index('idx_model_predictions_model', 'model_version_id'),
+    )
+
+
+class PredictionRun(Base):
+    """
+    Persisted ad-hoc prediction requests/responses (for wizard/history/analytics workflows).
+    """
+    __tablename__ = "prediction_runs"
+
+    prediction_run_id = Column(BigInteger, primary_key=True, index=True)
+
+    model_version_id = Column(Integer, ForeignKey("model_versions.model_version_id"), index=True)
+    model_version_tag = Column(String(100), nullable=False, index=True)
+
+    crop = Column(String(120), nullable=False, index=True)
+    variety = Column(String(200))
+    season = Column(Integer, index=True)
+    state = Column(String(50), index=True)
+    county = Column(String(100), index=True)
+    acres = Column(DECIMAL(10, 2))
+    lat = Column(DECIMAL(9, 6))
+    long = Column(DECIMAL(9, 6))
+    totalN_per_ac = Column(DECIMAL(8, 3))
+    totalP_per_ac = Column(DECIMAL(8, 3))
+    totalK_per_ac = Column(DECIMAL(8, 3))
+    water_applied_mm = Column(DECIMAL(8, 3))
+    event_count = Column(Integer)
+
+    predicted_yield = Column(DECIMAL(8, 3), nullable=False, index=True)
+    confidence_lower = Column(DECIMAL(8, 3))
+    confidence_upper = Column(DECIMAL(8, 3))
+
+    regional_comparison = Column(JSON)
+    feature_contributions = Column(JSON)
+    request_payload = Column(JSON, nullable=False)
+    response_payload = Column(JSON, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    model_version = relationship("ModelVersion", back_populates="prediction_runs")
+
+    __table_args__ = (
+        Index("idx_prediction_runs_model_created", "model_version_id", "created_at"),
+        Index("idx_prediction_runs_crop_season", "crop", "season"),
     )
 
 
