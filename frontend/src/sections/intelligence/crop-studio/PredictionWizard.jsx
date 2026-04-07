@@ -20,12 +20,12 @@ const steps = ['Model Selection', 'Prediction Inputs', 'Review Result'];
 
 const initialFormValues = {
   crop: '',
-  latitude: '37.567',
-  longitude: '-99.936',
-  totalN: '65.6',
-  totalP: '45.2',
-  totalK: '30.1',
-  acres: '47.07',
+  latitude: '',
+  longitude: '',
+  totalN: '',
+  totalP: '',
+  totalK: '',
+  acres: '',
   season: '',
   waterApplied: '',
   state: '',
