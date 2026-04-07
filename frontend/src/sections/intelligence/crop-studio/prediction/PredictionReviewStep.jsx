@@ -10,7 +10,7 @@ function formatNumber(value, decimals = 2) {
   return number.toFixed(decimals);
 }
 
-export default function PredictionReviewStep({ selectedModel, predictionResult }) {
+export default function PredictionReviewStep({ selectedModel, predictionResult, onOpenPredictionsTable }) {
   return (
     <Stack spacing={2.5}>
       <Typography variant="h6">Step 3: Review Prediction</Typography>
@@ -62,7 +62,7 @@ export default function PredictionReviewStep({ selectedModel, predictionResult }
       <Divider />
 
       <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
-        <Button variant="outlined" onClick={() => {}}>
+        <Button variant="outlined" onClick={() => onOpenPredictionsTable?.(predictionResult?.prediction_run_id ?? null)}>
           Predictions Table
         </Button>
       </Stack>
