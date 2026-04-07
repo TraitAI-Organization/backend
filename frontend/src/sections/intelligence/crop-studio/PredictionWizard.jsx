@@ -39,7 +39,7 @@ function toNullableNumber(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-export default function PredictionWizard() {
+export default function PredictionWizard({ onOpenPredictionsTable }) {
   const [activeStep, setActiveStep] = useState(0);
 
   const [models, setModels] = useState([]);
@@ -383,7 +383,11 @@ export default function PredictionWizard() {
 
         {activeStep === 2 ? (
           predictionResult ? (
-            <PredictionReviewStep selectedModel={selectedModel} predictionResult={predictionResult} />
+            <PredictionReviewStep
+              selectedModel={selectedModel}
+              predictionResult={predictionResult}
+              onOpenPredictionsTable={onOpenPredictionsTable}
+            />
           ) : (
             <Alert severity="warning">No prediction result is available yet.</Alert>
           )
