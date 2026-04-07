@@ -105,6 +105,26 @@ export default function FieldTable() {
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
   const headerBlue = `color-mix(in srgb, ${theme.palette.primary.main} 45%, ${theme.palette.background.paper})`;
+  const tableScrollbarSx = {
+    scrollbarWidth: 'thin',
+    scrollbarColor: `${alpha(theme.palette.primary.main, 0.65)} ${alpha(theme.palette.background.default, 0.8)}`,
+    '&::-webkit-scrollbar': {
+      width: 10,
+      height: 10
+    },
+    '&::-webkit-scrollbar-track': {
+      background: alpha(theme.palette.background.default, 0.85),
+      borderRadius: 8
+    },
+    '&::-webkit-scrollbar-thumb': {
+      background: alpha(theme.palette.primary.main, 0.65),
+      borderRadius: 8,
+      border: `2px solid ${alpha(theme.palette.background.default, 0.85)}`
+    },
+    '&::-webkit-scrollbar-thumb:hover': {
+      background: alpha(theme.palette.primary.main, 0.85)
+    }
+  };
   const [rows, setRows] = useState([]);
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('fieldId');
@@ -248,7 +268,8 @@ export default function FieldTable() {
             borderColor: accentBlue,
             borderRadius: 1,
             bgcolor: 'background.paper',
-            boxShadow: `0 10px 30px ${alpha(theme.palette.primary.main, 0.14)}`
+            boxShadow: `0 10px 30px ${alpha(theme.palette.primary.main, 0.14)}`,
+            ...tableScrollbarSx
           }}
         >
           <Table size="small" stickyHeader>
