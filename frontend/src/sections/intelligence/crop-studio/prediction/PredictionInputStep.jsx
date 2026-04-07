@@ -5,6 +5,10 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 export default function PredictionInputStep({ formValues, onChange, crops, varieties, seasons, states, counties }) {
+  const hasCrop = Boolean(formValues.crop);
+  const hasVarietiesForCrop = varieties.length > 0;
+  const isVarietyDisabled = !hasCrop || !hasVarietiesForCrop;
+
   return (
     <Stack spacing={2.5}>
       <Typography variant="h6">Step 2: Enter Prediction Inputs</Typography>
@@ -45,12 +49,18 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
               name="variety"
               value={formValues.variety}
               onChange={onChange}
-              disabled={!formValues.crop}
+              disabled={isVarietyDisabled}
+              helperText={hasCrop && !hasVarietiesForCrop ? 'No variety available for selected crop' : undefined}
               SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'Select a Variety..' }}
             >
               <MenuItem value="" disabled>
                 Select a Variety..
               </MenuItem>
+              {hasCrop && !hasVarietiesForCrop ? (
+                <MenuItem value="" disabled>
+                  No variety available for selected crop
+                </MenuItem>
+              ) : null}
               {varieties.map((variety) => (
                 <MenuItem key={variety} value={variety}>
                   {variety}
@@ -63,42 +73,42 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Latitude</Typography>
-            <TextField fullWidth name="latitude" placeholder="37.567" value={formValues.latitude} onChange={onChange} />
+            <TextField fullWidth name="latitude" placeholder="00.000" value={formValues.latitude} onChange={onChange} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Longitude</Typography>
-            <TextField fullWidth name="longitude" placeholder="-99.936" value={formValues.longitude} onChange={onChange} />
+            <TextField fullWidth name="longitude" placeholder="00.00000" value={formValues.longitude} onChange={onChange} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Total N (lb/ac)</Typography>
-            <TextField fullWidth name="totalN" placeholder="65.6" value={formValues.totalN} onChange={onChange} />
+            <TextField fullWidth name="totalN" placeholder="00.00" value={formValues.totalN} onChange={onChange} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Total P (lb/ac)</Typography>
-            <TextField fullWidth name="totalP" placeholder="45.2" value={formValues.totalP} onChange={onChange} />
+            <TextField fullWidth name="totalP" placeholder="00.00" value={formValues.totalP} onChange={onChange} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Total K (lb/ac)</Typography>
-            <TextField fullWidth name="totalK" placeholder="30.1" value={formValues.totalK} onChange={onChange} />
+            <TextField fullWidth name="totalK" placeholder="00.00" value={formValues.totalK} onChange={onChange} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Acres</Typography>
-            <TextField fullWidth name="acres" placeholder="47.07" value={formValues.acres} onChange={onChange} />
+            <TextField fullWidth name="acres" placeholder="00.00" value={formValues.acres} onChange={onChange} />
           </Stack>
         </Grid>
 
