@@ -99,6 +99,26 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
   const headerBlue = `color-mix(in srgb, ${theme.palette.primary.main} 45%, ${theme.palette.background.paper})`;
+  const tableScrollbarSx = {
+    scrollbarWidth: 'thin',
+    scrollbarColor: `${alpha(theme.palette.primary.main, 0.65)} ${alpha(theme.palette.background.default, 0.8)}`,
+    '&::-webkit-scrollbar': {
+      width: 10,
+      height: 10
+    },
+    '&::-webkit-scrollbar-track': {
+      background: alpha(theme.palette.background.default, 0.85),
+      borderRadius: 8
+    },
+    '&::-webkit-scrollbar-thumb': {
+      background: alpha(theme.palette.primary.main, 0.65),
+      borderRadius: 8,
+      border: `2px solid ${alpha(theme.palette.background.default, 0.85)}`
+    },
+    '&::-webkit-scrollbar-thumb:hover': {
+      background: alpha(theme.palette.primary.main, 0.85)
+    }
+  };
   const [predictionRuns, setPredictionRuns] = useState([]);
   const [selectedPredictionRunId, setSelectedPredictionRunId] = useState(null);
   const [analyzedPrediction, setAnalyzedPrediction] = useState(null);
@@ -187,7 +207,8 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               borderTop: 2,
               borderBottom: 2,
               borderColor: accentBlue,
-              boxShadow: `0 10px 30px ${alpha(theme.palette.primary.main, 0.12)}`
+              boxShadow: `0 10px 30px ${alpha(theme.palette.primary.main, 0.12)}`,
+              ...tableScrollbarSx
             }}
           >
             <Table stickyHeader size="small">
