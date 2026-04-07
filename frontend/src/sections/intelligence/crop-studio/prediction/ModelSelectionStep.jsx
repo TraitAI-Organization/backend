@@ -79,7 +79,6 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                         <Typography variant="subtitle1">{model.version_tag}</Typography>
                         {isSelected ? <Chip label="Selected" color="primary" size="small" /> : null}
-                        {model.is_production ? <Chip label="Current Production" color="success" size="small" /> : null}
                       </Stack>
                     }
                   />
