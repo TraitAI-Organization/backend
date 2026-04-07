@@ -211,6 +211,7 @@ class PredictionResponse(BaseSchema):
     predicted_yield: float
     confidence_interval: List[float]  # [lower, upper]
     model_version: str
+    prediction_run_id: Optional[int] = None
 
     # Regional comparison
     regional_comparison: Optional[Dict[str, Any]] = None
@@ -236,6 +237,35 @@ class MultiModelPredictionItem(BaseSchema):
 class MultiModelPredictionResponse(BaseSchema):
     request: Dict[str, Any]
     predictions: List[MultiModelPredictionItem]
+
+
+class PredictionRunResponse(BaseSchema):
+    prediction_run_id: int
+    model_version_id: Optional[int] = None
+    model_version_tag: str
+    crop: str
+    variety: Optional[str] = None
+    season: Optional[int] = None
+    state: Optional[str] = None
+    county: Optional[str] = None
+    acres: Optional[float] = None
+    lat: Optional[float] = None
+    long: Optional[float] = None
+    totalN_per_ac: Optional[float] = None
+    totalP_per_ac: Optional[float] = None
+    totalK_per_ac: Optional[float] = None
+    water_applied_mm: Optional[float] = None
+    event_count: Optional[int] = None
+    predicted_yield: float
+    confidence_lower: Optional[float] = None
+    confidence_upper: Optional[float] = None
+    regional_comparison: Optional[Dict[str, Any]] = None
+    feature_contributions: Optional[List[Dict[str, Any]]] = None
+    request_payload: Dict[str, Any]
+    response_payload: Dict[str, Any]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Model version schemas
