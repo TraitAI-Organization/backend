@@ -7,6 +7,7 @@ import Paper from '@mui/material/Paper';
 import Radio from '@mui/material/Radio';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { alpha, useTheme } from '@mui/material/styles';
 
 function formatTrainingDate(value) {
   if (!value) return 'Unknown training date';
@@ -16,6 +17,8 @@ function formatTrainingDate(value) {
 }
 
 export default function ModelSelectionStep({ models, selectedModelId, onSelect, isLoading, loadError, actionError }) {
+  const theme = useTheme();
+  const accentBlue = alpha(theme.palette.primary.main, 0.45);
   return (
     <Stack spacing={2}>
       <Typography variant="h6">Step 1: Select Prediction Model</Typography>
@@ -47,23 +50,35 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
           const metrics = model.performance_metrics || {};
           const rmse = metrics.rmse;
           const r2 = metrics.r2;
+          const isSelected = selectedModelId === model.model_version_id;
           return (
             <Paper
               key={model.model_version_id}
-              variant={selectedModelId === model.model_version_id ? 'elevation' : 'outlined'}
-              elevation={selectedModelId === model.model_version_id ? 3 : 0}
-              sx={{ p: 2, cursor: 'pointer' }}
+              variant="outlined"
+              sx={{
+                p: 2,
+                cursor: 'pointer',
+                borderWidth: 2,
+                borderColor: isSelected ? accentBlue : theme.palette.divider,
+                boxShadow: isSelected ? `0 0 0 1px ${accentBlue}` : 'none',
+                backgroundColor: isSelected ? alpha(theme.palette.primary.main, 0.08) : 'background.paper',
+                transition: 'border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background-color 180ms ease',
+                '&:hover': {
+                  borderColor: accentBlue,
+                  boxShadow: `0 4px 14px ${alpha(theme.palette.primary.main, 0.2)}`,
+                  transform: 'translateY(-2px)'
+                }
+              }}
               onClick={() => onSelect(model.model_version_id)}
             >
               <Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
                 <Stack spacing={0.75}>
                   <FormControlLabel
-                    control={
-                      <Radio checked={selectedModelId === model.model_version_id} onChange={() => onSelect(model.model_version_id)} />
-                    }
+                    control={<Radio checked={isSelected} onChange={() => onSelect(model.model_version_id)} />}
                     label={
                       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                         <Typography variant="subtitle1">{model.version_tag}</Typography>
+                        {isSelected ? <Chip label="Selected" color="primary" size="small" /> : null}
                         {model.is_production ? <Chip label="Current Production" color="success" size="small" /> : null}
                       </Stack>
                     }
