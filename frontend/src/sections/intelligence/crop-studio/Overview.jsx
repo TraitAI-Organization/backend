@@ -47,7 +47,9 @@ export default function Overview() {
       total_predictions: 0,
       predicted_yield_avg: 0,
       predicted_yield_min: 0,
-      predicted_yield_max: 0
+      predicted_yield_max: 0,
+      field_predictions_total: 0,
+      prediction_runs_total: 0
     }
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -83,7 +85,9 @@ export default function Overview() {
             total_predictions: payload?.prediction_stats?.total_predictions || 0,
             predicted_yield_avg: Number(payload?.prediction_stats?.predicted_yield_avg) || 0,
             predicted_yield_min: Number(payload?.prediction_stats?.predicted_yield_min) || 0,
-            predicted_yield_max: Number(payload?.prediction_stats?.predicted_yield_max) || 0
+            predicted_yield_max: Number(payload?.prediction_stats?.predicted_yield_max) || 0,
+            field_predictions_total: payload?.prediction_stats?.field_predictions_total || 0,
+            prediction_runs_total: payload?.prediction_stats?.prediction_runs_total || 0
           }
         });
       } catch (error) {
@@ -218,7 +222,11 @@ export default function Overview() {
           <Stack spacing={0.5}>
             <Typography variant="h6">Prediction Statistics</Typography>
             <Typography variant="caption" color="text.secondary">
-              Aggregates from stored model predictions in the system.
+              Live aggregates from field-level predictions and saved prediction runs.
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Sources: {(predStats.field_predictions_total || 0).toLocaleString()} field predictions,{' '}
+              {(predStats.prediction_runs_total || 0).toLocaleString()} prediction runs.
             </Typography>
           </Stack>
 
