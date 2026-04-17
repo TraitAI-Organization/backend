@@ -680,26 +680,61 @@ def get_overview_stats(db: Session) -> Dict[str, Any]:
         func.avg(models.FieldSeason.yield_bu_ac),
     ).filter(models.FieldSeason.yield_bu_ac.isnot(None)).first()
 
-    # Prediction statistics (from stored model predictions)
+    # Prediction statistics:
+    # - model_predictions: field-season level predictions (used for coverage)
+    # - prediction_runs: ad-hoc saved prediction requests (wizard/history)
     field_seasons_with_predictions = (
-        db.query(func.count(func.distinct(models.ModelPrediction.field_season_id)))
-        .scalar() or 0
+        db.query(func.count(func.distinct(models.ModelPrediction.field_season_id))).scalar() or 0
     )
-    total_predictions = db.query(func.count(models.ModelPrediction.prediction_id)).scalar() or 0
-    pred_range = (
+    field_predictions_total = db.query(func.count(models.ModelPrediction.prediction_id)).scalar() or 0
+    field_pred_range = (
         db.query(
             func.min(models.ModelPrediction.predicted_yield),
             func.max(models.ModelPrediction.predicted_yield),
             func.avg(models.ModelPrediction.predicted_yield),
-        )
-        .first()
+        ).first()
     )
+
+    prediction_runs_total = db.query(func.count(models.PredictionRun.prediction_run_id)).scalar() or 0
+    run_pred_range = (
+        db.query(
+            func.min(models.PredictionRun.predicted_yield),
+            func.max(models.PredictionRun.predicted_yield),
+            func.avg(models.PredictionRun.predicted_yield),
+        ).first()
+    )
+
+    field_min = float(field_pred_range[0]) if field_pred_range and field_pred_range[0] is not None else None
+    field_max = float(field_pred_range[1]) if field_pred_range and field_pred_range[1] is not None else None
+    field_avg = float(field_pred_range[2]) if field_pred_range and field_pred_range[2] is not None else None
+
+    run_min = float(run_pred_range[0]) if run_pred_range and run_pred_range[0] is not None else None
+    run_max = float(run_pred_range[1]) if run_pred_range and run_pred_range[1] is not None else None
+    run_avg = float(run_pred_range[2]) if run_pred_range and run_pred_range[2] is not None else None
+
+    total_predictions = int(field_predictions_total) + int(prediction_runs_total)
+
+    min_candidates = [v for v in [field_min, run_min] if v is not None]
+    max_candidates = [v for v in [field_max, run_max] if v is not None]
+
+    weighted_sum = 0.0
+    if field_avg is not None and field_predictions_total:
+        weighted_sum += field_avg * int(field_predictions_total)
+    if run_avg is not None and prediction_runs_total:
+        weighted_sum += run_avg * int(prediction_runs_total)
+
+    combined_avg = (weighted_sum / total_predictions) if total_predictions else 0.0
+    combined_min = min(min_candidates) if min_candidates else 0.0
+    combined_max = max(max_candidates) if max_candidates else 0.0
+
     prediction_stats = {
         "field_seasons_with_predictions": field_seasons_with_predictions,
         "total_predictions": total_predictions,
-        "predicted_yield_min": float(pred_range[0]) if pred_range and pred_range[0] is not None else 0.0,
-        "predicted_yield_max": float(pred_range[1]) if pred_range and pred_range[1] is not None else 0.0,
-        "predicted_yield_avg": float(pred_range[2]) if pred_range and pred_range[2] is not None else 0.0,
+        "predicted_yield_min": combined_min,
+        "predicted_yield_max": combined_max,
+        "predicted_yield_avg": combined_avg,
+        "field_predictions_total": int(field_predictions_total),
+        "prediction_runs_total": int(prediction_runs_total),
     }
 
     return {
