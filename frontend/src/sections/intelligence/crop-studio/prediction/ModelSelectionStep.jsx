@@ -16,6 +16,28 @@ function formatTrainingDate(value) {
   return date.toLocaleDateString();
 }
 
+function getModelNarrative(modelType) {
+  const normalized = String(modelType || '').toLowerCase();
+
+  if (normalized.includes('deep') || normalized.includes('pytorch')) {
+    return {
+      title: 'Deep Learning Model',
+      description:
+        'A flexible model that can capture complex relationships in the data. It may perform better when patterns are nonlinear or when combining many inputs, but can be less transparent in how predictions are made.'
+    };
+  }
+
+  if (normalized.includes('catboost')) {
+    return {
+      title: 'CatBoost Model',
+      description:
+        'A gradient boosting model that is well-suited for structured data like field and management records. It is typically more interpretable and stable, making it a strong choice for understanding which factors are driving predictions.'
+    };
+  }
+
+  return null;
+}
+
 export default function ModelSelectionStep({ models, selectedModelId, onSelect, isLoading, loadError, actionError }) {
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
@@ -51,6 +73,7 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
           const rmse = metrics.rmse;
           const r2 = metrics.r2;
           const isSelected = selectedModelId === model.model_version_id;
+          const modelNarrative = getModelNarrative(model.model_type);
           return (
             <Paper
               key={model.model_version_id}
@@ -82,9 +105,14 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                       </Stack>
                     }
                   />
-                  <Typography variant="body2" color="text.secondary">
-                    Type: {model.model_type || 'Unknown'}
-                  </Typography>
+
+                  {modelNarrative ? (
+                    <Box sx={{ mt: 0.5 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {modelNarrative.description}
+                      </Typography>
+                    </Box>
+                  ) : null}
                   <Typography variant="body2" color="text.secondary">
                     Trained: {formatTrainingDate(model.training_date)}
                   </Typography>
