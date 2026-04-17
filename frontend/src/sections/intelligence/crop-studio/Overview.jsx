@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { alpha, useTheme } from '@mui/material/styles';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
@@ -10,6 +11,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import MainCard from 'components/MainCard';
+import wheatHero from 'assets/images/overview/wheat.webp';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
@@ -32,6 +34,7 @@ function MetricTile({ label, value, helper }) {
 }
 
 export default function Overview() {
+  const theme = useTheme();
   const [overview, setOverview] = useState({
     total_field_seasons: 0,
     total_fields: 0,
@@ -112,6 +115,49 @@ export default function Overview() {
   return (
     <MainCard title="Overview">
       <Stack spacing={2.5}>
+        <Paper
+          variant="outlined"
+          sx={{
+            position: 'relative',
+            overflow: 'hidden',
+            borderColor: alpha(theme.palette.primary.main, 0.45),
+            background: `linear-gradient(140deg, ${alpha(theme.palette.primary.dark, 0.36)} 0%, ${alpha(theme.palette.primary.main, 0.2)} 100%)`
+          }}
+        >
+          <Grid container spacing={0}>
+            <Grid size={{ xs: 12, md: 7 }}>
+              <Stack spacing={1.5} sx={{ p: { xs: 2, md: 3 } }}>
+                <Typography variant="h4">Wheat Trait Intelligence</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 580 }}>
+                  Track crop performance, model coverage, and yield signals in one view. This dashboard blends observed field outcomes with
+                  machine-learning predictions to help prioritize decisions quickly.
+                </Typography>
+                <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                  <Chip label="Wheat-focused analytics" size="small" sx={{ bgcolor: alpha(theme.palette.primary.main, 0.2) }} />
+                  <Chip label="Live backend metrics" size="small" sx={{ bgcolor: alpha(theme.palette.primary.main, 0.2) }} />
+                  <Chip label="Prediction readiness" size="small" sx={{ bgcolor: alpha(theme.palette.primary.main, 0.2) }} />
+                </Stack>
+              </Stack>
+            </Grid>
+            <Grid size={{ xs: 12, md: 5 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', p: { xs: 1.5, md: 1.5 }, pt: 0 }}>
+                <Box
+                  component="img"
+                  src={wheatHero}
+                  alt="Stylized wheat field graphic"
+                  sx={{
+                    width: '100%',
+                    maxWidth: 430,
+                    borderRadius: 2,
+                    opacity: 0.92,
+                    filter: `drop-shadow(0 10px 20px ${alpha(theme.palette.common.black, 0.28)})`
+                  }}
+                />
+              </Box>
+            </Grid>
+          </Grid>
+        </Paper>
+
         <Stack spacing={0.75}>
           {/* <Typography variant="h5">Project Overview</Typography> */}
           <Typography variant="body2" color="text.primary">
