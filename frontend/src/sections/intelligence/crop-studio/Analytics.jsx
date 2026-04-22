@@ -23,6 +23,8 @@ import { BarChart } from '@mui/x-charts';
 import MainCard from 'components/MainCard';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
+const NUTRIENT_CATEGORIES = ['N (lb/ac)', 'P (lb/ac)', 'K (lb/ac)'];
+const YIELD_CATEGORIES = ['Lower CI', 'Predicted', 'Upper CI', 'Regional Avg'];
 
 function toNumberOrNull(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -78,15 +80,48 @@ async function fetchPredictionRuns(signal) {
 }
 
 function MetricCard({ label, value, helper }) {
+  const theme = useTheme();
   return (
-    <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-      <Stack spacing={0.5}>
-        <Typography variant="caption" color="text.secondary">
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 2,
+        height: '100%',
+        bgcolor: alpha(theme.palette.grey[500], 0.12),
+        borderColor: alpha(theme.palette.grey[400], 0.45)
+      }}
+    >
+      <Stack spacing={0.75}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: alpha(theme.palette.primary.light, 0.92),
+            fontWeight: 600,
+            letterSpacing: '0.02em',
+            textTransform: 'uppercase',
+            textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
+          }}
+        >
           {label}
         </Typography>
-        <Typography variant="h6">{value}</Typography>
+        <Typography
+          variant="h6"
+          sx={{
+            color: theme.palette.common.white,
+            fontWeight: 700,
+            lineHeight: 1.2
+          }}
+        >
+          {value}
+        </Typography>
         {helper ? (
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            sx={{
+              color: alpha(theme.palette.grey[300], 0.92),
+              fontWeight: 500
+            }}
+          >
             {helper}
           </Typography>
         ) : null}
@@ -99,6 +134,17 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
   const headerBlue = `color-mix(in srgb, ${theme.palette.primary.main} 45%, ${theme.palette.background.paper})`;
+  const rowSurface = alpha(theme.palette.grey[500], 0.12);
+  const graphCardSurface = alpha(theme.palette.grey[500], 0.12);
+  const graphCardHeaderSurface = alpha(theme.palette.grey[500], 0.16);
+  const graphCardBorder = alpha(theme.palette.grey[400], 0.45);
+  const chartBarSx = {
+    '& .MuiBarElement-root': {
+      stroke: alpha(theme.palette.grey[100], 0.45),
+      strokeWidth: 1,
+      filter: `drop-shadow(0 0 4px ${alpha(theme.palette.primary.main, 0.2)})`
+    }
+  };
   const tableScrollbarSx = {
     scrollbarWidth: 'thin',
     scrollbarColor: `${alpha(theme.palette.primary.main, 0.65)} ${alpha(theme.palette.background.default, 0.8)}`,
@@ -124,6 +170,8 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   const [analyzedPrediction, setAnalyzedPrediction] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const nutrientBarColors = [theme.palette.primary.light, theme.palette.primary.main, theme.palette.primary.dark];
+  const yieldBarColors = [theme.palette.warning.main, theme.palette.error.main, theme.palette.info.main, theme.palette.secondary.main];
 
   useEffect(() => {
     const controller = new AbortController();
@@ -183,7 +231,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   };
 
   return (
-    <MainCard title="Analytics">
+    <MainCard title="Prediction Analytics">
       <Stack spacing={2.5}>
         <Typography variant="body1" color="text.primary">
           Select a saved prediction from the table, then run analysis using the exact values used for that prediction.
@@ -192,13 +240,6 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
         {loadError ? <Alert severity="error">{loadError}</Alert> : null}
 
         <Paper variant="outlined">
-          <Stack spacing={1.5} sx={{ p: 2 }}>
-            <Typography variant="h6">Predictions Table</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Only one prediction can be selected at a time.
-            </Typography>
-          </Stack>
-
           {isLoading ? <LinearProgress /> : null}
 
           <TableContainer
@@ -242,7 +283,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               </TableHead>
               <TableBody>
                 {!isLoading && predictionRuns.length === 0 ? (
-                  <TableRow>
+                  <TableRow sx={{ bgcolor: rowSurface }}>
                     <TableCell colSpan={14}>
                       <Stack spacing={0.5} sx={{ py: 1 }}>
                         <Typography variant="body2">No saved predictions found.</Typography>
@@ -262,7 +303,13 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                       hover
                       selected={isSelected}
                       onClick={() => setSelectedPredictionRunId(row.predictionRunId)}
-                      sx={{ cursor: 'pointer' }}
+                      sx={{
+                        cursor: 'pointer',
+                        bgcolor: rowSurface,
+                        '&:hover': {
+                          bgcolor: alpha(theme.palette.primary.main, 0.14)
+                        }
+                      }}
                     >
                       <TableCell padding="checkbox">
                         <Radio checked={isSelected} onChange={() => setSelectedPredictionRunId(row.predictionRunId)} />
@@ -288,7 +335,17 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
           </TableContainer>
 
           <Stack direction="row" sx={{ justifyContent: 'flex-end', p: 2 }}>
-            <Button variant="contained" disabled={!selectedPrediction || isLoading} onClick={handleAnalyzePrediction}>
+            <Button
+              variant="contained"
+              disabled={!selectedPrediction || isLoading}
+              onClick={handleAnalyzePrediction}
+              sx={{
+                '&.Mui-disabled': {
+                  backgroundColor: theme.palette.grey[500],
+                  color: alpha(theme.palette.text.primary, 0.5)
+                }
+              }}
+            >
               Analyze Prediction
             </Button>
           </Stack>
@@ -297,12 +354,27 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
         <Divider />
 
         {!analyzedPrediction ? (
-          <Alert severity="info">
-            Select one prediction from the table above and click <strong>Analyze Prediction</strong> to populate this section.
+          <Alert
+            severity="success"
+            variant="outlined"
+            sx={{
+              backgroundColor: alpha(theme.palette.success.light, 0.12),
+              borderColor: alpha(theme.palette.success.main, 0.28),
+              color: theme.palette.success.main,
+              '& .MuiAlert-icon': {
+                color: alpha(theme.palette.success.main, 0.85)
+              },
+              '& .MuiAlert-message strong': {
+                color: theme.palette.primary.main
+              }
+            }}
+          >
+            Select one prediction from the table above and click <strong>Analyze Prediction</strong> to view analytics for the selected
+            prediction.
           </Alert>
         ) : (
           <Stack spacing={2.5}>
-            <Typography variant="h6">Prediction Analysis</Typography>
+            <Typography variant="h5">Prediction Analysis</Typography>
 
             <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
               <Chip label={`Prediction #${analyzedPrediction.predictionRunId}`} color="primary" />
@@ -334,22 +406,72 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
 
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, lg: 6 }}>
-                <MainCard title="Nutrient Inputs" content={false}>
+                <MainCard
+                  title="Nutrient Inputs"
+                  content={false}
+                  sx={{
+                    bgcolor: graphCardSurface,
+                    border: `1px solid ${graphCardBorder}`,
+                    '& .MuiCardHeader-root': {
+                      bgcolor: graphCardHeaderSurface,
+                      borderBottom: `1px solid ${graphCardBorder}`
+                    },
+                    '& .MuiCardHeader-title': {
+                      color: alpha(theme.palette.primary.light, 0.92),
+                      fontWeight: 600,
+                      letterSpacing: '0.02em',
+                      textTransform: 'uppercase',
+                      textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
+                    }
+                  }}
+                >
                   <Box sx={{ p: 2 }}>
                     <BarChart
                       height={280}
-                      xAxis={[{ scaleType: 'band', data: ['N (lb/ac)', 'P (lb/ac)', 'K (lb/ac)'] }]}
+                      sx={chartBarSx}
+                      xAxis={[
+                        {
+                          scaleType: 'band',
+                          data: NUTRIENT_CATEGORIES,
+                          colorMap: { type: 'ordinal', values: NUTRIENT_CATEGORIES, colors: nutrientBarColors }
+                        }
+                      ]}
                       series={[{ data: nutrientSeries, label: 'Input Amount' }]}
                     />
                   </Box>
                 </MainCard>
               </Grid>
               <Grid size={{ xs: 12, lg: 6 }}>
-                <MainCard title="Yield Context" content={false}>
+                <MainCard
+                  title="Yield Context"
+                  content={false}
+                  sx={{
+                    bgcolor: graphCardSurface,
+                    border: `1px solid ${graphCardBorder}`,
+                    '& .MuiCardHeader-root': {
+                      bgcolor: graphCardHeaderSurface,
+                      borderBottom: `1px solid ${graphCardBorder}`
+                    },
+                    '& .MuiCardHeader-title': {
+                      color: alpha(theme.palette.primary.light, 0.92),
+                      fontWeight: 600,
+                      letterSpacing: '0.02em',
+                      textTransform: 'uppercase',
+                      textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
+                    }
+                  }}
+                >
                   <Box sx={{ p: 2 }}>
                     <BarChart
                       height={280}
-                      xAxis={[{ scaleType: 'band', data: ['Lower CI', 'Predicted', 'Upper CI', 'Regional Avg'] }]}
+                      sx={chartBarSx}
+                      xAxis={[
+                        {
+                          scaleType: 'band',
+                          data: YIELD_CATEGORIES,
+                          colorMap: { type: 'ordinal', values: YIELD_CATEGORIES, colors: yieldBarColors }
+                        }
+                      ]}
                       series={[{ data: yieldContextSeries, label: 'Yield (bu/ac)' }]}
                     />
                   </Box>
@@ -357,14 +479,32 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               </Grid>
             </Grid>
 
-            <Paper variant="outlined" sx={{ p: 2 }}>
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 2,
+                bgcolor: graphCardSurface,
+                borderColor: graphCardBorder
+              }}
+            >
               <Stack spacing={0.75}>
-                <Typography variant="subtitle2">Prediction Inputs Used</Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                  variant="subtitle2"
+                  sx={{
+                    color: alpha(theme.palette.primary.light, 0.92),
+                    fontWeight: 600,
+                    letterSpacing: '0.02em',
+                    textTransform: 'uppercase',
+                    textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
+                  }}
+                >
+                  Prediction Inputs Used
+                </Typography>
+                <Typography variant="body2" sx={{ color: alpha(theme.palette.grey[200], 0.92), fontWeight: 500 }}>
                   State: {analyzedPrediction.state || '—'} | County: {analyzedPrediction.county || '—'} | Season:{' '}
                   {analyzedPrediction.season ?? '—'} | Acres: {formatNumber(analyzedPrediction.acres)}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: alpha(theme.palette.grey[300], 0.9), fontWeight: 500 }}>
                   Water Applied: {formatNumber(analyzedPrediction.waterApplied)} mm
                 </Typography>
               </Stack>

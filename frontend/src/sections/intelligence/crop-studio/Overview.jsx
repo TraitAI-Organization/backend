@@ -16,15 +16,48 @@ import wheatHero from 'assets/images/overview/wheat.webp';
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
 function MetricTile({ label, value, helper }) {
+  const theme = useTheme();
   return (
-    <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 2,
+        height: '100%',
+        bgcolor: alpha(theme.palette.grey[500], 0.12),
+        borderColor: alpha(theme.palette.grey[400], 0.45)
+      }}
+    >
       <Stack spacing={0.75}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          sx={{
+            color: alpha(theme.palette.primary.light, 0.92),
+            fontWeight: 600,
+            letterSpacing: '0.02em',
+            textTransform: 'uppercase',
+            textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
+          }}
+        >
           {label}
         </Typography>
-        <Typography variant="h4">{value}</Typography>
+        <Typography
+          variant="h4"
+          sx={{
+            color: theme.palette.common.white,
+            fontWeight: 700,
+            lineHeight: 1.2
+          }}
+        >
+          {value}
+        </Typography>
         {helper ? (
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            sx={{
+              color: alpha(theme.palette.grey[300], 0.92),
+              fontWeight: 500
+            }}
+          >
             {helper}
           </Typography>
         ) : null}
@@ -125,6 +158,7 @@ export default function Overview() {
             position: 'relative',
             overflow: 'hidden',
             borderColor: alpha(theme.palette.primary.main, 0.45),
+            bgcolor: alpha(theme.palette.grey[500], 0.16),
             background: `linear-gradient(140deg, ${alpha(theme.palette.primary.dark, 0.36)} 0%, ${alpha(theme.palette.primary.main, 0.2)} 100%)`
           }}
         >
@@ -163,11 +197,8 @@ export default function Overview() {
         </Paper>
 
         <Stack spacing={0.75}>
-          {/* <Typography variant="h5">Project Overview</Typography> */}
-          <Typography variant="body2" color="text.primary">
-            Summary Metrics (acres, fields, crops, seasons), observed yield range, and prediction statistics (coverage, avg predicted
-            yield).
-          </Typography>
+          <Typography variant="h5">Summary Metrics</Typography>
+
           {loadError ? (
             <Typography variant="caption" color="error.main">
               {loadError}
@@ -202,7 +233,7 @@ export default function Overview() {
         <Divider />
 
         <Stack spacing={1.5}>
-          <Typography variant="h6">Observed Yield Range</Typography>
+          <Typography variant="h5">Observed Yield Range</Typography>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 4 }}>
               <MetricTile label="Min Yield" value={`${overview.yield_range.min.toFixed(1)} bu/ac`} />
@@ -216,7 +247,7 @@ export default function Overview() {
           </Grid>
         </Stack>
 
-        <Divider />
+        {/* <Divider />
 
         <Stack spacing={1.5}>
           <Stack spacing={0.5}>
@@ -273,7 +304,7 @@ export default function Overview() {
               value={`${(predStats.predicted_yield_min || 0).toFixed(1)} - ${(predStats.predicted_yield_max || 0).toFixed(1)} bu/ac`}
             />
           </Box>
-        </Stack>
+        </Stack> */}
       </Stack>
     </MainCard>
   );

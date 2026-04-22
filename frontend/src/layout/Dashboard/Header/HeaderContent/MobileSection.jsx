@@ -7,6 +7,7 @@ import Paper from '@mui/material/Paper';
 import Popper from '@mui/material/Popper';
 import Toolbar from '@mui/material/Toolbar';
 import Box from '@mui/material/Box';
+import { alpha } from '@mui/material/styles';
 
 // project imports
 import Search from './Search';
@@ -50,7 +51,10 @@ export default function MobileSection() {
         <IconButton
           sx={(theme) => ({
             color: 'text.primary',
-            bgcolor: open ? 'grey.300' : 'grey.100',
+            bgcolor: open ? alpha(theme.palette.primary.main, 0.3) : 'transparent',
+            '&:hover': {
+              bgcolor: alpha(theme.palette.primary.main, 0.2)
+            }
           })}
           aria-label="open more menu"
           ref={anchorRef}

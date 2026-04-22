@@ -105,6 +105,7 @@ export default function FieldTable() {
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
   const headerBlue = `color-mix(in srgb, ${theme.palette.primary.main} 45%, ${theme.palette.background.paper})`;
+  const rowSurface = alpha(theme.palette.grey[500], 0.12);
   const tableScrollbarSx = {
     scrollbarWidth: 'thin',
     scrollbarColor: `${alpha(theme.palette.primary.main, 0.65)} ${alpha(theme.palette.background.default, 0.8)}`,
@@ -306,7 +307,16 @@ export default function FieldTable() {
 
             <TableBody>
               {sortedRows.map((row) => (
-                <TableRow key={row.rowId} hover>
+                <TableRow
+                  key={row.rowId}
+                  hover
+                  sx={{
+                    bgcolor: rowSurface,
+                    '&:hover': {
+                      bgcolor: alpha(theme.palette.primary.main, 0.14)
+                    }
+                  }}
+                >
                   <TableCell>{row.fieldId}</TableCell>
                   <TableCell>{row.crop}</TableCell>
                   <TableCell>{formatMetric(row.acres, 2)}</TableCell>
@@ -320,7 +330,7 @@ export default function FieldTable() {
                 </TableRow>
               ))}
               {!isLoading && sortedRows.length === 0 ? (
-                <TableRow>
+                <TableRow sx={{ bgcolor: rowSurface }}>
                   <TableCell colSpan={columns.length}>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
                       No records match the current search and filters.
@@ -329,7 +339,7 @@ export default function FieldTable() {
                 </TableRow>
               ) : null}
               {isLoading ? (
-                <TableRow>
+                <TableRow sx={{ bgcolor: rowSurface }}>
                   <TableCell colSpan={columns.length}>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
                       Loading field records...

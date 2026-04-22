@@ -41,6 +41,7 @@ function getModelNarrative(modelType) {
 export default function ModelSelectionStep({ models, selectedModelId, onSelect, isLoading, loadError, actionError }) {
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
+  const modelCardSurface = alpha(theme.palette.grey[500], 0.14);
   return (
     <Stack spacing={2}>
       <Typography variant="h6">Step 1: Select Prediction Model</Typography>
@@ -84,10 +85,11 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                 borderWidth: 2,
                 borderColor: isSelected ? accentBlue : theme.palette.divider,
                 boxShadow: isSelected ? `0 0 0 1px ${accentBlue}` : 'none',
-                backgroundColor: isSelected ? alpha(theme.palette.primary.main, 0.08) : 'background.paper',
+                backgroundColor: isSelected ? alpha(theme.palette.primary.main, 0.12) : modelCardSurface,
                 transition: 'border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background-color 180ms ease',
                 '&:hover': {
                   borderColor: accentBlue,
+                  backgroundColor: isSelected ? alpha(theme.palette.primary.main, 0.14) : alpha(theme.palette.grey[400], 0.2),
                   boxShadow: `0 4px 14px ${alpha(theme.palette.primary.main, 0.2)}`,
                   transform: 'translateY(-2px)'
                 }
