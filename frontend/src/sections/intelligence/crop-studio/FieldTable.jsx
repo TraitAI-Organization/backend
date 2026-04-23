@@ -396,6 +396,7 @@ export default function FieldTable() {
 
   const visibleRows = sortedRows;
   const hasActiveFilters = Boolean(filters.crop || filters.variety || filters.season || filters.state || filters.county);
+  const downloadLabel = hasActiveFilters ? 'Download Filtered CSV' : 'Download CSV';
 
   return (
     <MainCard title="Field Records">
@@ -650,7 +651,7 @@ export default function FieldTable() {
               }
             }}
           >
-            {isDownloading ? 'Downloading...' : 'Download CSV'}
+            {isDownloading ? 'Downloading...' : downloadLabel}
           </Button>
         </Stack>
 
