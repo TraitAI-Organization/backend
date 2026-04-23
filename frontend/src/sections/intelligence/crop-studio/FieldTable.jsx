@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
-import SearchOutlined from '@ant-design/icons/SearchOutlined';
-import InputAdornment from '@mui/material/InputAdornment';
 import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
+import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -21,6 +21,13 @@ import MainCard from 'components/MainCard';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 const DOWNLOAD_PAGE_SIZE = 500;
+const initialServerFilters = {
+  crop: '',
+  variety: '',
+  season: '',
+  state: '',
+  county: ''
+};
 
 const columns = [
   { id: 'fieldId', label: 'Field ID' },
@@ -68,11 +75,16 @@ function getComparator(order, orderBy) {
   return (a, b) => compareValues(a[orderBy], b[orderBy]);
 }
 
-async function fetchFieldRows(signal, page, limit) {
+async function fetchFieldRows(signal, page, limit, filters = initialServerFilters) {
   const params = new URLSearchParams({
     page: String(page + 1),
     limit: String(limit)
   });
+  if (filters.crop) params.set('crop', filters.crop);
+  if (filters.variety) params.set('variety', filters.variety);
+  if (filters.season) params.append('season', String(filters.season));
+  if (filters.state) params.set('state', filters.state);
+  if (filters.county) params.set('county', filters.county);
   const response = await fetch(`${API_BASE_URL}/fields?${params.toString()}`, { signal });
 
   if (!response.ok) {
@@ -106,10 +118,6 @@ function formatMetric(value, decimals = 1) {
   return value.toFixed(decimals);
 }
 
-function matchesSearch(row, normalizedSearch) {
-  return !normalizedSearch ? true : Object.values(row).some((value) => String(value).toLowerCase().includes(normalizedSearch));
-}
-
 export default function FieldTable() {
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
@@ -138,13 +146,149 @@ export default function FieldTable() {
   const [rows, setRows] = useState([]);
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('fieldId');
-  const [searchValue, setSearchValue] = useState('');
+  const [filters, setFilters] = useState(initialServerFilters);
+  const [cropOptions, setCropOptions] = useState([]);
+  const [varietyOptions, setVarietyOptions] = useState([]);
+  const [seasonOptions, setSeasonOptions] = useState([]);
+  const [stateOptions, setStateOptions] = useState([]);
+  const [countyOptions, setCountyOptions] = useState([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
   const [totalRows, setTotalRows] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFilterOptionsLoading, setIsFilterOptionsLoading] = useState(true);
+  const [isVarietyLoading, setIsVarietyLoading] = useState(false);
+  const [isCountyLoading, setIsCountyLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadFilterOptions = async () => {
+      setIsFilterOptionsLoading(true);
+      try {
+        const [cropsResponse, seasonsResponse, statesResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/fields/crops/`, { signal: controller.signal }),
+          fetch(`${API_BASE_URL}/fields/seasons/`, { signal: controller.signal }),
+          fetch(`${API_BASE_URL}/fields/states/`, { signal: controller.signal })
+        ]);
+
+        if (!cropsResponse.ok || !seasonsResponse.ok || !statesResponse.ok) {
+          throw new Error('Failed to load table filter options.');
+        }
+
+        const [cropsPayload, seasonsPayload, statesPayload] = await Promise.all([
+          cropsResponse.json(),
+          seasonsResponse.json(),
+          statesResponse.json()
+        ]);
+
+        const crops = Array.from(
+          new Set((Array.isArray(cropsPayload) ? cropsPayload : []).map((item) => item?.crop_name_en).filter(Boolean))
+        ).sort((a, b) => a.localeCompare(b));
+        const seasons = Array.from(
+          new Set((Array.isArray(seasonsPayload) ? seasonsPayload : []).map((item) => item?.season_year).filter((value) => value !== null))
+        ).sort((a, b) => Number(b) - Number(a));
+        const states = Array.from(
+          new Set((Array.isArray(statesPayload) ? statesPayload : []).map((item) => item?.state).filter(Boolean))
+        ).sort((a, b) => a.localeCompare(b));
+
+        setCropOptions(crops);
+        setSeasonOptions(seasons);
+        setStateOptions(states);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setLoadError(error.message || 'Failed to load table filter options.');
+          setCropOptions([]);
+          setSeasonOptions([]);
+          setStateOptions([]);
+        }
+      } finally {
+        setIsFilterOptionsLoading(false);
+      }
+    };
+
+    loadFilterOptions();
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadVarieties = async () => {
+      if (!filters.crop) {
+        setVarietyOptions([]);
+        return;
+      }
+
+      setIsVarietyLoading(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/fields/varieties/?crop=${encodeURIComponent(filters.crop)}`, {
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          throw new Error('Failed to load variety options.');
+        }
+
+        const payload = await response.json();
+        const varieties = Array.from(
+          new Set((Array.isArray(payload) ? payload : []).map((item) => item?.variety_name_en).filter(Boolean))
+        ).sort((a, b) => a.localeCompare(b));
+        setVarietyOptions(varieties);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setLoadError(error.message || 'Failed to load variety options.');
+          setVarietyOptions([]);
+        }
+      } finally {
+        setIsVarietyLoading(false);
+      }
+    };
+
+    loadVarieties();
+
+    return () => controller.abort();
+  }, [filters.crop]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadCounties = async () => {
+      if (!filters.state) {
+        setCountyOptions([]);
+        return;
+      }
+
+      setIsCountyLoading(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/fields/counties/?state=${encodeURIComponent(filters.state)}`, {
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          throw new Error('Failed to load county options.');
+        }
+
+        const payload = await response.json();
+        const counties = Array.from(
+          new Set((Array.isArray(payload) ? payload : []).map((item) => item?.county).filter(Boolean))
+        ).sort((a, b) => a.localeCompare(b));
+        setCountyOptions(counties);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setLoadError(error.message || 'Failed to load county options.');
+          setCountyOptions([]);
+        }
+      } finally {
+        setIsCountyLoading(false);
+      }
+    };
+
+    loadCounties();
+
+    return () => controller.abort();
+  }, [filters.state]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -153,7 +297,7 @@ export default function FieldTable() {
       setIsLoading(true);
       setLoadError('');
       try {
-        const result = await fetchFieldRows(controller.signal, page, rowsPerPage);
+        const result = await fetchFieldRows(controller.signal, page, rowsPerPage, filters);
         setRows(result.rows);
         setTotalRows(result.total);
       } catch (error) {
@@ -172,14 +316,9 @@ export default function FieldTable() {
     return () => {
       controller.abort();
     };
-  }, [page, rowsPerPage]);
+  }, [page, rowsPerPage, filters]);
 
-  const filteredRows = useMemo(() => {
-    const normalizedSearch = searchValue.trim().toLowerCase();
-    return rows.filter((row) => matchesSearch(row, normalizedSearch));
-  }, [rows, searchValue]);
-
-  const sortedRows = useMemo(() => [...filteredRows].sort(getComparator(order, orderBy)), [filteredRows, order, orderBy]);
+  const sortedRows = useMemo(() => [...rows].sort(getComparator(order, orderBy)), [rows, order, orderBy]);
 
   const handleRequestSort = (columnId) => {
     const isAsc = orderBy === columnId && order === 'asc';
@@ -195,15 +334,14 @@ export default function FieldTable() {
       let total = 0;
 
       do {
-        const result = await fetchFieldRows(undefined, currentPage, DOWNLOAD_PAGE_SIZE);
+        const result = await fetchFieldRows(undefined, currentPage, DOWNLOAD_PAGE_SIZE, filters);
         if (currentPage === 0) total = result.total;
         allRows.push(...result.rows);
         currentPage += 1;
         if (result.rows.length === 0) break;
       } while (allRows.length < total);
 
-      const normalizedSearch = searchValue.trim().toLowerCase();
-      const exportRows = allRows.filter((row) => matchesSearch(row, normalizedSearch)).sort(getComparator(order, orderBy));
+      const exportRows = allRows.sort(getComparator(order, orderBy));
 
       const header = columns.map((column) => column.label).join(',');
       const body = exportRows
@@ -241,12 +379,29 @@ export default function FieldTable() {
     setPage(0);
   };
 
+  const handleFilterChange = (name, value) => {
+    setFilters((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === 'crop') next.variety = '';
+      if (name === 'state') next.county = '';
+      return next;
+    });
+    setPage(0);
+  };
+
+  const clearAllFilters = () => {
+    setFilters(initialServerFilters);
+    setPage(0);
+  };
+
+  const visibleRows = sortedRows;
+  const hasActiveFilters = Boolean(filters.crop || filters.variety || filters.season || filters.state || filters.county);
+
   return (
     <MainCard title="Field Records">
       <Stack spacing={2}>
         <Typography variant="body1" color="text.primary">
-          Sortable, paginated table of field-season records (crop, acres, variety, season, location, observed yield, N/P/K) filtered by
-          topbar.
+          Use server-backed filters (crop, variety, season, state, county) to narrow records faster.
         </Typography>
         {loadError ? (
           <Typography variant="body2" color="error.main">
@@ -254,44 +409,119 @@ export default function FieldTable() {
           </Typography>
         ) : null}
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 1.5, justifyContent: 'space-between', alignItems: { sm: 'center' } }}>
+        <Stack direction="row" sx={{ width: '100%', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
           <TextField
-            value={searchValue}
-            onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Search records..."
+            select
             size="small"
-            sx={{
-              width: { xs: '100%', sm: 170 },
-              '& .MuiOutlinedInput-root': {
-                pr: 1
-              },
-              '& .MuiOutlinedInput-input': {
-                py: 0.75,
-                pl: 0.5,
-                pr: 0.75
-              },
-              '& .MuiInputAdornment-positionStart': {
-                mr: 0.5
-              }
+            value={filters.crop}
+            onChange={(event) => handleFilterChange('crop', event.target.value)}
+            disabled={isFilterOptionsLoading}
+            sx={{ minWidth: { xs: '100%', sm: 180 }, flex: '1 1 180px' }}
+            SelectProps={{
+              displayEmpty: true,
+              renderValue: (selected) => selected || 'All crops'
             }}
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchOutlined />
-                  </InputAdornment>
-                )
-              }
+          >
+            <MenuItem value="">All crops</MenuItem>
+            {cropOptions.map((crop) => (
+              <MenuItem key={crop} value={crop}>
+                {crop}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            size="small"
+            value={filters.variety}
+            onChange={(event) => handleFilterChange('variety', event.target.value)}
+            disabled={!filters.crop || isVarietyLoading}
+            sx={{ minWidth: { xs: '100%', sm: 180 }, flex: '1 1 180px' }}
+            SelectProps={{
+              displayEmpty: true,
+              renderValue: (selected) => selected || 'All varieties'
             }}
-          />
+          >
+            <MenuItem value="">All varieties</MenuItem>
+            {varietyOptions.map((variety) => (
+              <MenuItem key={variety} value={variety}>
+                {variety}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            size="small"
+            value={filters.season}
+            onChange={(event) => handleFilterChange('season', event.target.value)}
+            disabled={isFilterOptionsLoading}
+            sx={{ minWidth: { xs: '100%', sm: 140 }, flex: '1 1 140px' }}
+            SelectProps={{
+              displayEmpty: true,
+              renderValue: (selected) => (selected ? String(selected) : 'All seasons')
+            }}
+          >
+            <MenuItem value="">All seasons</MenuItem>
+            {seasonOptions.map((season) => (
+              <MenuItem key={season} value={String(season)}>
+                {season}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            size="small"
+            value={filters.state}
+            onChange={(event) => handleFilterChange('state', event.target.value)}
+            disabled={isFilterOptionsLoading}
+            sx={{ minWidth: { xs: '100%', sm: 160 }, flex: '1 1 160px' }}
+            SelectProps={{
+              displayEmpty: true,
+              renderValue: (selected) => selected || 'All states'
+            }}
+          >
+            <MenuItem value="">All states</MenuItem>
+            {stateOptions.map((state) => (
+              <MenuItem key={state} value={state}>
+                {state}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            size="small"
+            value={filters.county}
+            onChange={(event) => handleFilterChange('county', event.target.value)}
+            disabled={!filters.state || isCountyLoading}
+            sx={{ minWidth: { xs: '100%', sm: 160 }, flex: '1 1 160px' }}
+            SelectProps={{
+              displayEmpty: true,
+              renderValue: (selected) => selected || 'All counties'
+            }}
+          >
+            <MenuItem value="">All counties</MenuItem>
+            {countyOptions.map((county) => (
+              <MenuItem key={county} value={county}>
+                {county}
+              </MenuItem>
+            ))}
+          </TextField>
           <Button
             variant="outlined"
-            startIcon={<DownloadOutlined />}
-            onClick={handleDownload}
+            onClick={clearAllFilters}
+            disabled={!hasActiveFilters || isLoading}
             sx={{
               borderColor: accentBlue,
               color: theme.palette.primary.main,
               bgcolor: alpha(theme.palette.primary.main, 0.08),
+              minWidth: 120,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              ml: { lg: 'auto' },
+              '&.Mui-disabled': {
+                backgroundColor: theme.palette.grey[500],
+                color: alpha(theme.palette.text.primary, 0.5),
+                borderColor: 'transparent'
+              },
               '&:hover': {
                 borderColor: theme.palette.primary.main,
                 bgcolor: alpha(theme.palette.primary.main, 0.2),
@@ -299,7 +529,7 @@ export default function FieldTable() {
               }
             }}
           >
-            {isDownloading ? 'Downloading...' : 'Download'}
+            Clear Filters
           </Button>
         </Stack>
 
@@ -350,7 +580,7 @@ export default function FieldTable() {
             </TableHead>
 
             <TableBody>
-              {sortedRows.map((row) => (
+              {visibleRows.map((row) => (
                 <TableRow
                   key={row.rowId}
                   hover
@@ -373,20 +603,20 @@ export default function FieldTable() {
                   <TableCell>{formatMetric(row.k)}</TableCell>
                 </TableRow>
               ))}
-              {!isLoading && sortedRows.length === 0 ? (
+              {!isLoading && visibleRows.length === 0 ? (
                 <TableRow sx={{ bgcolor: rowSurface }}>
                   <TableCell colSpan={columns.length}>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                      No records match the current search and filters.
+                      No records match the current filters.
                     </Typography>
                   </TableCell>
                 </TableRow>
               ) : null}
-              {isLoading ? (
+              {isLoading && visibleRows.length === 0 ? (
                 <TableRow sx={{ bgcolor: rowSurface }}>
                   <TableCell colSpan={columns.length}>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                      Loading field records...
+                      Loading field records for selected filters...
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -394,6 +624,35 @@ export default function FieldTable() {
             </TableBody>
           </Table>
         </TableContainer>
+
+        <Stack direction="row" sx={{ width: '100%', gap: 1.25, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          {!isLoading ? (
+            <Chip
+              size="small"
+              color="default"
+              variant="outlined"
+              label={`${sortedRows.length} shown on page ${page + 1} (${totalRows.toLocaleString()} total)`}
+            />
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Loading records...
+            </Typography>
+          )}
+          <Button
+            variant="contained"
+            startIcon={<DownloadOutlined />}
+            onClick={handleDownload}
+            disabled={isDownloading || isLoading}
+            sx={{
+              '&.Mui-disabled': {
+                backgroundColor: theme.palette.grey[500],
+                color: alpha(theme.palette.text.primary, 0.5)
+              }
+            }}
+          >
+            {isDownloading ? 'Downloading...' : 'Download CSV'}
+          </Button>
+        </Stack>
 
         <TablePagination
           component="div"
@@ -403,6 +662,7 @@ export default function FieldTable() {
           rowsPerPage={rowsPerPage}
           onRowsPerPageChange={handleChangeRowsPerPage}
           rowsPerPageOptions={[25, 50, 100, 250, 500]}
+          sx={{ mt: -0.75 }}
         />
       </Stack>
     </MainCard>
