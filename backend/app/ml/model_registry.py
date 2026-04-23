@@ -41,6 +41,22 @@ class ModelRegistry:
         # Ensure models directory exists
         os.makedirs(self.models_dir, exist_ok=True)
 
+    @staticmethod
+    def _normalize_model_type(value: Optional[str]) -> str:
+        """Normalize model-type labels from DB/params to stable internal values."""
+        if not value:
+            return ""
+        normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "deep_learning": "deep_learning_pytorch",
+            "deeplearning": "deep_learning_pytorch",
+            "deep_learning_model": "deep_learning_pytorch",
+            "pytorch": "deep_learning_pytorch",
+            "torch": "deep_learning_pytorch",
+            "cat_boost": "catboost",
+        }
+        return aliases.get(normalized, normalized)
+
     def _resolve_version_dir(self, version_tag: str) -> str:
         """
         Resolve a model directory for version_tag.
@@ -196,9 +212,69 @@ class ModelRegistry:
         with open(params_path, 'r') as f:
             params = json.load(f)
 
-        # Load model artifact by format
+        # Determine expected runtime model type using all available metadata.
+        db_row = (
+            self.db.query(crud.models.ModelVersion)
+            .filter(crud.models.ModelVersion.version_tag == version_tag)
+            .first()
+        )
+        declared_types = {
+            self._normalize_model_type(db_row.model_type if db_row else None),
+            self._normalize_model_type(params.get("model_type") if isinstance(params, dict) else None),
+            self._normalize_model_type(preprocessing.get("external_model_type") if isinstance(preprocessing, dict) else None),
+        }
+        declared_types.discard("")
+
+        deep_types = {"deep_learning_pytorch"}
+        catboost_types = {"catboost"}
+        wants_deep = any(t in deep_types for t in declared_types)
+        wants_catboost = any(t in catboost_types for t in declared_types)
+
+        # Load model artifact by format. Prefer artifact matching declared model_type.
         artifact_format = "joblib_pkl"
-        if os.path.exists(model_path):
+        if wants_deep and os.path.exists(pytorch_model_path):
+            from app.ml.torch_runtime import load_torch_tabular_model
+
+            model = load_torch_tabular_model(
+                version_dir=version_dir,
+                feature_list=feature_list,
+                preprocessing={
+                    **(preprocessing or {}),
+                    **(params if isinstance(params, dict) else {}),
+                },
+            )
+            artifact_format = "pytorch_pth"
+        elif wants_catboost and os.path.exists(catboost_model_path):
+            try:
+                from catboost import CatBoostRegressor
+            except ImportError as e:
+                raise ImportError(
+                    "CatBoost model detected but catboost is not installed. "
+                    "Install `catboost` in backend requirements."
+                ) from e
+            model = CatBoostRegressor()
+            model.load_model(catboost_model_path)
+            artifact_format = "catboost_cbm"
+        elif wants_deep and not os.path.exists(pytorch_model_path):
+            raise FileNotFoundError(
+                f"Model version '{version_tag}' is marked deep learning ({sorted(declared_types)}), "
+                f"but expected artifact is missing: {pytorch_model_path}"
+            )
+        elif wants_catboost and not os.path.exists(catboost_model_path):
+            if os.path.exists(model_path):
+                logger.warning(
+                    "Model version %s is marked catboost (%s) but model.cbm is missing; "
+                    "falling back to model.pkl",
+                    version_tag,
+                    sorted(declared_types),
+                )
+                model = joblib.load(model_path)
+            else:
+                raise FileNotFoundError(
+                    f"Model version '{version_tag}' is marked catboost ({sorted(declared_types)}), "
+                    f"but expected artifact is missing: {catboost_model_path}"
+                )
+        elif os.path.exists(model_path):
             model = joblib.load(model_path)
         elif os.path.exists(catboost_model_path):
             try:
@@ -230,6 +306,7 @@ class ModelRegistry:
             'metrics': metrics,
             'params': params,
             'artifact_format': artifact_format,
+            'declared_model_types': sorted(declared_types),
         }
 
         logger.info(f"Model {version_tag} loaded successfully.")
