@@ -39,6 +39,12 @@ function toNullableNumber(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function withNumericIfPresent(target, key, value) {
+  if (value !== null && value !== undefined) {
+    target[key] = value;
+  }
+}
+
 export default function PredictionWizard({ onOpenPredictionsTable }) {
   const [activeStep, setActiveStep] = useState(0);
 
@@ -221,20 +227,24 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     }));
   };
 
-  const buildPredictionPayload = () => ({
-    crop: formValues.crop,
-    variety: formValues.variety || null,
-    acres: toNullableNumber(formValues.acres),
-    lat: toNullableNumber(formValues.latitude),
-    long: toNullableNumber(formValues.longitude),
-    season: toNullableNumber(formValues.season),
-    totalN_per_ac: toNullableNumber(formValues.totalN),
-    totalP_per_ac: toNullableNumber(formValues.totalP),
-    totalK_per_ac: toNullableNumber(formValues.totalK),
-    water_applied_mm: toNullableNumber(formValues.waterApplied),
-    state: formValues.state || null,
-    county: formValues.county || null
-  });
+  const buildPredictionPayload = () => {
+    const payload = { crop: formValues.crop };
+
+    if (formValues.variety) payload.variety = formValues.variety;
+    if (formValues.state) payload.state = formValues.state;
+    if (formValues.county) payload.county = formValues.county;
+
+    withNumericIfPresent(payload, 'acres', toNullableNumber(formValues.acres));
+    withNumericIfPresent(payload, 'lat', toNullableNumber(formValues.latitude));
+    withNumericIfPresent(payload, 'long', toNullableNumber(formValues.longitude));
+    withNumericIfPresent(payload, 'season', toNullableNumber(formValues.season));
+    withNumericIfPresent(payload, 'totalN_per_ac', toNullableNumber(formValues.totalN));
+    withNumericIfPresent(payload, 'totalP_per_ac', toNullableNumber(formValues.totalP));
+    withNumericIfPresent(payload, 'totalK_per_ac', toNullableNumber(formValues.totalK));
+    withNumericIfPresent(payload, 'water_applied_mm', toNullableNumber(formValues.waterApplied));
+
+    return payload;
+  };
 
   const setProductionModel = async () => {
     if (!selectedModelId) {
@@ -276,7 +286,11 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
       throw new Error(`Prediction request failed (${response.status}): ${errorText}`);
     }
 
-    return response.json();
+    const result = await response.json();
+    return {
+      ...result,
+      request_payload: payload
+    };
   };
 
   const handleContinue = async () => {
@@ -386,6 +400,7 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
             <PredictionReviewStep
               selectedModel={selectedModel}
               predictionResult={predictionResult}
+              requestPayload={predictionResult?.request_payload || null}
               onOpenPredictionsTable={onOpenPredictionsTable}
             />
           ) : (

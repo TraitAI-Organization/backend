@@ -89,6 +89,14 @@ function formatVolume(value) {
   return Math.round(numeric).toLocaleString();
 }
 
+function formatAppliedText(value, decimals = 2) {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'number') return formatNumber(value, decimals);
+  const numeric = toNumberOrNull(value);
+  if (numeric !== null) return formatNumber(numeric, decimals);
+  return String(value);
+}
+
 function getFallbackTrend() {
   return {
     labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -176,7 +184,7 @@ function PredictionMetricTile({ label, value, helper }) {
   );
 }
 
-export default function PredictionReviewStep({ selectedModel, predictionResult, onOpenPredictionsTable }) {
+export default function PredictionReviewStep({ selectedModel, predictionResult, requestPayload, onOpenPredictionsTable }) {
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
   const headerBlue = `color-mix(in srgb, ${theme.palette.primary.main} 45%, ${theme.palette.background.paper})`;
@@ -267,6 +275,23 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
   const confidenceLower = toNumberOrNull(predictionResult?.confidence_interval?.[0]);
   const confidenceUpper = toNumberOrNull(predictionResult?.confidence_interval?.[1]);
   const confidenceWidth = confidenceLower !== null && confidenceUpper !== null ? Math.max(confidenceUpper - confidenceLower, 0) : null;
+  const appliedInputs = useMemo(() => {
+    const source = requestPayload || predictionResult?.request_payload || {};
+    return {
+      crop: source.crop || '—',
+      variety: source.variety || '—',
+      season: source.season ?? '—',
+      state: source.state || '—',
+      county: source.county || '—',
+      acres: source.acres,
+      lat: source.lat,
+      long: source.long,
+      totalN: source.totalN_per_ac,
+      totalP: source.totalP_per_ac,
+      totalK: source.totalK_per_ac,
+      waterApplied: source.water_applied_mm
+    };
+  }, [predictionResult, requestPayload]);
 
   return (
     <Stack spacing={2.5}>
@@ -452,6 +477,69 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
                 </TableBody>
               </Table>
             </TableContainer>
+          </AccordionDetails>
+        </Accordion>
+
+        <Accordion
+          defaultExpanded
+          disableGutters
+          sx={{
+            border: '1px solid',
+            borderColor: accentBlue,
+            '&::before': { display: 'none' }
+          }}
+        >
+          <AccordionSummary
+            expandIcon={<DownOutlined style={{ color: '#e0e0e0' }} />}
+            sx={{
+              px: 2,
+              '& .MuiAccordionSummary-content': { my: 1 },
+              '& .MuiAccordionSummary-expandIconWrapper': {
+                ml: 1.5
+              }
+            }}
+          >
+            <Typography variant="subtitle1">Inputs Applied To Model</Typography>
+          </AccordionSummary>
+          <AccordionDetails sx={{ px: 2, pb: 2, pt: 0.5 }}>
+            <Grid container spacing={1.5}>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="Crop" value={String(appliedInputs.crop)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="Variety" value={String(appliedInputs.variety)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="Season" value={String(appliedInputs.season)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="Acres" value={formatAppliedText(appliedInputs.acres)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="N (lb/ac)" value={formatAppliedText(appliedInputs.totalN)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="P (lb/ac)" value={formatAppliedText(appliedInputs.totalP)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="K (lb/ac)" value={formatAppliedText(appliedInputs.totalK)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="Water Applied (mm)" value={formatAppliedText(appliedInputs.waterApplied)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="Latitude" value={formatAppliedText(appliedInputs.lat, 6)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="Longitude" value={formatAppliedText(appliedInputs.long, 6)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="State" value={String(appliedInputs.state)} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <PredictionMetricTile label="County" value={String(appliedInputs.county)} />
+              </Grid>
+            </Grid>
           </AccordionDetails>
         </Accordion>
       </Stack>
