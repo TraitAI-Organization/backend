@@ -17,11 +17,12 @@ import PredictionReviewStep from 'sections/intelligence/crop-studio/prediction/P
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 const steps = ['Model Selection', 'Prediction Inputs', 'Review Result'];
+const requiredSelectionFields = ['crop', 'variety', 'season', 'state', 'county'];
 
 const initialFormValues = {
   crop: '',
-  latitude: '',
-  longitude: '',
+  // latitude: '',
+  // longitude: '',
   totalN: '',
   totalP: '',
   totalK: '',
@@ -45,6 +46,20 @@ function withNumericIfPresent(target, key, value) {
   }
 }
 
+function toNumberOrZero(value) {
+  const numeric = toNullableNumber(value);
+  return numeric ?? 0;
+}
+
+function getSelectionErrors(values) {
+  return requiredSelectionFields.reduce((acc, field) => {
+    if (!values[field]) {
+      acc[field] = true;
+    }
+    return acc;
+  }, {});
+}
+
 export default function PredictionWizard({ onOpenPredictionsTable }) {
   const [activeStep, setActiveStep] = useState(0);
 
@@ -66,6 +81,8 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
   const [isSubmittingPrediction, setIsSubmittingPrediction] = useState(false);
   const [predictionResult, setPredictionResult] = useState(null);
   const [predictionError, setPredictionError] = useState('');
+  const [hasAttemptedInputSubmit, setHasAttemptedInputSubmit] = useState(false);
+  const [inputSelectionErrors, setInputSelectionErrors] = useState({});
 
   const selectedModel = useMemo(
     () => models.find((model) => model.model_version_id === selectedModelId) || null,
@@ -219,12 +236,24 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
-    setFormValues((prev) => ({
-      ...prev,
-      [name]: value,
-      ...(name === 'crop' ? { variety: '' } : {}),
-      ...(name === 'state' ? { county: '' } : {})
-    }));
+    setFormValues((prev) => {
+      const next = {
+        ...prev,
+        [name]: value,
+        ...(name === 'crop' ? { variety: '' } : {}),
+        ...(name === 'state' ? { county: '' } : {})
+      };
+
+      if (hasAttemptedInputSubmit) {
+        const nextErrors = getSelectionErrors(next);
+        setInputSelectionErrors(nextErrors);
+        if (Object.keys(nextErrors).length === 0) {
+          setPredictionError('');
+        }
+      }
+
+      return next;
+    });
   };
 
   const buildPredictionPayload = () => {
@@ -235,12 +264,12 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     if (formValues.county) payload.county = formValues.county;
 
     withNumericIfPresent(payload, 'acres', toNullableNumber(formValues.acres));
-    withNumericIfPresent(payload, 'lat', toNullableNumber(formValues.latitude));
-    withNumericIfPresent(payload, 'long', toNullableNumber(formValues.longitude));
+    // withNumericIfPresent(payload, 'lat', toNullableNumber(formValues.latitude));
+    // withNumericIfPresent(payload, 'long', toNullableNumber(formValues.longitude));
     withNumericIfPresent(payload, 'season', toNullableNumber(formValues.season));
-    withNumericIfPresent(payload, 'totalN_per_ac', toNullableNumber(formValues.totalN));
-    withNumericIfPresent(payload, 'totalP_per_ac', toNullableNumber(formValues.totalP));
-    withNumericIfPresent(payload, 'totalK_per_ac', toNullableNumber(formValues.totalK));
+    payload.totalN_per_ac = toNumberOrZero(formValues.totalN);
+    payload.totalP_per_ac = toNumberOrZero(formValues.totalP);
+    payload.totalK_per_ac = toNumberOrZero(formValues.totalK);
     withNumericIfPresent(payload, 'water_applied_mm', toNullableNumber(formValues.waterApplied));
 
     return payload;
@@ -310,6 +339,14 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     }
 
     if (activeStep === 1) {
+      setHasAttemptedInputSubmit(true);
+      const validationErrors = getSelectionErrors(formValues);
+      setInputSelectionErrors(validationErrors);
+      if (Object.keys(validationErrors).length > 0) {
+        setPredictionError('Please select all required dropdown fields.');
+        return;
+      }
+
       setPredictionError('');
       setIsSubmittingPrediction(true);
       try {
@@ -335,6 +372,8 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     setPredictionError('');
     setModelActionError('');
     setFormValues(initialFormValues);
+    setHasAttemptedInputSubmit(false);
+    setInputSelectionErrors({});
   };
 
   const primaryButtonLabel =
@@ -389,6 +428,7 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
               seasons={seasonOptions}
               states={stateOptions}
               counties={countyOptions}
+              validationErrors={inputSelectionErrors}
             />
             {optionLoadError ? <Alert severity="warning">{optionLoadError}</Alert> : null}
             {predictionError ? <Alert severity="error">{predictionError}</Alert> : null}

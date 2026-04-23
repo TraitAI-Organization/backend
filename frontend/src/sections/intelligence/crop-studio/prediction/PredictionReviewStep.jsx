@@ -167,15 +167,48 @@ function MarketMetricTile({ label, value, helper }) {
 }
 
 function PredictionMetricTile({ label, value, helper }) {
+  const theme = useTheme();
   return (
-    <Paper variant="outlined" sx={{ p: 1.5, height: '100%' }}>
-      <Stack spacing={0.35}>
-        <Typography variant="caption" color="text.secondary">
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 2,
+        height: '100%',
+        bgcolor: alpha(theme.palette.grey[500], 0.12),
+        borderColor: alpha(theme.palette.grey[400], 0.45)
+      }}
+    >
+      <Stack spacing={0.75}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: alpha(theme.palette.primary.light, 0.92),
+            fontWeight: 600,
+            letterSpacing: '0.02em',
+            textTransform: 'uppercase',
+            textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
+          }}
+        >
           {label}
         </Typography>
-        <Typography variant="h5">{value}</Typography>
+        <Typography
+          variant="h6"
+          sx={{
+            color: theme.palette.common.white,
+            fontWeight: 700,
+            lineHeight: 1.2
+          }}
+        >
+          {value}
+        </Typography>
         {helper ? (
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            sx={{
+              color: alpha(theme.palette.grey[300], 0.92),
+              fontWeight: 500
+            }}
+          >
             {helper}
           </Typography>
         ) : null}
@@ -188,6 +221,9 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
   const headerBlue = `color-mix(in srgb, ${theme.palette.primary.main} 45%, ${theme.palette.background.paper})`;
+  const rowSurface = alpha(theme.palette.grey[500], 0.12);
+  const graphCardSurface = alpha(theme.palette.grey[500], 0.12);
+  const graphCardBorder = alpha(theme.palette.grey[400], 0.45);
   const tableScrollbarSx = {
     scrollbarWidth: 'thin',
     scrollbarColor: `${alpha(theme.palette.primary.main, 0.65)} ${alpha(theme.palette.background.default, 0.8)}`,
@@ -369,58 +405,56 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
           </AccordionDetails>
         </Accordion>
 
-        <Accordion
-          defaultExpanded
-          disableGutters
+        <Paper
+          variant="outlined"
           sx={{
-            border: '1px solid',
-            borderColor: accentBlue,
-            '&::before': { display: 'none' }
+            p: 2,
+            bgcolor: graphCardSurface,
+            borderColor: graphCardBorder
           }}
         >
-          <AccordionSummary
-            expandIcon={<DownOutlined style={{ color: '#e0e0e0' }} />}
-            sx={{
-              px: 2,
-              '& .MuiAccordionSummary-content': { my: 1 },
-              '& .MuiAccordionSummary-expandIconWrapper': {
-                ml: 1.5
-              }
-            }}
-          >
-            <Typography variant="subtitle1">Model Configuration Used</Typography>
-          </AccordionSummary>
-          <AccordionDetails sx={{ px: 2, pb: 2, pt: 0.5 }}>
+          <Stack spacing={1.25}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                color: alpha(theme.palette.primary.light, 0.92),
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+                textTransform: 'uppercase',
+                textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
+              }}
+            >
+              Model Configuration Used
+            </Typography>
             <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
               <Chip label={`Version: ${selectedModel?.version_tag || 'Unknown'}`} variant="outlined" />
               <Chip label={`Type: ${selectedModel?.model_type || 'Unknown'}`} variant="outlined" />
               <Chip label={`Runtime Model: ${predictionResult?.model_version || 'Unknown'}`} variant="outlined" />
             </Stack>
-          </AccordionDetails>
-        </Accordion>
+          </Stack>
+        </Paper>
 
-        <Accordion
-          defaultExpanded
-          disableGutters
+        <Paper
+          variant="outlined"
           sx={{
-            border: '1px solid',
-            borderColor: accentBlue,
-            '&::before': { display: 'none' }
+            p: 2,
+            bgcolor: graphCardSurface,
+            borderColor: graphCardBorder
           }}
         >
-          <AccordionSummary
-            expandIcon={<DownOutlined style={{ color: '#e0e0e0' }} />}
-            sx={{
-              px: 2,
-              '& .MuiAccordionSummary-content': { my: 1 },
-              '& .MuiAccordionSummary-expandIconWrapper': {
-                ml: 1.5
-              }
-            }}
-          >
-            <Typography variant="subtitle1">Top Features</Typography>
-          </AccordionSummary>
-          <AccordionDetails sx={{ px: 2, pb: 2, pt: 0.5 }}>
+          <Stack spacing={1.25}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                color: alpha(theme.palette.primary.light, 0.92),
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+                textTransform: 'uppercase',
+                textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
+              }}
+            >
+              Top Features
+            </Typography>
             <TableContainer sx={{ border: 1, borderColor: accentBlue, borderRadius: 1, ...tableScrollbarSx }}>
               <Table size="small" sx={{ minWidth: 860 }}>
                 <TableHead>
@@ -450,7 +484,7 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
                       const direction = String(feature?.direction || '').toLowerCase();
                       const directionColor = direction === 'positive' ? 'success' : direction === 'negative' ? 'error' : 'default';
                       return (
-                        <TableRow key={`${feature.feature}-${index}`} hover>
+                        <TableRow key={`${feature.feature}-${index}`} hover sx={{ bgcolor: rowSurface }}>
                           <TableCell>{formatFeatureName(feature?.feature)}</TableCell>
                           <TableCell>{String(feature?.value ?? '—')}</TableCell>
                           <TableCell>
@@ -466,9 +500,9 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
                       );
                     })
                   ) : (
-                    <TableRow>
+                    <TableRow sx={{ bgcolor: rowSurface }}>
                       <TableCell colSpan={5}>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" sx={{ color: alpha(theme.palette.grey[300], 0.92), fontWeight: 500 }}>
                           Explainability data was not returned for this prediction.
                         </Typography>
                       </TableCell>
@@ -477,32 +511,31 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
                 </TableBody>
               </Table>
             </TableContainer>
-          </AccordionDetails>
-        </Accordion>
+          </Stack>
+        </Paper>
 
-        <Accordion
-          defaultExpanded
-          disableGutters
+        <Paper
+          variant="outlined"
           sx={{
-            border: '1px solid',
-            borderColor: accentBlue,
-            '&::before': { display: 'none' }
+            p: 2,
+            bgcolor: graphCardSurface,
+            borderColor: graphCardBorder
           }}
         >
-          <AccordionSummary
-            expandIcon={<DownOutlined style={{ color: '#e0e0e0' }} />}
-            sx={{
-              px: 2,
-              '& .MuiAccordionSummary-content': { my: 1 },
-              '& .MuiAccordionSummary-expandIconWrapper': {
-                ml: 1.5
-              }
-            }}
-          >
-            <Typography variant="subtitle1">Inputs Applied To Model</Typography>
-          </AccordionSummary>
-          <AccordionDetails sx={{ px: 2, pb: 2, pt: 0.5 }}>
-            <Grid container spacing={1.5}>
+          <Stack spacing={1.25}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                color: alpha(theme.palette.primary.light, 0.92),
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+                textTransform: 'uppercase',
+                textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
+              }}
+            >
+              Inputs Applied To Model
+            </Typography>
+            <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <PredictionMetricTile label="Crop" value={String(appliedInputs.crop)} />
               </Grid>
@@ -540,8 +573,8 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
                 <PredictionMetricTile label="County" value={String(appliedInputs.county)} />
               </Grid>
             </Grid>
-          </AccordionDetails>
-        </Accordion>
+          </Stack>
+        </Paper>
       </Stack>
 
       <Divider />

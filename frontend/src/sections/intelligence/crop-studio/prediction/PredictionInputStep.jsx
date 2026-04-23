@@ -1,10 +1,19 @@
+import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-export default function PredictionInputStep({ formValues, onChange, crops, varieties, seasons, states, counties }) {
+function RequiredLabel({ text }) {
+  return (
+    <Typography variant="subtitle2">
+      {text} <Box component="span" sx={{ color: 'error.main' }}>*</Box>
+    </Typography>
+  );
+}
+
+export default function PredictionInputStep({ formValues, onChange, crops, varieties, seasons, states, counties, validationErrors = {} }) {
   const hasCrop = Boolean(formValues.crop);
   const hasVarietiesForCrop = varieties.length > 0;
   const isVarietyDisabled = !hasCrop || !hasVarietiesForCrop;
@@ -20,13 +29,15 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
-            <Typography variant="subtitle2">Crop</Typography>
+            <RequiredLabel text="Crop" />
             <TextField
               select
               fullWidth
               name="crop"
               value={formValues.crop}
               onChange={onChange}
+              error={Boolean(validationErrors.crop)}
+              helperText={validationErrors.crop ? 'Crop is required.' : undefined}
               SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'Select a Crop..' }}
             >
               <MenuItem value="" disabled>
@@ -43,7 +54,7 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
-            <Typography variant="subtitle2">Variety</Typography>
+            <RequiredLabel text="Variety" />
             <TextField
               select
               fullWidth
@@ -51,7 +62,14 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
               value={formValues.variety}
               onChange={onChange}
               disabled={isVarietyDisabled}
-              helperText={hasCrop && !hasVarietiesForCrop ? 'No variety available for selected crop' : undefined}
+              error={Boolean(validationErrors.variety)}
+              helperText={
+                validationErrors.variety
+                  ? 'Variety is required.'
+                  : hasCrop && !hasVarietiesForCrop
+                    ? 'No variety available for selected crop'
+                    : undefined
+              }
               SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'Select a Variety..' }}
             >
               <MenuItem value="" disabled>
@@ -71,7 +89,7 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
           </Stack>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 6 }}>
+        {/* <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Latitude</Typography>
             <TextField fullWidth type="number" name="latitude" placeholder="00.000" value={formValues.latitude} onChange={onChange} />
@@ -83,7 +101,7 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
             <Typography variant="subtitle2">Longitude</Typography>
             <TextField fullWidth type="number" name="longitude" placeholder="00.00000" value={formValues.longitude} onChange={onChange} />
           </Stack>
-        </Grid>
+        </Grid> */}
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
@@ -115,13 +133,15 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
-            <Typography variant="subtitle2">Season</Typography>
+            <RequiredLabel text="Season" />
             <TextField
               select
               fullWidth
               name="season"
               value={formValues.season}
               onChange={onChange}
+              error={Boolean(validationErrors.season)}
+              helperText={validationErrors.season ? 'Season is required.' : undefined}
               SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'Select Season' }}
             >
               <MenuItem value="" disabled>
@@ -145,13 +165,15 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
-            <Typography variant="subtitle2">State</Typography>
+            <RequiredLabel text="State" />
             <TextField
               select
               fullWidth
               name="state"
               value={formValues.state}
               onChange={onChange}
+              error={Boolean(validationErrors.state)}
+              helperText={validationErrors.state ? 'State is required.' : undefined}
               SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'Select State' }}
             >
               <MenuItem value="" disabled>
@@ -168,7 +190,7 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
-            <Typography variant="subtitle2">County</Typography>
+            <RequiredLabel text="County" />
             <TextField
               select
               fullWidth
@@ -176,6 +198,8 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
               value={formValues.county}
               onChange={onChange}
               disabled={!formValues.state}
+              error={Boolean(validationErrors.county)}
+              helperText={validationErrors.county ? 'County is required.' : undefined}
               SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'Select County' }}
             >
               <MenuItem value="" disabled>

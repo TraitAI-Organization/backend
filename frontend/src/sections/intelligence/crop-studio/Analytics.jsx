@@ -687,12 +687,12 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                   <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <MetricCard label="Water Applied (mm)" value={formatNumber(analyzedPrediction.waterApplied)} />
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  {/* <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <MetricCard label="Latitude" value={formatNumber(analyzedPrediction.lat, 6)} />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <MetricCard label="Longitude" value={formatNumber(analyzedPrediction.long, 6)} />
-                  </Grid>
+                  </Grid> */}
                   <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <MetricCard label="State" value={analyzedPrediction.state || '—'} />
                   </Grid>
