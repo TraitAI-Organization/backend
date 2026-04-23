@@ -12,6 +12,7 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TableSortLabel from '@mui/material/TableSortLabel';
+import TablePagination from '@mui/material/TablePagination';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
@@ -19,6 +20,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import MainCard from 'components/MainCard';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
+const DOWNLOAD_PAGE_SIZE = 500;
 
 const columns = [
   { id: 'fieldId', label: 'Field ID' },
@@ -66,10 +68,10 @@ function getComparator(order, orderBy) {
   return (a, b) => compareValues(a[orderBy], b[orderBy]);
 }
 
-async function fetchFieldRows(signal) {
+async function fetchFieldRows(signal, page, limit) {
   const params = new URLSearchParams({
-    page: '1',
-    limit: '500'
+    page: String(page + 1),
+    limit: String(limit)
   });
   const response = await fetch(`${API_BASE_URL}/fields?${params.toString()}`, { signal });
 
@@ -81,24 +83,31 @@ async function fetchFieldRows(signal) {
   const payload = await response.json();
   const rows = Array.isArray(payload?.data) ? payload.data : [];
 
-  return rows.map((row) => ({
-    rowId: row.field_season_id ?? `${row.field_number ?? 'unknown'}-${row.season ?? 'unknown'}`,
-    fieldId: row.field_number ?? row.field_season_id ?? 'N/A',
-    crop: row.crop || 'N/A',
-    acres: toNumberOrNull(row.acres),
-    variety: row.variety || 'N/A',
-    season: row.season ?? 'N/A',
-    location: toLocation(row.county, row.state),
-    observedYield: toNumberOrNull(row.yield_bu_ac),
-    n: toNumberOrNull(row.totalN_per_ac),
-    p: toNumberOrNull(row.totalP_per_ac),
-    k: toNumberOrNull(row.totalK_per_ac)
-  }));
+  return {
+    rows: rows.map((row) => ({
+      rowId: row.field_season_id ?? `${row.field_number ?? 'unknown'}-${row.season ?? 'unknown'}`,
+      fieldId: row.field_number ?? row.field_season_id ?? 'N/A',
+      crop: row.crop || 'N/A',
+      acres: toNumberOrNull(row.acres),
+      variety: row.variety || 'N/A',
+      season: row.season ?? 'N/A',
+      location: toLocation(row.county, row.state),
+      observedYield: toNumberOrNull(row.yield_bu_ac),
+      n: toNumberOrNull(row.totalN_per_ac),
+      p: toNumberOrNull(row.totalP_per_ac),
+      k: toNumberOrNull(row.totalK_per_ac)
+    })),
+    total: Number(payload?.total) || 0
+  };
 }
 
 function formatMetric(value, decimals = 1) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
   return value.toFixed(decimals);
+}
+
+function matchesSearch(row, normalizedSearch) {
+  return !normalizedSearch ? true : Object.values(row).some((value) => String(value).toLowerCase().includes(normalizedSearch));
 }
 
 export default function FieldTable() {
@@ -130,6 +139,10 @@ export default function FieldTable() {
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('fieldId');
   const [searchValue, setSearchValue] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
+  const [totalRows, setTotalRows] = useState(0);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -140,12 +153,14 @@ export default function FieldTable() {
       setIsLoading(true);
       setLoadError('');
       try {
-        const data = await fetchFieldRows(controller.signal);
-        setRows(data);
+        const result = await fetchFieldRows(controller.signal, page, rowsPerPage);
+        setRows(result.rows);
+        setTotalRows(result.total);
       } catch (error) {
         if (error.name !== 'AbortError') {
           setLoadError(error.message || 'Failed to load field records.');
           setRows([]);
+          setTotalRows(0);
         }
       } finally {
         setIsLoading(false);
@@ -157,14 +172,11 @@ export default function FieldTable() {
     return () => {
       controller.abort();
     };
-  }, []);
+  }, [page, rowsPerPage]);
 
   const filteredRows = useMemo(() => {
     const normalizedSearch = searchValue.trim().toLowerCase();
-
-    return rows.filter((row) =>
-      !normalizedSearch ? true : Object.values(row).some((value) => String(value).toLowerCase().includes(normalizedSearch))
-    );
+    return rows.filter((row) => matchesSearch(row, normalizedSearch));
   }, [rows, searchValue]);
 
   const sortedRows = useMemo(() => [...filteredRows].sort(getComparator(order, orderBy)), [filteredRows, order, orderBy]);
@@ -175,9 +187,26 @@ export default function FieldTable() {
     setOrderBy(columnId);
   };
 
-  const handleDownload = () => {
-    const header = columns.map((column) => column.label).join(',');
-    const body = sortedRows
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    try {
+      const allRows = [];
+      let currentPage = 0;
+      let total = 0;
+
+      do {
+        const result = await fetchFieldRows(undefined, currentPage, DOWNLOAD_PAGE_SIZE);
+        if (currentPage === 0) total = result.total;
+        allRows.push(...result.rows);
+        currentPage += 1;
+        if (result.rows.length === 0) break;
+      } while (allRows.length < total);
+
+      const normalizedSearch = searchValue.trim().toLowerCase();
+      const exportRows = allRows.filter((row) => matchesSearch(row, normalizedSearch)).sort(getComparator(order, orderBy));
+
+      const header = columns.map((column) => column.label).join(',');
+      const body = exportRows
       .map((row) =>
         columns
           .map((column) => {
@@ -189,20 +218,35 @@ export default function FieldTable() {
       )
       .join('\n');
 
-    const csv = `${header}\n${body}`;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'field-season-records.csv';
-    link.click();
-    URL.revokeObjectURL(link.href);
+      const csv = `${header}\n${body}`;
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'field-season-records.csv';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (error) {
+      setLoadError(error.message || 'Failed to download field records.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleChangePage = (_, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
   };
 
   return (
     <MainCard title="Field Records">
       <Stack spacing={2}>
         <Typography variant="body1" color="text.primary">
-          Sortable table of field-season records (crop, acres, variety, season, location, observed yield, N/P/K) filtered by topbar.
+          Sortable, paginated table of field-season records (crop, acres, variety, season, location, observed yield, N/P/K) filtered by
+          topbar.
         </Typography>
         {loadError ? (
           <Typography variant="body2" color="error.main">
@@ -255,7 +299,7 @@ export default function FieldTable() {
               }
             }}
           >
-            Download
+            {isDownloading ? 'Downloading...' : 'Download'}
           </Button>
         </Stack>
 
@@ -350,6 +394,16 @@ export default function FieldTable() {
             </TableBody>
           </Table>
         </TableContainer>
+
+        <TablePagination
+          component="div"
+          count={totalRows}
+          page={page}
+          onPageChange={handleChangePage}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+          rowsPerPageOptions={[25, 50, 100, 250, 500]}
+        />
       </Stack>
     </MainCard>
   );
