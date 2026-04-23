@@ -126,7 +126,7 @@ async def predict_yield(
             regional_comparison = regional_avg
 
         # Generate prediction
-        prediction_result = predictor.predict(request.model_dump(), model_version)
+        prediction_result = predictor.predict(request.model_dump(exclude_none=True), model_version)
 
         # Get explainability (best-effort; do not fail prediction if explanation fails)
         explanations = {"top_features": []}
@@ -163,7 +163,7 @@ async def predict_yield(
             recommendations=None,  # Future: fertilizer recommendations
         )
 
-        request_payload = request.model_dump(mode="json")
+        request_payload = request.model_dump(mode="json", exclude_none=True)
         response_payload = response.model_dump(mode="json")
         top_features = (response_payload.get("explainability") or {}).get("top_features", [])
 
@@ -237,7 +237,7 @@ async def predict_yield_specific_model(
                 county=county
             )
 
-        prediction_result = predictor.predict(request.model_dump(), model_version=model_version)
+        prediction_result = predictor.predict(request.model_dump(exclude_none=True), model_version=model_version)
 
         explanations = {"top_features": []}
         try:
@@ -272,7 +272,7 @@ async def predict_yield_specific_model(
             recommendations=None,
         )
 
-        request_payload = request.model_dump(mode="json")
+        request_payload = request.model_dump(mode="json", exclude_none=True)
         response_payload = response.model_dump(mode="json")
         top_features = (response_payload.get("explainability") or {}).get("top_features", [])
 
@@ -330,7 +330,7 @@ async def predict_yield_all_models(
                 detail="No model versions available. Register/train a model first."
             )
 
-        payload = request.model_dump()
+        payload = request.model_dump(exclude_none=True)
         items: List[MultiModelPredictionItem] = []
         explainer = ExplainabilityEngine(db, predictor)
         for mv in model_versions:
@@ -424,7 +424,7 @@ async def batch_predict_yield(
         results = []
         for req in requests:
             try:
-                result = predictor.predict(req.model_dump(), model_version)
+                result = predictor.predict(req.model_dump(exclude_none=True), model_version)
                 results.append(PredictionResponse(
                     predicted_yield=result['predicted_yield'],
                     confidence_interval=[

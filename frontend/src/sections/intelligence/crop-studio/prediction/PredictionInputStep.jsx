@@ -13,7 +13,8 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
     <Stack spacing={2.5}>
       <Typography variant="h6">Step 2: Enter Prediction Inputs</Typography>
       <Typography variant="body2" color="text.secondary">
-        Provide the agronomic and location values used to generate a yield prediction.
+        Provide agronomic and location values used to generate a yield prediction. You may leave optional numeric inputs blank; entering
+        0 is also allowed.
       </Typography>
 
       <Grid container spacing={2}>
@@ -73,42 +74,42 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Latitude</Typography>
-            <TextField fullWidth name="latitude" placeholder="00.000" value={formValues.latitude} onChange={onChange} />
+            <TextField fullWidth type="number" name="latitude" placeholder="00.000" value={formValues.latitude} onChange={onChange} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Longitude</Typography>
-            <TextField fullWidth name="longitude" placeholder="00.00000" value={formValues.longitude} onChange={onChange} />
+            <TextField fullWidth type="number" name="longitude" placeholder="00.00000" value={formValues.longitude} onChange={onChange} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Total N (lb/ac)</Typography>
-            <TextField fullWidth name="totalN" placeholder="00.00" value={formValues.totalN} onChange={onChange} />
+            <TextField fullWidth type="number" name="totalN" placeholder="00.00" value={formValues.totalN} onChange={onChange} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Total P (lb/ac)</Typography>
-            <TextField fullWidth name="totalP" placeholder="00.00" value={formValues.totalP} onChange={onChange} />
+            <TextField fullWidth type="number" name="totalP" placeholder="00.00" value={formValues.totalP} onChange={onChange} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Total K (lb/ac)</Typography>
-            <TextField fullWidth name="totalK" placeholder="00.00" value={formValues.totalK} onChange={onChange} />
+            <TextField fullWidth type="number" name="totalK" placeholder="00.00" value={formValues.totalK} onChange={onChange} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Acres</Typography>
-            <TextField fullWidth name="acres" placeholder="00.00" value={formValues.acres} onChange={onChange} />
+            <TextField fullWidth type="number" name="acres" placeholder="00.00" value={formValues.acres} onChange={onChange} />
           </Stack>
         </Grid>
 
@@ -138,7 +139,7 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={1}>
             <Typography variant="subtitle2">Water Applied (mm)</Typography>
-            <TextField fullWidth name="waterApplied" placeholder="0.00" value={formValues.waterApplied} onChange={onChange} />
+            <TextField fullWidth type="number" name="waterApplied" placeholder="0.00" value={formValues.waterApplied} onChange={onChange} />
           </Stack>
         </Grid>
 

@@ -185,13 +185,13 @@ class PredictionRequest(BaseSchema):
     """
     crop: str
     variety: Optional[str] = None
-    acres: float
-    lat: float
-    long: float
+    acres: Optional[float] = None
+    lat: Optional[float] = None
+    long: Optional[float] = None
     season: Optional[int] = None
-    totalN_per_ac: float
-    totalP_per_ac: float
-    totalK_per_ac: float
+    totalN_per_ac: Optional[float] = None
+    totalP_per_ac: Optional[float] = None
+    totalK_per_ac: Optional[float] = None
 
     # Optional additional features
     water_applied_mm: Optional[float] = None
