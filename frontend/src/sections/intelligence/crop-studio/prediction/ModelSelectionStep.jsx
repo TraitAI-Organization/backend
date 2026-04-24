@@ -31,7 +31,7 @@ function getModelNarrative(modelType) {
     return {
       title: 'CatBoost Model',
       description:
-        'A gradient boosting model that is well-suited for structured data like field and management records. It is typically more interpretable and stable, making it a strong choice for understanding which factors are driving predictions.'
+        'A categorical boosting model that is well-suited for non numerical inputs like field and management records. It is typically more interpretable and stable, making it a strong choice for understanding which factors are driving predictions.'
     };
   }
 
