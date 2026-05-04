@@ -156,25 +156,55 @@ def load_torch_tabular_model(
     hidden3 = int(lin8_weight.shape[0])
     _out_dim = int(lin10_weight.shape[0])
 
+    # Auto-detect block ordering from the saved checkpoint.
+    # Layout A — BatchNorm before ReLU: [Linear-0, BN-1, ReLU-2, Dropout-3, Linear-4, BN-5, ReLU-6, Dropout-7, ...]
+    # Layout B — BatchNorm after  ReLU: [Linear-0, ReLU-1, BN-2, Dropout-3, Linear-4, ReLU-5, BN-6, Dropout-7, ...]
+    # BatchNorm layers are the only ones with `running_mean` in the state_dict, so we look for that.
+    if "model.1.running_mean" in state_dict and "model.5.running_mean" in state_dict:
+        bn_after_relu = False
+    elif "model.2.running_mean" in state_dict and "model.6.running_mean" in state_dict:
+        bn_after_relu = True
+    else:
+        raise ValueError(
+            "Invalid deep model state_dict: cannot locate BatchNorm running_mean tensors at "
+            "indices (1, 5) or (2, 6). Got keys: "
+            f"{[k for k in state_dict.keys() if 'running_mean' in k]}"
+        )
+
     class YieldDeepNet(nn.Module):
         def __init__(self):
             super().__init__()
             self.embeddings = nn.ModuleList(
                 [nn.Embedding(cat_size, emb_dim) for cat_size, emb_dim in zip(inferred_category_sizes, inferred_embedding_dims)]
             )
-            self.model = nn.Sequential(
-                nn.Linear(input_dim, hidden1),
-                nn.BatchNorm1d(hidden1),
-                nn.ReLU(),
-                nn.Dropout(0.3),
-                nn.Linear(hidden1, hidden2),
-                nn.BatchNorm1d(hidden2),
-                nn.ReLU(),
-                nn.Dropout(0.3),
-                nn.Linear(hidden2, hidden3),
-                nn.ReLU(),
-                nn.Linear(hidden3, 1),
-            )
+            if bn_after_relu:
+                self.model = nn.Sequential(
+                    nn.Linear(input_dim, hidden1),
+                    nn.ReLU(),
+                    nn.BatchNorm1d(hidden1),
+                    nn.Dropout(0.3),
+                    nn.Linear(hidden1, hidden2),
+                    nn.ReLU(),
+                    nn.BatchNorm1d(hidden2),
+                    nn.Dropout(0.3),
+                    nn.Linear(hidden2, hidden3),
+                    nn.ReLU(),
+                    nn.Linear(hidden3, 1),
+                )
+            else:
+                self.model = nn.Sequential(
+                    nn.Linear(input_dim, hidden1),
+                    nn.BatchNorm1d(hidden1),
+                    nn.ReLU(),
+                    nn.Dropout(0.3),
+                    nn.Linear(hidden1, hidden2),
+                    nn.BatchNorm1d(hidden2),
+                    nn.ReLU(),
+                    nn.Dropout(0.3),
+                    nn.Linear(hidden2, hidden3),
+                    nn.ReLU(),
+                    nn.Linear(hidden3, 1),
+                )
 
         def forward(self, x_cat, x_num):
             emb_parts = [emb(x_cat[:, i]) for i, emb in enumerate(self.embeddings)]
@@ -185,6 +215,14 @@ def load_torch_tabular_model(
     model = YieldDeepNet()
     model.load_state_dict(state_dict, strict=True)
     model.eval()
+    logger.info(
+        "Built YieldDeepNet with bn_%s_relu ordering (input_dim=%d, hidden=[%d,%d,%d])",
+        "after" if bn_after_relu else "before",
+        input_dim,
+        hidden1,
+        hidden2,
+        hidden3,
+    )
 
     category_sizes = preprocessing.get("category_sizes")
     if not isinstance(category_sizes, list) or len(category_sizes) != len(inferred_category_sizes):
