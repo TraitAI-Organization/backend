@@ -1,10 +1,9 @@
 // assets
-import { LoginOutlined, ProfileOutlined } from '@ant-design/icons';
+import { LoginOutlined } from '@ant-design/icons';
 
 // icons
 const icons = {
-  LoginOutlined,
-  ProfileOutlined
+  LoginOutlined
 };
 
 // ==============================|| MENU ITEMS - EXTRA PAGES ||============================== //
@@ -20,14 +19,6 @@ const pages = {
       type: 'item',
       url: '/login',
       icon: icons.LoginOutlined,
-      target: true
-    },
-    {
-      id: 'register1',
-      title: 'Register',
-      type: 'item',
-      url: '/register',
-      icon: icons.ProfileOutlined,
       target: true
     }
   ]

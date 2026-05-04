@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types';
 import { useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 // material-ui
 import { useTheme } from '@mui/material/styles';
@@ -50,6 +51,7 @@ function a11yProps(index) {
 
 export default function Profile() {
   const theme = useTheme();
+  const navigate = useNavigate();
   const themedTooltipSlotProps = {
     tooltip: {
       sx: {
@@ -73,6 +75,12 @@ export default function Profile() {
       return;
     }
     setOpen(false);
+  };
+
+  const handleLogout = () => {
+    // TODO: clear auth state / tokens once authentication is wired up.
+    setOpen(false);
+    navigate('/login');
   };
 
   const [value, setValue] = useState(0);
@@ -146,7 +154,7 @@ export default function Profile() {
                       </Grid>
                       <Grid>
                         <Tooltip title="Logout" slotProps={themedTooltipSlotProps}>
-                          <IconButton size="large" sx={{ color: 'text.primary' }}>
+                          <IconButton size="large" sx={{ color: 'text.primary' }} onClick={handleLogout} aria-label="logout">
                             <LogoutOutlined />
                           </IconButton>
                         </Tooltip>
@@ -191,7 +199,7 @@ export default function Profile() {
                     </Tabs>
                   </Box>
                   <TabPanel value={value} index={0} dir={theme.direction}>
-                    <ProfileTab />
+                    <ProfileTab handleLogout={handleLogout} />
                   </TabPanel>
                   <TabPanel value={value} index={1} dir={theme.direction}>
                     <SettingTab />

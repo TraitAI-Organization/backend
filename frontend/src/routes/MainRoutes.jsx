@@ -9,14 +9,6 @@ const DashboardDefault = Loadable(lazy(() => import('pages/overview/dashboard/de
 const CropStudioDefault = Loadable(lazy(() => import('pages/intelligence/crop-studio/default')));
 const FieldMindDefault = Loadable(lazy(() => import('pages/copilot/fieldmind/default')));
 
-// render - color
-const Color = Loadable(lazy(() => import('pages/component-overview/color')));
-const Typography = Loadable(lazy(() => import('pages/component-overview/typography')));
-const Shadow = Loadable(lazy(() => import('pages/component-overview/shadows')));
-
-// render - sample page
-const SamplePage = Loadable(lazy(() => import('pages/extra-pages/sample-page')));
-
 // ==============================|| MAIN ROUTING ||============================== //
 
 const MainRoutes = {
@@ -24,12 +16,12 @@ const MainRoutes = {
   element: <DashboardLayout />,
   children: [
     {
-      path: '/',
-      element: <CropStudioDefault />
-    },
-    {
       path: 'dashboard',
       children: [
+        {
+          index: true,
+          element: <CropStudioDefault />
+        },
         {
           path: 'default',
           element: <DashboardDefault />

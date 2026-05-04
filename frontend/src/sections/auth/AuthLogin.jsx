@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types';
 import React from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 
 // material-ui
 import Button from '@mui/material/Button';
@@ -16,12 +16,12 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 // third-party
-import * as Yup from 'yup';
 import { Formik } from 'formik';
 
 // project imports
 import IconButton from 'components/@extended/IconButton';
 import AnimateButton from 'components/@extended/AnimateButton';
+import { APP_DEFAULT_PATH } from 'config';
 
 // assets
 import EyeOutlined from '@ant-design/icons/EyeOutlined';
@@ -30,6 +30,7 @@ import EyeInvisibleOutlined from '@ant-design/icons/EyeInvisibleOutlined';
 // ============================|| JWT - LOGIN ||============================ //
 
 export default function AuthLogin({ isDemo = false }) {
+  const navigate = useNavigate();
   const [checked, setChecked] = React.useState(false);
 
   const [showPassword, setShowPassword] = React.useState(false);
@@ -45,39 +46,37 @@ export default function AuthLogin({ isDemo = false }) {
     <>
       <Formik
         initialValues={{
-          email: 'info@codedthemes.com',
-          password: '123456',
+          username: '',
+          password: '',
           submit: null
         }}
-        validationSchema={Yup.object().shape({
-          email: Yup.string().email('Must be a valid email').max(255).required('Email is required'),
-          password: Yup.string()
-            .required('Password is required')
-            .test('no-leading-trailing-whitespace', 'Password cannot start or end with spaces', (value) => value === value.trim())
-            .max(10, 'Password must be less than 10 characters')
-        })}
+        onSubmit={() => {
+          // TODO: replace with real authentication once the auth endpoint is wired up.
+          navigate(APP_DEFAULT_PATH);
+        }}
       >
-        {({ errors, handleBlur, handleChange, touched, values }) => (
-          <form noValidate>
+        {({ errors, handleBlur, handleChange, handleSubmit, touched, values }) => (
+          <form noValidate onSubmit={handleSubmit}>
             <Grid container spacing={3}>
               <Grid size={12}>
                 <Stack sx={{ gap: 1 }}>
-                  <InputLabel htmlFor="email-login">Email Address</InputLabel>
+                  <InputLabel htmlFor="username-login">Username</InputLabel>
                   <OutlinedInput
-                    id="email-login"
-                    type="email"
-                    value={values.email}
-                    name="email"
+                    id="username-login"
+                    type="text"
+                    value={values.username}
+                    name="username"
                     onBlur={handleBlur}
                     onChange={handleChange}
-                    placeholder="Enter email address"
+                    placeholder="Enter your username"
+                    autoComplete="username"
                     fullWidth
-                    error={Boolean(touched.email && errors.email)}
+                    error={Boolean(touched.username && errors.username)}
                   />
                 </Stack>
-                {touched.email && errors.email && (
-                  <FormHelperText error id="standard-weight-helper-text-email-login">
-                    {errors.email}
+                {touched.username && errors.username && (
+                  <FormHelperText error id="standard-weight-helper-text-username-login">
+                    {errors.username}
                   </FormHelperText>
                 )}
               </Grid>
@@ -87,12 +86,13 @@ export default function AuthLogin({ isDemo = false }) {
                   <OutlinedInput
                     fullWidth
                     error={Boolean(touched.password && errors.password)}
-                    id="-password-login"
+                    id="password-login"
                     type={showPassword ? 'text' : 'password'}
                     value={values.password}
                     name="password"
                     onBlur={handleBlur}
                     onChange={handleChange}
+                    autoComplete="current-password"
                     endAdornment={
                       <InputAdornment position="end">
                         <IconButton
@@ -106,7 +106,7 @@ export default function AuthLogin({ isDemo = false }) {
                         </IconButton>
                       </InputAdornment>
                     }
-                    placeholder="Enter password"
+                    placeholder="Enter your password"
                   />
                 </Stack>
                 {touched.password && errors.password && (
@@ -127,17 +127,17 @@ export default function AuthLogin({ isDemo = false }) {
                         size="small"
                       />
                     }
-                    label={<Typography variant="h6">Keep me sign in</Typography>}
+                    label={<Typography variant="h6">Keep me signed in</Typography>}
                   />
                   <Link variant="h6" component={RouterLink} to="#" color="text.primary">
-                    Forgot Password?
+                    Forgot password?
                   </Link>
                 </Stack>
               </Grid>
               <Grid size={12}>
                 <AnimateButton>
-                  <Button fullWidth size="large" variant="contained" color="primary">
-                    Login
+                  <Button fullWidth size="large" variant="contained" color="primary" type="submit">
+                    Sign in
                   </Button>
                 </AnimateButton>
               </Grid>
