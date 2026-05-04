@@ -196,6 +196,19 @@ def _normalize_catboost_folder(folder: Path) -> bool:
         if feature_columns_src:
             changed = _copy_if_needed(feature_columns_src, feature_columns_dst) or changed
 
+    # Fallback: external CatBoost trainers sometimes write the feature column list directly
+    # into features.json as a flat JSON array. If we still don't have feature_columns.json,
+    # but features.json is shaped as a list of strings, promote it to feature_columns.json.
+    if not feature_columns_dst.exists():
+        existing_features_payload = _read_json(folder / "features.json", None)
+        if (
+            isinstance(existing_features_payload, list)
+            and existing_features_payload
+            and all(isinstance(item, str) for item in existing_features_payload)
+        ):
+            feature_columns_dst.write_text(json.dumps(existing_features_payload, indent=2))
+            changed = True
+
     categorical_dst = folder / "categorical_features.json"
     if not categorical_dst.exists():
         categorical_src = _find_first(

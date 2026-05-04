@@ -203,14 +203,38 @@ class ModelRegistry:
 
         with open(features_path, 'r') as f:
             features_data = json.load(f)
+
+        # features.json may be either:
+        #   - {"feature_names": [...], "preprocessing": {...}}  (canonical, written by sync_models)
+        #   - [feature_1, feature_2, ...]                        (legacy / external trainers)
+        if isinstance(features_data, dict):
             feature_list = features_data.get('feature_names', [])
-            preprocessing = features_data.get('preprocessing', {})
+            preprocessing = features_data.get('preprocessing', {}) or {}
+        elif isinstance(features_data, list):
+            feature_list = list(features_data)
+            preprocessing = {}
+        else:
+            raise ValueError(
+                f"Unsupported features.json format in {features_path}: "
+                f"expected dict or list, got {type(features_data).__name__}"
+            )
+
+        if not isinstance(feature_list, list):
+            raise ValueError(
+                f"Invalid feature_names in {features_path}: expected list, got {type(feature_list).__name__}"
+            )
+        if not isinstance(preprocessing, dict):
+            preprocessing = {}
 
         with open(metrics_path, 'r') as f:
             metrics = json.load(f)
+        if not isinstance(metrics, dict):
+            metrics = {}
 
         with open(params_path, 'r') as f:
             params = json.load(f)
+        if not isinstance(params, dict):
+            params = {}
 
         # Determine expected runtime model type using all available metadata.
         db_row = (
