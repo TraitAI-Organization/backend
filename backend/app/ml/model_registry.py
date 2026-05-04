@@ -324,6 +324,57 @@ class ModelRegistry:
             )
             artifact_format = "pytorch_pth"
 
+        # Backfill missing CatBoost metadata from the loaded .cbm itself.
+        # External CatBoost trainers commonly ship a flat-list features.json with no
+        # preprocessing block, so the feature_list / categorical_features can be empty here.
+        # The .cbm encodes both, so we read them back when our JSON metadata is missing.
+        if artifact_format == "catboost_cbm":
+            try:
+                model_feature_names = list(getattr(model, "feature_names_", None) or [])
+            except Exception:
+                model_feature_names = []
+            try:
+                cat_indices = list(model.get_cat_feature_indices() or [])
+            except Exception:
+                cat_indices = []
+
+            if model_feature_names:
+                if not feature_list:
+                    feature_list = list(model_feature_names)
+                elif feature_list != model_feature_names:
+                    logger.warning(
+                        "feature_list from features.json (%d cols) does not match the "
+                        ".cbm's feature_names_ (%d cols); using the model's order.",
+                        len(feature_list),
+                        len(model_feature_names),
+                    )
+                    feature_list = list(model_feature_names)
+
+            existing_cats = preprocessing.get("categorical_features") if isinstance(preprocessing, dict) else None
+            if (not isinstance(existing_cats, list) or not existing_cats) and cat_indices and model_feature_names:
+                derived_cats = [
+                    model_feature_names[i]
+                    for i in cat_indices
+                    if 0 <= i < len(model_feature_names)
+                ]
+                if derived_cats:
+                    preprocessing["categorical_features"] = derived_cats
+                    logger.info(
+                        "Derived %d categorical features for %s from the .cbm: %s",
+                        len(derived_cats),
+                        version_tag,
+                        derived_cats,
+                    )
+
+            # External CatBoost models always skip our internal feature engineering.
+            preprocessing.setdefault("external_model", True)
+            preprocessing.setdefault("external_model_type", "catboost")
+            preprocessing.setdefault("skip_feature_engineering", True)
+            preprocessing.setdefault(
+                "input_aliases",
+                {"crop": "crop_name_en", "variety": "variety_name_en"},
+            )
+
         metadata = {
             'feature_list': feature_list,
             'preprocessing': preprocessing,
