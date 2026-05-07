@@ -52,6 +52,54 @@ function formatFeatureName(value) {
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
+// Wheat yields that exceed this threshold are almost certainly out-of-range
+// (typical yields are 30–150 bu/ac); we flag them in the table with an "Out"
+// badge so reviewers can see at a glance which predictions need scrutiny.
+const YIELD_OUTLIER_THRESHOLD = 200;
+
+function isYieldOutlier(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > YIELD_OUTLIER_THRESHOLD;
+}
+
+// Returns { fg, bg, border } theme tokens for the Model column chip based on
+// model family. Falls back to a neutral grey for unrecognized types.
+function getModelChipPalette(modelType, theme) {
+  const key = String(modelType || '').toLowerCase();
+  if (key.includes('deep') || key.includes('neural') || key.includes('nn')) {
+    return {
+      fg: theme.palette.primary.light,
+      bg: alpha(theme.palette.primary.main, 0.18),
+      border: alpha(theme.palette.primary.main, 0.45)
+    };
+  }
+  if (key.includes('catboost') || key.includes('boost') || key.includes('lgbm') || key.includes('lightgbm')) {
+    return {
+      fg: theme.palette.success.light,
+      bg: alpha(theme.palette.success.main, 0.18),
+      border: alpha(theme.palette.success.main, 0.45)
+    };
+  }
+  if (key.includes('xgb')) {
+    return {
+      fg: theme.palette.warning.light,
+      bg: alpha(theme.palette.warning.main, 0.18),
+      border: alpha(theme.palette.warning.main, 0.45)
+    };
+  }
+  if (key.includes('forest') || key.includes('tree')) {
+    return {
+      fg: theme.palette.info.light,
+      bg: alpha(theme.palette.info.main, 0.18),
+      border: alpha(theme.palette.info.main, 0.45)
+    };
+  }
+  return {
+    fg: theme.palette.text.secondary,
+    bg: alpha(theme.palette.grey[500], 0.2),
+    border: alpha(theme.palette.grey[500], 0.45)
+  };
+}
+
 async function fetchPredictionRuns(signal) {
   const response = await fetch(`${API_BASE_URL}/predict/history?limit=500&page=1`, { signal });
   if (!response.ok) {
@@ -285,36 +333,68 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
         <Paper
           variant="outlined"
           sx={{
-            bgcolor: graphCardSurface,
-            borderColor: graphCardBorder
+            bgcolor: alpha(theme.palette.background.paper, 0.4),
+            borderColor: alpha(theme.palette.primary.main, 0.22),
+            borderRadius: 2,
+            overflow: 'hidden'
           }}
         >
+          <Stack
+            direction="row"
+            sx={{
+              px: 2.5,
+              py: 1.75,
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`
+            }}
+          >
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: theme.palette.text.primary, letterSpacing: '0.01em' }}>
+              Saved Predictions
+            </Typography>
+            <Typography variant="body2" sx={{ color: alpha(theme.palette.primary.light, 0.85), fontWeight: 500 }}>
+              {predictionRuns.length} prediction{predictionRuns.length === 1 ? '' : 's'}
+            </Typography>
+          </Stack>
+
           {isLoading ? <LinearProgress /> : null}
 
           <TableContainer
             sx={{
               maxHeight: 360,
-              borderTop: 2,
-              borderBottom: 2,
-              borderColor: accentBlue,
-              boxShadow: `0 10px 30px ${alpha(theme.palette.primary.main, 0.12)}`,
               ...tableScrollbarSx
             }}
           >
-            <Table stickyHeader size="small" sx={{ minWidth: 1700 }}>
+            <Table
+              stickyHeader
+              size="small"
+              sx={{
+                minWidth: 1700,
+                '& .MuiTableCell-root': { textAlign: 'center !important' }
+              }}
+            >
               <TableHead>
                 <TableRow
                   sx={{
                     '& .MuiTableCell-root': {
-                      borderBottomWidth: 3,
-                      borderBottomColor: accentBlue,
-                      bgcolor: headerBlue,
-                      color: theme.palette.text.primary,
-                      whiteSpace: 'nowrap'
+                      // Equivalent to alpha(primary.main, 0.08) but fully opaque, so
+                      // rows can't bleed through the sticky header while scrolling.
+                      bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 8%, ${theme.palette.background.paper})`,
+                      borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                      color: alpha(theme.palette.primary.light, 0.85),
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      py: 1.25
                     }
                   }}
                 >
                   <TableCell sx={{ width: 56 }}>Select</TableCell>
+                  <TableCell align="right" sx={{ width: 90, px: 1 }}>
+                    Pred #
+                  </TableCell>
                   <TableCell>Date</TableCell>
                   <TableCell>Model</TableCell>
                   <TableCell>Crop</TableCell>
@@ -332,8 +412,8 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               </TableHead>
               <TableBody>
                 {!isLoading && predictionRuns.length === 0 ? (
-                  <TableRow sx={{ bgcolor: rowSurface }}>
-                    <TableCell colSpan={14}>
+                  <TableRow>
+                    <TableCell colSpan={15}>
                       <Stack spacing={0.5} sx={{ py: 1 }}>
                         <Typography variant="body2">No saved predictions found.</Typography>
                         <Typography variant="caption" color="text.secondary">
@@ -346,6 +426,11 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
 
                 {predictionRuns.map((row) => {
                   const isSelected = row.predictionRunId === selectedPredictionRunId;
+                  const modelType = modelTypesByVersionId[row.modelVersionId] || row.modelVersionTag || '';
+                  const modelChip = modelType ? getModelChipPalette(modelType, theme) : null;
+                  const yieldOutlier = isYieldOutlier(row.predictedYield);
+                  const yieldColor = yieldOutlier ? theme.palette.error.main : theme.palette.success.main;
+                  const mutedAccent = alpha(theme.palette.primary.light, 0.85);
                   return (
                     <TableRow
                       key={row.predictionRunId}
@@ -354,23 +439,78 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                       onClick={() => setSelectedPredictionRunId(row.predictionRunId)}
                       sx={{
                         cursor: 'pointer',
-                        bgcolor: rowSurface,
+                        '& .MuiTableCell-root': {
+                          borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.08)}`
+                        },
                         '&:hover': {
+                          bgcolor: alpha(theme.palette.primary.main, 0.08)
+                        },
+                        '&.Mui-selected, &.Mui-selected:hover': {
                           bgcolor: alpha(theme.palette.primary.main, 0.14)
                         }
                       }}
                     >
                       <TableCell padding="checkbox">
-                        <Radio checked={isSelected} onChange={() => setSelectedPredictionRunId(row.predictionRunId)} />
+                        <Radio
+                          size="small"
+                          checked={isSelected}
+                          onChange={() => setSelectedPredictionRunId(row.predictionRunId)}
+                        />
                       </TableCell>
-                      <TableCell>{formatDateTime(row.createdAt)}</TableCell>
-                      <TableCell>{row.modelVersionTag || '—'}</TableCell>
+                      <TableCell align="right" sx={{ width: 90, px: 1, color: mutedAccent }}>
+                        {row.predictionRunId ?? '—'}
+                      </TableCell>
+                      <TableCell sx={{ color: theme.palette.text.secondary }}>{formatDateTime(row.createdAt)}</TableCell>
+                      <TableCell>
+                        {modelType && modelChip ? (
+                          <Chip
+                            size="small"
+                            label={modelType}
+                            sx={{
+                              fontWeight: 600,
+                              fontSize: '0.72rem',
+                              color: modelChip.fg,
+                              bgcolor: modelChip.bg,
+                              border: `1px solid ${modelChip.border}`,
+                              borderRadius: 999,
+                              height: 22
+                            }}
+                          />
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
                       <TableCell>{row.crop || '—'}</TableCell>
                       <TableCell>{row.variety || '—'}</TableCell>
-                      <TableCell>{row.season ?? '—'}</TableCell>
+                      <TableCell sx={{ color: mutedAccent }}>{row.season ?? '—'}</TableCell>
                       <TableCell>{row.state || '—'}</TableCell>
-                      <TableCell>{row.county || '—'}</TableCell>
-                      <TableCell align="right">{formatNumber(row.predictedYield)}</TableCell>
+                      <TableCell sx={{ color: mutedAccent }}>{row.county || '—'}</TableCell>
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', justifyContent: 'center' }}>
+                          <Typography component="span" sx={{ color: yieldColor, fontWeight: 700, fontSize: '0.9rem' }}>
+                            {formatNumber(row.predictedYield)}
+                          </Typography>
+                          <Typography component="span" sx={{ color: theme.palette.text.secondary, fontSize: '0.78rem' }}>
+                            bu/ac
+                          </Typography>
+                          {yieldOutlier ? (
+                            <Chip
+                              size="small"
+                              label="Out"
+                              sx={{
+                                height: 18,
+                                fontSize: '0.62rem',
+                                fontWeight: 700,
+                                color: theme.palette.error.light,
+                                bgcolor: alpha(theme.palette.error.main, 0.18),
+                                border: `1px solid ${alpha(theme.palette.error.main, 0.5)}`,
+                                borderRadius: 999,
+                                '& .MuiChip-label': { px: 0.75 }
+                              }}
+                            />
+                          ) : null}
+                        </Stack>
+                      </TableCell>
                       <TableCell align="right">{formatNumber(row.acres)}</TableCell>
                       <TableCell align="right">{formatNumber(row.totalN)}</TableCell>
                       <TableCell align="right">{formatNumber(row.totalP)}</TableCell>
@@ -383,15 +523,33 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
             </Table>
           </TableContainer>
 
-          <Stack direction="row" sx={{ justifyContent: 'flex-end', p: 2 }}>
+          <Stack
+            direction="row"
+            sx={{
+              px: 2.5,
+              py: 1.75,
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderTop: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`
+            }}
+          >
+            <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
+              {selectedPrediction ? `Prediction #${selectedPrediction.predictionRunId} selected` : 'No prediction selected'}
+            </Typography>
             <Button
               variant="contained"
               disabled={!selectedPrediction || isLoading}
               onClick={handleAnalyzePrediction}
+              endIcon={
+                <Box component="span" aria-hidden sx={{ fontSize: '1.1rem', lineHeight: 1 }}>
+                  →
+                </Box>
+              }
               sx={{
+                fontWeight: 600,
                 '&.Mui-disabled': {
-                  backgroundColor: theme.palette.grey[500],
-                  color: alpha(theme.palette.text.primary, 0.5)
+                  backgroundColor: alpha(theme.palette.primary.main, 0.32),
+                  color: alpha(theme.palette.text.primary, 0.6)
                 }
               }}
             >
@@ -619,7 +777,9 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                               </TableCell>
                               <TableCell align="right">{formatNumber(importance * 100, 2)}%</TableCell>
                               <TableCell sx={{ minWidth: 180 }}>
-                                <Box sx={{ height: 8, borderRadius: 1, bgcolor: alpha(theme.palette.primary.main, 0.18), overflow: 'hidden' }}>
+                                <Box
+                                  sx={{ height: 8, borderRadius: 1, bgcolor: alpha(theme.palette.primary.main, 0.18), overflow: 'hidden' }}
+                                >
                                   <Box sx={{ width: `${barPct}%`, height: '100%', bgcolor: theme.palette.primary.main }} />
                                 </Box>
                               </TableCell>
