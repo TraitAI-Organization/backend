@@ -5,20 +5,112 @@
 
 // Stage transitions for winter wheat. Encoded as month*100 + day so they're
 // easy to compare against the current date. The order matters: list latest
-// stage first so the lookup falls through cleanly.
+// stage first so the lookup falls through cleanly. Each stage carries a
+// short `description` (what's actually happening to the plant) and a
+// `link` to a reputable agronomy reference for deeper reading.
+//
+// All links go to UMN Extension's wheat growth-and-development page, which
+// is a single comprehensive resource that covers every stage in one place.
+const WHEAT_STAGE_REFERENCE_URL =
+  'https://extension.umn.edu/small-grains-growth-and-development/wheat-growth-and-development';
+
 const WHEAT_STAGES = [
-  { from: 815, label: 'Post-harvest', detail: 'Stubble / fallow' },
-  { from: 705, label: 'Maturity', detail: 'Hard dough · ready to combine' },
-  { from: 615, label: 'Grain fill', detail: 'Soft to hard dough' },
-  { from: 525, label: 'Anthesis', detail: 'Flowering · pollination' },
-  { from: 510, label: 'Heading', detail: 'Spike emergence' },
-  { from: 415, label: 'Booting', detail: 'Spike forming inside flag leaf' },
-  { from: 315, label: 'Stem extension', detail: 'Jointing · rapid growth' },
-  { from: 215, label: 'Tillering', detail: 'Tiller production' },
-  { from: 115, label: 'Green-up', detail: 'Resuming growth from dormancy' },
-  { from: 1015, label: 'Tillering', detail: 'Fall tillering before dormancy' },
-  { from: 915, label: 'Emergence', detail: 'Seedlings emerging' },
-  { from: 0, label: 'Dormancy', detail: 'Winter dormancy' }
+  {
+    from: 815,
+    label: 'Post-harvest',
+    detail: 'Stubble / fallow',
+    description:
+      'Wheat has been combined and the field is in stubble or fallow. Residue is being managed for moisture conservation, weed suppression, and the next planting window.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 705,
+    label: 'Maturity',
+    detail: 'Hard dough · ready to combine',
+    description:
+      'Grain has reached physiological maturity. Kernels are hard, moisture is dropping toward the harvest threshold of about 13.5%, and combines start moving into the field.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 615,
+    label: 'Grain fill',
+    detail: 'Soft to hard dough',
+    description:
+      'Carbohydrates and protein are being deposited into the kernels. Yield potential set during heading is now being converted into actual grain weight; heat or drought during this window is especially costly.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 525,
+    label: 'Anthesis',
+    detail: 'Flowering · pollination',
+    description:
+      'Wheat is self-pollinating. Anthers extrude from each spikelet over the course of three to five days. Disease management decisions for Fusarium head blight (scab) are made now.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 510,
+    label: 'Heading',
+    detail: 'Spike emergence',
+    description:
+      'The spike emerges from the boot. All spikelets and the floret count are now visible above the flag leaf — yield potential is essentially fixed at this point.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 415,
+    label: 'Booting',
+    detail: 'Spike forming inside flag leaf',
+    description:
+      'The developing spike is enclosed in the flag-leaf sheath. Floret abortion happens in this window if the plant is stressed, directly capping the potential kernel count per head.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 315,
+    label: 'Stem extension',
+    detail: 'Jointing · rapid growth',
+    description:
+      'Stems begin elongating and the first node becomes detectable above the soil. Nitrogen demand surges; this is the typical window for spring nitrogen top-dress in winter wheat.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 215,
+    label: 'Tillering',
+    detail: 'Tiller production',
+    description:
+      'Plants are producing additional shoots, called tillers, from the crown. Final tiller count and head density are determined here; spring nitrogen timing trades off tiller survival against lodging risk.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 115,
+    label: 'Green-up',
+    detail: 'Resuming growth from dormancy',
+    description:
+      'Winter wheat resumes active growth as soil temperatures warm. Scout for winter-kill, frost-heaved crowns, and grass-weed pressure; assess stand counts before making in-season decisions.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 1015,
+    label: 'Tillering',
+    detail: 'Fall tillering before dormancy',
+    description:
+      'Plants put on additional tillers in the fall before going dormant. A two- to three-tiller crown going into winter is the typical target for cold-hardy yield potential.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 915,
+    label: 'Emergence',
+    detail: 'Seedlings emerging',
+    description:
+      'Seeds have germinated and the coleoptile is pushing through the soil surface. Stand establishment, planting depth, and seedbed moisture decide first-tiller vigor.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  },
+  {
+    from: 0,
+    label: 'Dormancy',
+    detail: 'Winter dormancy',
+    description:
+      'Growth is paused while soil temperatures stay cold. The plant relies on stored energy in the crown; cold-hardiness is at its peak. Winter-kill risk depends on crown moisture and snow cover.',
+    link: WHEAT_STAGE_REFERENCE_URL
+  }
 ];
 
 // Approximate winter-wheat harvest date by state. Encoded as { month, day }

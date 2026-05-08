@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import DownOutlined from '@ant-design/icons/DownOutlined';
+import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
+
 import { alpha, useTheme } from '@mui/material/styles';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
+import IconButton from '@mui/material/IconButton';
 import LinearProgress from '@mui/material/LinearProgress';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
+import Popover from '@mui/material/Popover';
 import Stack from '@mui/material/Stack';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import MainCard from 'components/MainCard';
@@ -16,7 +25,8 @@ import {
   getDaysToHarvest,
   getSeasonProgress,
   getWheatStage,
-  STATE_HARVEST_DATES
+  STATE_HARVEST_DATES,
+  STATE_PLANT_DATES
 } from 'sections/intelligence/crop-studio/wheatSeasonHelpers';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
@@ -145,6 +155,12 @@ export default function Overview() {
   // purpose — the map gracefully renders an empty silhouette if the fetch
   // fails, which is fine for a hero visual.
   const [mapFields, setMapFields] = useState([]);
+  // Authoritative list of distinct states present in the field data,
+  // pulled from /fields/states/ (which returns ALL states with at least one
+  // field row, not just the 100-row mapFields sample). This is what
+  // populates the banner's state dropdown so it always shows every state
+  // the user could pick.
+  const [dbStates, setDbStates] = useState([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -218,6 +234,33 @@ export default function Overview() {
     return () => controller.abort();
   }, []);
 
+  // Pull the full distinct-state list from /fields/states/. This is what
+  // populates the banner's state dropdown — the 100-row mapFields sample
+  // is too narrow (it might all happen to be Kansas), so we hit the
+  // dedicated endpoint here for the authoritative list.
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadStates = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/fields/states/`, { signal: controller.signal });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const states = Array.isArray(payload)
+          ? payload
+              .map((entry) => (typeof entry === 'string' ? entry : entry?.state))
+              .filter(Boolean)
+          : [];
+        setDbStates(states.sort());
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          // Silent: dropdown will fall back to mapFields-derived list.
+        }
+      }
+    };
+    loadStates();
+    return () => controller.abort();
+  }, []);
+
   const predStats = overview.prediction_stats || {};
   const totalFieldSeasons = overview.total_field_seasons || 0;
   const withPredictions = predStats.field_seasons_with_predictions || 0;
@@ -236,11 +279,11 @@ export default function Overview() {
   const greeting = useMemo(() => getTimeOfDayGreeting(), []);
   const todayLabel = useMemo(() => new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }), []);
 
-  // Featured state for the seasonal banner — derived from the actual data
-  // when available (most-represented state by field count, but only if it's
-  // a state we have wheat-stage estimates for) and falls back to Kansas.
-  // This way the banner stays accurate as the underlying field set changes.
-  const featuredState = useMemo(() => {
+  // Default featured state — derived from the actual data (most-represented
+  // state by field count, only states we have wheat-stage estimates for) and
+  // falls back to Kansas. This is the auto-pick; a user override below can
+  // replace it via the banner's state dropdown.
+  const defaultFeaturedState = useMemo(() => {
     if (!Array.isArray(mapFields) || mapFields.length === 0) return 'Kansas';
     const counts = {};
     mapFields.forEach((f) => {
@@ -252,14 +295,56 @@ export default function Overview() {
     return top ? top[0] : 'Kansas';
   }, [mapFields]);
 
+  // States the user can choose from in the banner dropdown. Sourced from
+  // /fields/states/ (the authoritative distinct-state list) when available,
+  // and falls back to states that appear in the mapFields sample so the
+  // dropdown still works during the initial load. We deliberately do NOT
+  // filter by STATE_HARVEST_DATES here — the harvest helpers fall back
+  // gracefully to Kansas defaults when a state isn't in the table, so it's
+  // better to show the user every state in their data than to silently
+  // hide some.
+  const availableStates = useMemo(() => {
+    if (dbStates.length > 0) return dbStates;
+    if (!Array.isArray(mapFields) || mapFields.length === 0) {
+      return Object.keys(STATE_HARVEST_DATES).sort();
+    }
+    const fromMap = new Set();
+    mapFields.forEach((f) => {
+      if (f?.state) fromMap.add(f.state);
+    });
+    return Array.from(fromMap).sort();
+  }, [dbStates, mapFields]);
+
+  // User-selected override for the state dropdown — falls back to the
+  // computed default when null.
+  const [stateOverride, setStateOverride] = useState(null);
+  const featuredState = stateOverride || defaultFeaturedState;
+  // Anchors for the two banner popovers: the info bubble next to the stage
+  // detail, and the state dropdown menu.
+  const [infoAnchor, setInfoAnchor] = useState(null);
+  const [stateMenuAnchor, setStateMenuAnchor] = useState(null);
+
   // Wheat-stage info for the banner. Recomputed on every render so the
   // stage/days reflect "now" — cheap, no useMemo needed.
   const stageInfo = getWheatStage();
   const daysToHarvest = getDaysToHarvest(new Date(), featuredState);
   const seasonProgress = getSeasonProgress(new Date(), featuredState);
 
+  // Human-friendly plant + harvest dates for the season-progress tooltip,
+  // so the user can see exactly what window the percentage covers.
+  const seasonWindow = useMemo(() => {
+    const plant = STATE_PLANT_DATES[featuredState] || STATE_PLANT_DATES.Kansas;
+    const harvest = STATE_HARVEST_DATES[featuredState] || STATE_HARVEST_DATES.Kansas;
+    const fmt = (m, d) =>
+      new Date(2000, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return { plantLabel: fmt(plant.month, plant.day), harvestLabel: fmt(harvest.month, harvest.day) };
+  }, [featuredState]);
+
+  // No title prop on MainCard — the parent tab is already named "Overview",
+  // so a second header inside the card was redundant. MainCard skips the
+  // CardHeader entirely when title is omitted.
   return (
-    <MainCard title="Overview">
+    <MainCard>
       <Stack spacing={2.5}>
         <Paper
           variant="outlined"
@@ -359,57 +444,247 @@ export default function Overview() {
                 >
                   · {stageInfo.detail}
                 </Typography>
+                {/* Info button — click pops a small Popover with a longer
+                    explanation of the current stage and a "Learn more" link
+                    to a reputable agronomy reference. We use Popover (not
+                    Tooltip) so the link inside is actually clickable. */}
+                <Tooltip title="More about this stage" arrow>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => setInfoAnchor(e.currentTarget)}
+                    sx={{
+                      ml: 0.25,
+                      color: alpha(theme.palette.primary.light, 0.85),
+                      p: 0.4,
+                      '&:hover': {
+                        color: theme.palette.primary.light,
+                        bgcolor: alpha(theme.palette.primary.main, 0.18)
+                      }
+                    }}
+                    aria-label={`More about the ${stageInfo.label} stage`}
+                  >
+                    <InfoCircleOutlined style={{ fontSize: '0.85rem' }} />
+                  </IconButton>
+                </Tooltip>
               </Stack>
               {/* Spacer pushes the right cluster (days + progress) to the
                   far edge on wide screens; on narrow it wraps below. */}
               <Box sx={{ flex: 1, minWidth: 0 }} />
               <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
-                <Typography sx={{ color: alpha(theme.palette.common.white, 0.78), fontSize: '0.8rem', fontWeight: 500 }}>
-                  <Box component="span" sx={{ color: theme.palette.primary.light, fontWeight: 700 }}>
-                    {daysToHarvest}
-                  </Box>{' '}
-                  days to harvest in {featuredState}
-                </Typography>
-                {/* Thin progress bar showing season-cycle position. Uses a
-                    fixed width so it doesn't fight with the date copy for
-                    flex space. */}
-                <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
-                  <Box
+                <Stack
+                  direction="row"
+                  spacing={0.75}
+                  sx={{ alignItems: 'center', color: alpha(theme.palette.common.white, 0.78), fontSize: '0.8rem' }}
+                >
+                  <Typography component="span" sx={{ fontSize: 'inherit', fontWeight: 500 }}>
+                    <Box component="span" sx={{ color: theme.palette.primary.light, fontWeight: 700 }}>
+                      {daysToHarvest}
+                    </Box>{' '}
+                    days to harvest in
+                  </Typography>
+                  {/* State picker — replaces the static "Kansas" with a
+                      dropdown of states actually present in the field data
+                      (and that we have a known harvest date for). Defaults
+                      to the most-represented state; user pick is sticky for
+                      the session via stateOverride. */}
+                  <Button
+                    size="small"
+                    onClick={(e) => setStateMenuAnchor(e.currentTarget)}
+                    endIcon={<DownOutlined style={{ fontSize: '0.62rem' }} />}
                     sx={{
-                      width: { xs: 80, sm: 120 },
-                      height: 4,
-                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      fontSize: '0.8rem',
+                      letterSpacing: '0.01em',
+                      minHeight: 0,
+                      whiteSpace: 'nowrap',
+                      py: 0.15,
+                      px: 0.85,
+                      borderRadius: 999,
+                      color: theme.palette.common.white,
                       bgcolor: alpha(theme.palette.primary.main, 0.22),
-                      overflow: 'hidden',
-                      position: 'relative'
+                      border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                      transition: 'background 0.18s ease, border-color 0.18s ease',
+                      '&:hover': {
+                        bgcolor: alpha(theme.palette.primary.main, 0.34),
+                        borderColor: theme.palette.primary.main
+                      }
                     }}
                   >
+                    {featuredState}
+                  </Button>
+                </Stack>
+                {/* Season-progress bar + clarified label. The percentage now
+                    reads "X% through season" with a Tooltip on the whole
+                    cluster explaining the actual planting → harvest dates
+                    that the bar measures against. */}
+                <Tooltip
+                  arrow
+                  title={
+                    <Box sx={{ p: 0.25 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.25 }}>
+                        Season progress
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45 }}>
+                        How far {featuredState} winter wheat is through its
+                        planting → harvest cycle right now.
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.7rem', mt: 0.5, opacity: 0.85 }}>
+                        Plant ≈ {seasonWindow.plantLabel} · Harvest ≈ {seasonWindow.harvestLabel}
+                      </Typography>
+                    </Box>
+                  }
+                >
+                  <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', cursor: 'help' }}>
                     <Box
                       sx={{
-                        position: 'absolute',
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: `${seasonProgress}%`,
-                        background: `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${theme.palette.success.light} 100%)`,
-                        transition: 'width 0.6s ease'
+                        width: { xs: 80, sm: 120 },
+                        height: 4,
+                        borderRadius: 2,
+                        bgcolor: alpha(theme.palette.primary.main, 0.22),
+                        overflow: 'hidden',
+                        position: 'relative'
                       }}
-                    />
-                  </Box>
-                  <Typography
-                    sx={{
-                      color: alpha(theme.palette.common.white, 0.6),
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      fontVariantNumeric: 'tabular-nums'
-                    }}
-                  >
-                    {Math.round(seasonProgress)}%
-                  </Typography>
-                </Stack>
+                    >
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          left: 0,
+                          top: 0,
+                          bottom: 0,
+                          width: `${seasonProgress}%`,
+                          background: `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${theme.palette.success.light} 100%)`,
+                          transition: 'width 0.6s ease'
+                        }}
+                      />
+                    </Box>
+                    <Typography
+                      sx={{
+                        color: alpha(theme.palette.common.white, 0.7),
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        fontVariantNumeric: 'tabular-nums',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {Math.round(seasonProgress)}% through season
+                    </Typography>
+                  </Stack>
+                </Tooltip>
               </Stack>
             </Stack>
           </Box>
+
+          {/* Stage-info popover — opened by the (i) icon in the banner. */}
+          <Popover
+            open={Boolean(infoAnchor)}
+            anchorEl={infoAnchor}
+            onClose={() => setInfoAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            slotProps={{
+              paper: {
+                sx: {
+                  bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                  borderRadius: 1.25,
+                  backgroundImage: 'none',
+                  maxWidth: 360,
+                  mt: 0.5,
+                  boxShadow: `0 8px 22px ${alpha(theme.palette.common.black, 0.45)}`
+                }
+              }
+            }}
+          >
+            <Box sx={{ p: 2 }}>
+              <Stack direction="row" spacing={0.75} sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
+                <Typography sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '0.95rem' }}>
+                  {stageInfo.label}
+                </Typography>
+                <Typography sx={{ color: alpha(theme.palette.common.white, 0.7), fontSize: '0.78rem' }}>
+                  · {stageInfo.detail}
+                </Typography>
+              </Stack>
+              <Typography
+                sx={{
+                  color: alpha(theme.palette.common.white, 0.85),
+                  fontSize: '0.82rem',
+                  lineHeight: 1.55,
+                  mt: 1
+                }}
+              >
+                {stageInfo.description}
+              </Typography>
+              {stageInfo.link ? (
+                <Box sx={{ mt: 1.25 }}>
+                  <Box
+                    component="a"
+                    href={stageInfo.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                      color: theme.palette.primary.light,
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      letterSpacing: '0.02em',
+                      '&:hover': {
+                        color: theme.palette.common.white,
+                        textDecoration: 'underline'
+                      }
+                    }}
+                  >
+                    Learn more →
+                  </Box>
+                </Box>
+              ) : null}
+            </Box>
+          </Popover>
+
+          {/* State picker menu — opens from the dropdown button in the banner. */}
+          <Menu
+            anchorEl={stateMenuAnchor}
+            open={Boolean(stateMenuAnchor)}
+            onClose={() => setStateMenuAnchor(null)}
+            slotProps={{
+              paper: {
+                sx: {
+                  bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 8%, ${theme.palette.background.paper})`,
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+                  borderRadius: 1.25,
+                  backgroundImage: 'none',
+                  mt: 0.5,
+                  maxHeight: 320,
+                  '& .MuiMenuItem-root': {
+                    color: alpha(theme.palette.common.white, 0.88),
+                    fontSize: '0.85rem',
+                    minHeight: 32,
+                    '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.16) },
+                    '&.Mui-selected': {
+                      bgcolor: alpha(theme.palette.primary.main, 0.28),
+                      '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.36) }
+                    }
+                  }
+                }
+              }
+            }}
+          >
+            {availableStates.map((state) => (
+              <MenuItem
+                key={state}
+                selected={state === featuredState}
+                onClick={() => {
+                  setStateOverride(state);
+                  setStateMenuAnchor(null);
+                }}
+              >
+                {state}
+              </MenuItem>
+            ))}
+          </Menu>
 
           <Grid container spacing={0}>
             <Grid size={{ xs: 12, md: 7 }}>
@@ -473,19 +748,18 @@ export default function Overview() {
               </Stack>
             </Grid>
             <Grid size={{ xs: 12, md: 5 }}>
-              {/* Field map — replaces the prior decorative wheat illustration
-                  with a primary-tinted CONUS silhouette dotted by actual
-                  field locations from the API. Color encodes predicted
-                  yield, size encodes acres, anchoring the product as
-                  field-grounded rather than abstract. */}
+              {/* Field map — real US states SVG with pins on states that
+                  have field data. Tighter padding here than the previous
+                  iteration so the map fills the column rather than floating
+                  in whitespace. */}
               <Box
                 sx={{
                   position: 'relative',
                   display: 'flex',
                   justifyContent: 'center',
                   alignItems: 'center',
-                  p: { xs: 2, md: 2 },
-                  pt: { xs: 1, md: 1 },
+                  px: { xs: 1.5, md: 1 },
+                  py: { xs: 1, md: 1.5 },
                   height: '100%'
                 }}
               >
