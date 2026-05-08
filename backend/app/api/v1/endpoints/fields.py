@@ -64,6 +64,10 @@ async def list_field_seasons(
     has_prediction: Optional[bool] = Query(None, description="Filter by prediction availability"),
     min_yield: Optional[float] = Query(None, description="Minimum predicted yield (requires has_prediction=true)"),
     max_yield: Optional[float] = Query(None, description="Maximum predicted yield (requires has_prediction=true)"),
+    # When set, the predicted_yield/confidence/regional_avg fields on each row reflect
+    # the latest prediction from this specific model_version_id. When omitted, the
+    # latest prediction across any model is used (backward-compatible behavior).
+    model_id: Optional[int] = Query(None, description="Filter latest prediction to this model_version_id"),
     # Pagination
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=500),
@@ -145,10 +149,17 @@ async def list_field_seasons(
             "totalK_per_ac": _safe_float(fs.totalK_per_ac),
         }
 
-        # Add prediction if available (assuming latest prediction is loaded)
-        if fs.predictions:
+        # Add prediction if available. When model_id is set, only consider
+        # predictions from that model so the toggle in the UI returns
+        # per-model predicted yields. When omitted, fall back to the latest
+        # prediction across any model (existing behavior).
+        candidate_preds = fs.predictions or []
+        if model_id is not None:
+            candidate_preds = [p for p in candidate_preds if p.model_version_id == model_id]
+
+        if candidate_preds:
             latest_pred = sorted(
-                fs.predictions, key=lambda x: x.created_at, reverse=True
+                candidate_preds, key=lambda x: x.created_at, reverse=True
             )[0]
             pred_yield = _safe_float(latest_pred.predicted_yield)
             conf_low = _safe_float(latest_pred.confidence_lower)
@@ -156,10 +167,12 @@ async def list_field_seasons(
             item["predicted_yield"] = pred_yield
             item["confidence_interval"] = [conf_low, conf_high] if conf_low is not None and conf_high is not None else None
             item["regional_avg_yield"] = _safe_float(latest_pred.regional_avg_yield)
+            item["prediction_model_version_id"] = latest_pred.model_version_id
         else:
             item["predicted_yield"] = None
             item["confidence_interval"] = None
             item["regional_avg_yield"] = None
+            item["prediction_model_version_id"] = None
 
         # Management event count
         item["management_event_count"] = len(fs.management_events) if fs.management_events else 0
@@ -200,32 +213,56 @@ async def get_field_season_detail(
             detail=f"Field-season with id {field_season_id} not found"
         )
 
-    # Build response
+    # Helper that converts a Decimal/None to a float without choking on null.
+    def _f(value):
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _iso(value):
+        if value is None:
+            return None
+        try:
+            return value.isoformat()
+        except AttributeError:
+            return None
+
+    # Build response (every numeric/datetime field passes through _f / _iso so
+    # NULL values in the DB don't blow up the response builder).
     response = {
         "field_season_id": fs.field_season_id,
         "field_id": fs.field_id,
         "crop_id": fs.crop_id,
         "variety_id": fs.variety_id,
         "season_id": fs.season_id,
-        "yield_bu_ac": float(fs.yield_bu_ac) if fs.yield_bu_ac else None,
-        "yield_target": float(fs.yield_target) if fs.yield_target else None,
-        "totalN_per_ac": float(fs.totalN_per_ac) if fs.totalN_per_ac else None,
-        "totalP_per_ac": float(fs.totalP_per_ac) if fs.totalP_per_ac else None,
-        "totalK_per_ac": float(fs.totalK_per_ac) if fs.totalK_per_ac else None,
+        "yield_bu_ac": _f(fs.yield_bu_ac),
+        "yield_target": _f(fs.yield_target),
+        "totalN_per_ac": _f(fs.totalN_per_ac),
+        "totalP_per_ac": _f(fs.totalP_per_ac),
+        "totalK_per_ac": _f(fs.totalK_per_ac),
         "record_source": fs.record_source,
-        "data_quality_score": float(fs.data_quality_score) if fs.data_quality_score else None,
+        "data_quality_score": _f(fs.data_quality_score),
         "missing_data_flags": fs.missing_data_flags,
-        "created_at": fs.created_at,
+        # Some FieldSeason rows don't carry a created_at column at all
+        # (legacy schema). getattr keeps this resilient instead of throwing
+        # AttributeError mid-response.
+        "created_at": getattr(fs, "created_at", None),
         # Joined data
         "field": {
             "field_id": fs.field.field_id,
             "field_number": fs.field.field_number,
-            "acres": float(fs.field.acres) if fs.field.acres else None,
-            "lat": float(fs.field.lat) if fs.field.lat else None,
-            "long": float(fs.field.long) if fs.field.long else None,
+            "acres": _f(fs.field.acres),
+            "lat": _f(fs.field.lat),
+            "long": _f(fs.field.long),
             "county": fs.field.county,
             "state": fs.field.state,
             "grower_id": fs.field.grower_id,
+            # created_at is required by FieldResponse — pull it through
+            # defensively in case any legacy row lacks the timestamp.
+            "created_at": getattr(fs.field, "created_at", None),
         } if fs.field else None,
         "crop": {
             "crop_id": fs.crop.crop_id,
@@ -234,6 +271,9 @@ async def get_field_season_detail(
         "variety": {
             "variety_id": fs.variety.variety_id,
             "variety_name_en": fs.variety.variety_name_en,
+            # crop_id is required by VarietyBase — Variety rows always have a
+            # crop FK, so this is just propagating it through to the response.
+            "crop_id": fs.variety.crop_id,
         } if fs.variety else None,
         "season": {
             "season_id": fs.season.season_id,
@@ -245,33 +285,39 @@ async def get_field_season_detail(
                 "job_id": ev.job_id,
                 "event_type": ev.event_type,
                 "status": ev.status,
-                "start_date": ev.start_date.isoformat() if ev.start_date else None,
-                "end_date": ev.end_date.isoformat() if ev.end_date else None,
-                "application_area": float(ev.application_area) if ev.application_area else None,
-                "amount": float(ev.amount) if ev.amount else None,
+                "start_date": _iso(ev.start_date),
+                "end_date": _iso(ev.end_date),
+                "application_area": _f(ev.application_area),
+                "amount": _f(ev.amount),
                 "description": ev.description,
                 "fert_units": ev.fert_units,
-                "rate": float(ev.rate) if ev.rate else None,
+                "rate": _f(ev.rate),
                 "fertilizer_id": ev.fertilizer_id,
                 "blend_name": ev.blend_name,
                 "chemical_type": ev.chemical_type,
                 "chem_product": ev.chem_product,
-                "water_applied_mm": float(ev.water_applied_mm) if ev.water_applied_mm else None,
+                "water_applied_mm": _f(ev.water_applied_mm),
                 "irrigation_method": ev.irrigation_method,
                 "machine_make1": ev.machine_make1,
                 "machine_model1": ev.machine_model1,
             }
-            for ev in sorted(fs.management_events, key=lambda x: x.start_date or x.created_at)
+            # Some rows have neither start_date nor created_at — fall back to
+            # event_id so the sort key never returns None and the comparison
+            # doesn't blow up on mixed types.
+            for ev in sorted(
+                fs.management_events,
+                key=lambda x: x.start_date or x.created_at or 0
+            )
         ],
         "predictions": [
             {
                 "prediction_id": pred.prediction_id,
-                "predicted_yield": float(pred.predicted_yield),
-                "confidence_lower": float(pred.confidence_lower),
-                "confidence_upper": float(pred.confidence_upper),
-                "regional_avg_yield": float(pred.regional_avg_yield) if pred.regional_avg_yield else None,
+                "predicted_yield": _f(pred.predicted_yield),
+                "confidence_lower": _f(pred.confidence_lower),
+                "confidence_upper": _f(pred.confidence_upper),
+                "regional_avg_yield": _f(pred.regional_avg_yield),
                 "feature_contributions": pred.feature_contributions,
-                "created_at": pred.created_at.isoformat(),
+                "created_at": _iso(pred.created_at),
                 "model_version": {
                     "model_version_id": pred.model_version.model_version_id,
                     "version_tag": pred.model_version.version_tag,
@@ -289,12 +335,34 @@ async def get_field_season_detail(
 async def list_crops(
     db: Session = Depends(get_db),
     active_only: bool = Query(True, description="Only return active crops"),
+    # When True (the default), only crops that have at least one field_season
+    # record are returned. This is what frontend dropdowns want — listing
+    # crops the user can't actually filter to is a UX trap. Pass
+    # has_data=false to get every registered crop (admin / setup screens).
+    has_data: bool = Query(
+        True,
+        description="Only return crops with at least one field_season record (default true; pass false for the full registry)",
+    ),
 ):
     """
-    Get list of all crops in the system.
+    Get list of crops in the system.
     """
-    from app.database import crud
-    crops = crud.get_crops(db, active_only=active_only)
+    from app.database import crud, models
+
+    if has_data:
+        # Distinct join through field_season so we only surface crops that
+        # actually appear in the data — matches the dropdown UX expectation.
+        query = (
+            db.query(models.Crop)
+            .join(models.FieldSeason, models.FieldSeason.crop_id == models.Crop.crop_id)
+            .distinct()
+        )
+        if active_only:
+            query = query.filter(models.Crop.is_active == True)
+        crops = query.all()
+    else:
+        crops = crud.get_crops(db, active_only=active_only)
+
     return [
         {"crop_id": c.crop_id, "crop_name_en": c.crop_name_en, "is_active": c.is_active}
         for c in crops
@@ -306,23 +374,38 @@ async def list_varieties(
     db: Session = Depends(get_db),
     crop: Optional[str] = Query(None, description="Filter by crop name"),
     active_only: bool = Query(True, description="Only return active varieties"),
+    # When True (the default), only varieties that have at least one
+    # field_season record are returned. Without this filter the dropdown
+    # ends up showing varieties registered in the catalog but never
+    # planted, which makes the table look like its filter is broken when
+    # the user picks one. Pass has_data=false for the full registry.
+    has_data: bool = Query(
+        True,
+        description="Only return varieties with at least one field_season record (default true; pass false for the full registry)",
+    ),
 ):
     """
     Get list of varieties, optionally filtered by crop.
     """
-    from app.database import crud
+    from app.database import crud, models
+
+    query = db.query(models.Variety)
+    if has_data:
+        # Distinct join through field_season so we only surface varieties
+        # the user can actually find data for. Without DISTINCT we'd get
+        # one row per field_season — fine semantically, but wasteful.
+        query = query.join(
+            models.FieldSeason, models.FieldSeason.variety_id == models.Variety.variety_id
+        ).distinct()
+    if active_only:
+        query = query.filter(models.Variety.is_active == True)
     if crop:
         crop_obj = crud.get_crop_by_name(db, crop)
         if not crop_obj:
             raise HTTPException(status_code=404, detail=f"Crop '{crop}' not found")
-        varieties = crud.get_varieties_by_crop(db, crop_obj.crop_id, active_only=active_only)
-    else:
-        from app.database import models
-        query = db.query(models.Variety)
-        if active_only:
-            query = query.filter(models.Variety.is_active == True)
-        varieties = query.all()
+        query = query.filter(models.Variety.crop_id == crop_obj.crop_id)
 
+    varieties = query.all()
     return [
         {
             "variety_id": v.variety_id,

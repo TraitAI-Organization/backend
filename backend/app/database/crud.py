@@ -199,11 +199,23 @@ def get_field_seasons(
     # Always join Season for ordering
     query = query.join(models.Season)
 
-    # Apply filters
+    # Apply filters.
+    #
+    # Join paths matter here: FieldSeason → Variety has TWO valid paths
+    # (direct via FieldSeason.variety_id, OR transitive via Crop), and when
+    # both Crop and Variety are joined SQLAlchemy will silently pick the
+    # transitive Crop→Variety path, which makes the variety filter a no-op
+    # (the join condition becomes "any variety belonging to that crop").
+    # We always pass the explicit ON clause so the variety filter always
+    # narrows to the actually-planted variety.
     if crop:
-        query = query.join(models.Crop).filter(models.Crop.crop_name_en.ilike(crop))
+        query = query.join(
+            models.Crop, models.FieldSeason.crop_id == models.Crop.crop_id
+        ).filter(models.Crop.crop_name_en.ilike(crop))
     if variety:
-        query = query.join(models.Variety).filter(models.Variety.variety_name_en.ilike(variety))
+        query = query.join(
+            models.Variety, models.FieldSeason.variety_id == models.Variety.variety_id
+        ).filter(models.Variety.variety_name_en.ilike(variety))
     if season:
         query = query.filter(models.Season.season_year.in_(season))
     if state:
@@ -249,10 +261,19 @@ def count_field_seasons(
 ) -> int:
     query = db.query(func.count(models.FieldSeason.field_season_id)).join(models.Field)
 
+    # Same explicit-ON-clause fix as get_field_seasons (above): without it,
+    # joining both Crop and Variety lets SQLAlchemy resolve the variety join
+    # via Crop.crop_id = Variety.crop_id, which collapses the variety filter
+    # to a no-op. Always pin the variety join to FieldSeason.variety_id and
+    # the crop join to FieldSeason.crop_id.
     if crop:
-        query = query.join(models.Crop).filter(models.Crop.crop_name_en.ilike(crop))
+        query = query.join(
+            models.Crop, models.FieldSeason.crop_id == models.Crop.crop_id
+        ).filter(models.Crop.crop_name_en.ilike(crop))
     if variety:
-        query = query.join(models.Variety).filter(models.Variety.variety_name_en.ilike(variety))
+        query = query.join(
+            models.Variety, models.FieldSeason.variety_id == models.Variety.variety_id
+        ).filter(models.Variety.variety_name_en.ilike(variety))
     if season:
         query = query.join(models.Season).filter(models.Season.season_year.in_(season))
     if state:

@@ -6,6 +6,7 @@ import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
+import IconButton from '@mui/material/IconButton';
 import LinearProgress from '@mui/material/LinearProgress';
 import Paper from '@mui/material/Paper';
 import Radio from '@mui/material/Radio';
@@ -16,9 +17,12 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 import { BarChart } from '@mui/x-charts';
+import AppstoreOutlined from '@ant-design/icons/AppstoreOutlined';
+import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
 
 import MainCard from 'components/MainCard';
 
@@ -164,47 +168,141 @@ async function fetchModelTypes(signal) {
   }, {});
 }
 
-function MetricCard({ label, value, helper }) {
+// Friendly display name for the model_type strings the API returns. Mirrors
+// the mapping in ModelSelectionStep so the analytics chip reads "Deep
+// Learning" instead of "deep_learning_pytorch".
+function getModelDisplayName(modelType) {
+  const key = String(modelType || '').toLowerCase();
+  if (key.includes('deep') || key.includes('pytorch') || key.includes('neural')) return 'Deep Learning';
+  if (key.includes('catboost') || key.includes('lgbm') || key.includes('lightgbm') || key.includes('boost')) return 'CatBoost';
+  if (key.includes('forest') || key.includes('tree')) return 'Random Forest';
+  if (key.includes('xgb')) return 'XGBoost';
+  return modelType || 'Unknown';
+}
+
+function MetricCard({ label, value, unit, helper, helperColor, range }) {
   const theme = useTheme();
+
+  let rangeMarker = null;
+  if (range && Number.isFinite(Number(range.min)) && Number.isFinite(Number(range.max)) && Number(range.max) > Number(range.min)) {
+    const min = Number(range.min);
+    const max = Number(range.max);
+    const numericValue = Number.isFinite(Number(range.value)) ? Number(range.value) : null;
+    const markerPct = numericValue !== null ? Math.max(0, Math.min(100, ((numericValue - min) / (max - min)) * 100)) : null;
+    rangeMarker = (
+      <Box sx={{ pt: 0.75 }}>
+        <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.75 }}>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.5), fontSize: '0.78rem', fontWeight: 500 }}>
+            {min.toFixed(2)}
+          </Typography>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.5), fontSize: '0.78rem', fontWeight: 500 }}>
+            {max.toFixed(2)}
+          </Typography>
+        </Stack>
+        <Box
+          sx={{
+            position: 'relative',
+            height: 4,
+            borderRadius: 2,
+            background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.22)} 0%, ${alpha(
+              theme.palette.primary.main,
+              0.6
+            )} 100%)`,
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+            // Extra clearance so the marker label ("53.0") that sits at top: 12
+            // doesn't visually crowd the "95% confidence interval" helper below.
+            mb: 3.5
+          }}
+        >
+          {markerPct !== null ? (
+            <>
+              <Box
+                sx={{
+                  position: 'absolute',
+                  left: `${markerPct}%`,
+                  top: -6,
+                  transform: 'translateX(-50%)',
+                  width: 2,
+                  height: 16,
+                  bgcolor: theme.palette.common.white,
+                  borderRadius: 1,
+                  boxShadow: `0 0 6px ${alpha(theme.palette.common.white, 0.55)}`
+                }}
+              />
+              <Typography
+                sx={{
+                  position: 'absolute',
+                  left: `${markerPct}%`,
+                  top: 12,
+                  transform: 'translateX(-50%)',
+                  color: theme.palette.common.white,
+                  fontSize: '0.65rem',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {numericValue.toFixed(1)}
+              </Typography>
+            </>
+          ) : null}
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Paper
       variant="outlined"
       sx={{
-        p: 2,
+        position: 'relative',
+        overflow: 'hidden',
+        p: 2.25,
         height: '100%',
-        bgcolor: alpha(theme.palette.grey[500], 0.12),
-        borderColor: alpha(theme.palette.grey[400], 0.45)
+        borderRadius: 2,
+        // Same surface as the table headers + Overview metric cards so all
+        // dark-card panels share one visual token.
+        bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 8%, ${theme.palette.background.paper})`,
+        borderColor: alpha(theme.palette.primary.main, 0.22),
+        backgroundImage: 'none'
       }}
     >
-      <Stack spacing={0.75}>
+      <Stack spacing={0.9}>
         <Typography
-          variant="body2"
           sx={{
-            color: alpha(theme.palette.primary.light, 0.92),
-            fontWeight: 600,
-            letterSpacing: '0.02em',
+            color: alpha(theme.palette.primary.light, 0.95),
+            fontWeight: 700,
+            fontSize: '0.72rem',
+            letterSpacing: '0.1em',
             textTransform: 'uppercase',
-            textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
+            lineHeight: 1.2
           }}
         >
           {label}
         </Typography>
-        <Typography
-          variant="h6"
-          sx={{
-            color: theme.palette.common.white,
-            fontWeight: 700,
-            lineHeight: 1.2
-          }}
-        >
-          {value}
-        </Typography>
+        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'baseline', flexWrap: 'wrap', rowGap: 0.25 }}>
+          <Typography
+            component="span"
+            sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '1.5rem', lineHeight: 1.15 }}
+          >
+            {value}
+          </Typography>
+          {unit ? (
+            <Typography
+              component="span"
+              sx={{ color: alpha(theme.palette.common.white, 0.55), fontWeight: 500, fontSize: '0.85rem' }}
+            >
+              {unit}
+            </Typography>
+          ) : null}
+        </Stack>
+        {rangeMarker}
         {helper ? (
           <Typography
-            variant="caption"
             sx={{
-              color: alpha(theme.palette.grey[300], 0.92),
-              fontWeight: 500
+              color: helperColor || alpha(theme.palette.common.white, 0.55),
+              fontWeight: 500,
+              fontSize: '0.78rem',
+              lineHeight: 1.45
             }}
           >
             {helper}
@@ -220,9 +318,10 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
   const headerBlue = `color-mix(in srgb, ${theme.palette.primary.main} 45%, ${theme.palette.background.paper})`;
   const rowSurface = alpha(theme.palette.grey[500], 0.12);
-  const graphCardSurface = alpha(theme.palette.grey[500], 0.12);
-  const graphCardHeaderSurface = alpha(theme.palette.grey[500], 0.16);
-  const graphCardBorder = alpha(theme.palette.grey[400], 0.45);
+  // Match the table-header surface used elsewhere in the app for visual cohesion.
+  const graphCardSurface = `color-mix(in srgb, ${theme.palette.primary.main} 8%, ${theme.palette.background.paper})`;
+  const graphCardHeaderSurface = `color-mix(in srgb, ${theme.palette.primary.main} 12%, ${theme.palette.background.paper})`;
+  const graphCardBorder = alpha(theme.palette.primary.main, 0.22);
   const chartBarSx = {
     '& .MuiBarElement-root': {
       stroke: alpha(theme.palette.grey[100], 0.45),
@@ -352,9 +451,62 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
             <Typography variant="subtitle1" sx={{ fontWeight: 700, color: theme.palette.text.primary, letterSpacing: '0.01em' }}>
               Saved Predictions
             </Typography>
-            <Typography variant="body2" sx={{ color: alpha(theme.palette.primary.light, 0.85), fontWeight: 500 }}>
-              {predictionRuns.length} prediction{predictionRuns.length === 1 ? '' : 's'}
-            </Typography>
+            <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
+              <Typography variant="body2" sx={{ color: alpha(theme.palette.primary.light, 0.85), fontWeight: 500 }}>
+                {predictionRuns.length} prediction{predictionRuns.length === 1 ? '' : 's'}
+              </Typography>
+              {/* Visual-only icon button — no download handler wired up yet. */}
+              <Tooltip
+                title="Download"
+                arrow
+                placement="top"
+                slotProps={{
+                  tooltip: {
+                    sx: {
+                      // Match the table-header / metric-card surface for visual cohesion.
+                      bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 14%, ${theme.palette.background.paper})`,
+                      color: theme.palette.common.white,
+                      border: `1px solid ${alpha(theme.palette.primary.main, 0.45)}`,
+                      borderRadius: 1,
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      letterSpacing: '0.02em',
+                      px: 1.25,
+                      py: 0.65,
+                      boxShadow: `0 6px 18px ${alpha(theme.palette.common.black, 0.45)}`
+                    }
+                  },
+                  arrow: {
+                    sx: {
+                      color: `color-mix(in srgb, ${theme.palette.primary.main} 14%, ${theme.palette.background.paper})`,
+                      '&::before': {
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.45)}`
+                      }
+                    }
+                  }
+                }}
+              >
+                <IconButton
+                  size="small"
+                  aria-label="Download saved predictions"
+                  sx={{
+                    color: alpha(theme.palette.primary.light, 0.9),
+                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+                    border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+                    borderRadius: 1.5,
+                    p: 0.75,
+                    transition: 'background 0.2s ease, border-color 0.2s ease, color 0.2s ease',
+                    '&:hover': {
+                      bgcolor: alpha(theme.palette.primary.main, 0.2),
+                      borderColor: theme.palette.primary.main,
+                      color: theme.palette.primary.light
+                    }
+                  }}
+                >
+                  <DownloadOutlined style={{ fontSize: '0.95rem' }} />
+                </IconButton>
+              </Tooltip>
+            </Stack>
           </Stack>
 
           {isLoading ? <LinearProgress /> : null}
@@ -581,143 +733,224 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
           </Alert>
         ) : (
           <Stack spacing={2.5}>
-            <Typography variant="h5">Prediction Analysis</Typography>
-
-            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
-              <Chip label={`Prediction #${analyzedPrediction.predictionRunId}`} color="primary" />
-              <Chip label={`Model: ${analyzedPrediction.modelVersionTag || 'Unknown'}`} variant="outlined" />
-              <Chip label={`Crop: ${analyzedPrediction.crop || 'Unknown'}`} variant="outlined" />
-            </Stack>
-
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 3 }}>
-                <MetricCard label="Predicted Yield" value={`${formatNumber(analyzedPrediction.predictedYield)} bu/ac`} />
-              </Grid>
-              <Grid size={{ xs: 12, md: 3 }}>
-                <MetricCard
-                  label="Confidence Interval"
-                  value={`${formatNumber(analyzedPrediction.confidenceLower)} - ${formatNumber(analyzedPrediction.confidenceUpper)}`}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 3 }}>
-                <MetricCard
-                  label="Regional Average"
-                  value={`${formatNumber(analyzedPrediction.regionalAvgYield)} bu/ac`}
-                  helper="From regional comparison at prediction time"
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 3 }}>
-                <MetricCard label="Created At" value={formatDateTime(analyzedPrediction.createdAt)} />
-              </Grid>
-            </Grid>
-
-            <Paper
-              variant="outlined"
-              sx={{
-                p: 2,
-                bgcolor: graphCardSurface,
-                borderColor: graphCardBorder
-              }}
-            >
-              <Stack spacing={1.25}>
-                <Typography
-                  variant="subtitle2"
-                  sx={{
-                    color: alpha(theme.palette.primary.light, 0.92),
-                    fontWeight: 600,
-                    letterSpacing: '0.02em',
-                    textTransform: 'uppercase',
-                    textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
-                  }}
-                >
-                  Model Configuration Used
-                </Typography>
-                <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
-                  <Chip label={`Version: ${analyzedPrediction.modelVersionTag || 'Unknown'}`} variant="outlined" />
+            {(() => {
+              // Resolve the friendly model name from the looked-up model_type, falling
+              // back to whatever the response payload or version tag carries.
+              const modelTypeRaw =
+                modelTypesByVersionId[analyzedPrediction.modelVersionId] ||
+                analyzedPrediction.responsePayload?.model_type ||
+                analyzedPrediction.modelVersionTag ||
+                '';
+              const modelDisplay = getModelDisplayName(modelTypeRaw);
+              const outlinedChipSx = {
+                bgcolor: 'transparent',
+                color: alpha(theme.palette.common.white, 0.85),
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+                borderRadius: 999,
+                fontWeight: 500,
+                '& .MuiChip-label': { px: 1.5 }
+              };
+              return (
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
                   <Chip
-                    label={`Type: ${modelTypesByVersionId[analyzedPrediction.modelVersionId] || analyzedPrediction.responsePayload?.model_type || 'Unknown'}`}
-                    variant="outlined"
+                    label={`Prediction #${analyzedPrediction.predictionRunId}`}
+                    sx={{
+                      bgcolor: theme.palette.primary.main,
+                      color: theme.palette.common.white,
+                      fontWeight: 700,
+                      borderRadius: 999,
+                      '& .MuiChip-label': { px: 1.75 }
+                    }}
                   />
-                  <Chip label={`Model Version ID: ${analyzedPrediction.modelVersionId ?? '—'}`} variant="outlined" />
-                  <Chip label={`Runtime Model: ${analyzedPrediction.runtimeModelVersion || 'Unknown'}`} variant="outlined" />
+                  <Chip label={`Model: ${modelDisplay}`} sx={outlinedChipSx} />
+                  <Chip label={`Crop: ${analyzedPrediction.crop || 'Unknown'}`} sx={outlinedChipSx} />
+                  <Chip label={`Season: ${analyzedPrediction.season ?? 'Unknown'}`} sx={outlinedChipSx} />
                 </Stack>
-              </Stack>
-            </Paper>
+              );
+            })()}
 
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, lg: 6 }}>
-                <MainCard
-                  title="Nutrient Inputs"
-                  content={false}
-                  sx={{
-                    bgcolor: graphCardSurface,
-                    border: `1px solid ${graphCardBorder}`,
-                    '& .MuiCardHeader-root': {
-                      bgcolor: graphCardHeaderSurface,
-                      borderBottom: `1px solid ${graphCardBorder}`
-                    },
-                    '& .MuiCardHeader-title': {
-                      color: alpha(theme.palette.primary.light, 0.92),
-                      fontWeight: 600,
-                      letterSpacing: '0.02em',
-                      textTransform: 'uppercase',
-                      textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
-                    }
-                  }}
-                >
-                  <Box sx={{ p: 2 }}>
-                    <BarChart
-                      height={280}
-                      sx={chartBarSx}
-                      xAxis={[
-                        {
-                          scaleType: 'band',
-                          data: NUTRIENT_CATEGORIES,
-                          colorMap: { type: 'ordinal', values: NUTRIENT_CATEGORIES, colors: nutrientBarColors }
-                        }
-                      ]}
-                      series={[{ data: nutrientSeries, label: 'Input Amount' }]}
+            {(() => {
+              const lower = analyzedPrediction.confidenceLower;
+              const upper = analyzedPrediction.confidenceUpper;
+              const predicted = analyzedPrediction.predictedYield;
+              const regional = analyzedPrediction.regionalAvgYield;
+              const hasInterval = Number.isFinite(lower) && Number.isFinite(upper) && upper > lower;
+              const hasRegional = Number.isFinite(regional) && regional > 0 && Number.isFinite(predicted);
+
+              let regionalHelper = null;
+              let regionalHelperColor = null;
+              if (hasRegional) {
+                const pct = ((predicted - regional) / regional) * 100;
+                const sign = pct >= 0 ? '+' : '';
+                const direction = pct >= 0 ? 'above' : 'below';
+                regionalHelper = `${sign}${Math.round(pct)}% ${direction} regional avg`;
+                regionalHelperColor = pct >= 0 ? theme.palette.success.main : theme.palette.error.main;
+              }
+
+              const locationParts = [];
+              if (analyzedPrediction.state) locationParts.push(analyzedPrediction.state);
+              if (analyzedPrediction.county) locationParts.push(analyzedPrediction.county);
+              if (analyzedPrediction.season != null && analyzedPrediction.season !== '') {
+                locationParts.push(String(analyzedPrediction.season));
+              }
+
+              return (
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, md: 3 }}>
+                    <MetricCard
+                      label="Predicted Yield"
+                      value={formatNumber(predicted)}
+                      unit="bu/ac"
+                      helper="95% confidence interval (bu/ac)"
+                      range={hasInterval ? { min: lower, max: upper, value: predicted } : null}
                     />
-                  </Box>
-                </MainCard>
-              </Grid>
-              <Grid size={{ xs: 12, lg: 6 }}>
-                <MainCard
-                  title="Yield Context"
-                  content={false}
-                  sx={{
-                    bgcolor: graphCardSurface,
-                    border: `1px solid ${graphCardBorder}`,
-                    '& .MuiCardHeader-root': {
-                      bgcolor: graphCardHeaderSurface,
-                      borderBottom: `1px solid ${graphCardBorder}`
-                    },
-                    '& .MuiCardHeader-title': {
-                      color: alpha(theme.palette.primary.light, 0.92),
-                      fontWeight: 600,
-                      letterSpacing: '0.02em',
-                      textTransform: 'uppercase',
-                      textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
-                    }
-                  }}
-                >
-                  <Box sx={{ p: 2 }}>
-                    <BarChart
-                      height={280}
-                      sx={chartBarSx}
-                      xAxis={[
-                        {
-                          scaleType: 'band',
-                          data: YIELD_CATEGORIES,
-                          colorMap: { type: 'ordinal', values: YIELD_CATEGORIES, colors: yieldBarColors }
-                        }
-                      ]}
-                      series={[{ data: yieldContextSeries, label: 'Yield (bu/ac)' }]}
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 3 }}>
+                    <MetricCard
+                      label="Confidence Width"
+                      value={hasInterval ? formatNumber(upper - lower) : '—'}
+                      unit={hasInterval ? 'bu/ac' : null}
+                      helper={hasInterval ? `Range: ${formatNumber(lower)} — ${formatNumber(upper)}` : null}
                     />
-                  </Box>
-                </MainCard>
-              </Grid>
-            </Grid>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 3 }}>
+                    <MetricCard
+                      label="Regional Average"
+                      value={hasRegional ? formatNumber(regional) : '—'}
+                      unit={hasRegional ? 'bu/ac' : null}
+                      helper={regionalHelper}
+                      helperColor={regionalHelperColor}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 3 }}>
+                    <MetricCard
+                      label="Created At"
+                      value={formatDateTime(analyzedPrediction.createdAt)}
+                      helper={locationParts.length > 0 ? locationParts.join(' • ') : null}
+                    />
+                  </Grid>
+                </Grid>
+              );
+            })()}
+
+            {(() => {
+              const totalN = analyzedPrediction.totalN;
+              const totalP = analyzedPrediction.totalP;
+              const totalK = analyzedPrediction.totalK;
+              const hasNutrients =
+                (Number.isFinite(totalN) && totalN > 0) ||
+                (Number.isFinite(totalP) && totalP > 0) ||
+                (Number.isFinite(totalK) && totalK > 0);
+
+              // Fixed inner content height for both chart cards — accommodates the
+              // BarChart's 280px SVG plus any legend/axis padding so the chart and
+              // the empty state always render at the same total height.
+              const chartContentHeight = 320;
+              const chartCardSx = {
+                bgcolor: graphCardSurface,
+                border: `1px solid ${graphCardBorder}`,
+                borderRadius: 2,
+                backgroundImage: 'none',
+                // Stretch the card to fill its Grid item so siblings equalize
+                // even if one card's intrinsic content is taller than the other.
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                '& .MuiCardHeader-root': {
+                  bgcolor: 'transparent',
+                  borderBottom: `1px solid ${graphCardBorder}`,
+                  px: 2.5,
+                  py: 1.75
+                },
+                '& .MuiCardHeader-title': {
+                  color: theme.palette.common.white,
+                  fontWeight: 700,
+                  letterSpacing: '0.01em',
+                  fontSize: '1rem'
+                }
+              };
+
+              return (
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, lg: 6 }}>
+                    <MainCard title="Yield Context" content={false} sx={chartCardSx}>
+                      <Box sx={{ p: 2, height: chartContentHeight, boxSizing: 'border-box' }}>
+                        <BarChart
+                          height={280}
+                          sx={chartBarSx}
+                          xAxis={[
+                            {
+                              scaleType: 'band',
+                              data: YIELD_CATEGORIES,
+                              colorMap: { type: 'ordinal', values: YIELD_CATEGORIES, colors: yieldBarColors }
+                            }
+                          ]}
+                          series={[{ data: yieldContextSeries, label: 'Yield (bu/ac)' }]}
+                        />
+                      </Box>
+                    </MainCard>
+                  </Grid>
+                  <Grid size={{ xs: 12, lg: 6 }}>
+                    <MainCard title="Nutrient Inputs" content={false} sx={chartCardSx}>
+                      {hasNutrients ? (
+                        <Box sx={{ p: 2, height: chartContentHeight, boxSizing: 'border-box' }}>
+                          <BarChart
+                            height={280}
+                            sx={chartBarSx}
+                            xAxis={[
+                              {
+                                scaleType: 'band',
+                                data: NUTRIENT_CATEGORIES,
+                                colorMap: { type: 'ordinal', values: NUTRIENT_CATEGORIES, colors: nutrientBarColors }
+                              }
+                            ]}
+                            series={[{ data: nutrientSeries, label: 'Input Amount' }]}
+                          />
+                        </Box>
+                      ) : (
+                        // Same outer Box dimensions as the chart branch so the
+                        // empty state matches the BarChart's effective height.
+                        // The inner Stack now fills the Box (height: 100%)
+                        // instead of having its own fixed 280px height.
+                        <Box sx={{ p: 2, height: chartContentHeight, boxSizing: 'border-box' }}>
+                          <Stack
+                            spacing={1.5}
+                            sx={{
+                              height: '100%',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                color: alpha(theme.palette.primary.light, 0.5),
+                                fontSize: '2.4rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              <AppstoreOutlined />
+                            </Box>
+                            <Typography
+                              sx={{
+                                color: alpha(theme.palette.common.white, 0.55),
+                                textAlign: 'center',
+                                fontSize: '0.9rem',
+                                lineHeight: 1.5,
+                                maxWidth: 240
+                              }}
+                            >
+                              No nutrient inputs recorded for this prediction
+                            </Typography>
+                          </Stack>
+                        </Box>
+                      )}
+                    </MainCard>
+                  </Grid>
+                </Grid>
+              );
+            })()}
 
             <Paper
               variant="outlined"

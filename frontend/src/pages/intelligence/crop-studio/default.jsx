@@ -7,7 +7,6 @@ import Tabs from '@mui/material/Tabs';
 import MainCard from 'components/MainCard';
 import Analytics from 'sections/intelligence/crop-studio/Analytics';
 // import DataUpload from 'sections/intelligence/crop-studio/DataUpload';
-import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
 // import MapView from 'sections/intelligence/crop-studio/MapView';
 import Overview from 'sections/intelligence/crop-studio/Overview';
 import PredictionWizard from 'sections/intelligence/crop-studio/PredictionWizard';
@@ -23,7 +22,7 @@ function TabPanel({ children, value, index }) {
 export default function CropStudioDefault() {
   const [tabValue, setTabValue] = useState(0);
   const [preselectedPredictionRunId, setPreselectedPredictionRunId] = useState(null);
-  const analyticsTabIndex = 3;
+  const analyticsTabIndex = 2;
 
   const handleOpenPredictionsTable = (predictionRunId = null) => {
     setPreselectedPredictionRunId(predictionRunId);
@@ -32,7 +31,6 @@ export default function CropStudioDefault() {
 
   const tabs = [
     { label: 'Overview', component: <Overview /> },
-    { label: 'Field Records', component: <FieldTable /> },
     // { label: 'Map View', component: <MapView /> },
     { label: 'Predict', component: <PredictionWizard onOpenPredictionsTable={handleOpenPredictionsTable} /> },
     { label: 'Analytics', component: <Analytics preselectedPredictionRunId={preselectedPredictionRunId} /> }

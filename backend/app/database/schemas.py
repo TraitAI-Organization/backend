@@ -103,7 +103,9 @@ class FieldSeasonBase(BaseSchema):
     totalP_per_ac: Optional[float] = None
     totalK_per_ac: Optional[float] = None
     record_source: Optional[str] = None
-    data_quality_score: float = 1.0
+    # Optional so rows with NULL data_quality_score don't fail Pydantic
+    # validation when the detail endpoint serializes them.
+    data_quality_score: Optional[float] = 1.0
     missing_data_flags: Optional[Dict[str, Any]] = None
 
 
@@ -124,7 +126,9 @@ class FieldSeasonUpdate(BaseSchema):
 
 class FieldSeasonResponse(FieldSeasonBase):
     field_season_id: int
-    created_at: datetime
+    # Optional because the underlying FieldSeason model doesn't always have a
+    # created_at column populated (some legacy rows / non-timestamped tables).
+    created_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -138,6 +142,9 @@ class FieldSeasonDetailResponse(FieldSeasonResponse):
     variety: Optional[VarietyResponse] = None
     season: Optional[SeasonResponse] = None
     management_event_count: Optional[int] = None
+    # Full list of management events for the field-season detail drawer.
+    # Pydantic was silently dropping these because the field wasn't declared.
+    management_events: Optional[List[Dict[str, Any]]] = None
     predictions: Optional[List[Dict[str, Any]]] = None
 
 
