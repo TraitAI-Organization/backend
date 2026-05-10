@@ -9,10 +9,11 @@
 // short `description` (what's actually happening to the plant) and a
 // `link` to a reputable agronomy reference for deeper reading.
 //
-// All links go to UMN Extension's wheat growth-and-development page, which
-// is a single comprehensive resource that covers every stage in one place.
-const WHEAT_STAGE_REFERENCE_URL =
-  'https://extension.umn.edu/small-grains-growth-and-development/wheat-growth-and-development';
+// All links go to Wikipedia's "Cereal growth staging scales" article — a
+// stable, neutral, substantive reference that covers Feekes, Zadoks, and
+// BBCH scales in one place. Wikipedia URLs are extremely durable; the
+// previous extension-site links rotted.
+const WHEAT_STAGE_REFERENCE_URL = 'https://en.wikipedia.org/wiki/Cereal_growth_staging_scales';
 
 const WHEAT_STAGES = [
   {
@@ -116,7 +117,13 @@ const WHEAT_STAGES = [
 // Approximate winter-wheat harvest date by state. Encoded as { month, day }
 // where month is 1-indexed. Defaults to Kansas if the requested state isn't
 // in this table.
+//
+// "United States" is a special aggregate entry — a rough nationwide
+// midpoint across the major wheat-producing states (early-season Texas
+// through late-season Pacific NW). It anchors the dropdown's first option
+// when the user wants the country-wide picture rather than a single state.
 export const STATE_HARVEST_DATES = {
+  'United States': { month: 7, day: 5 },
   Texas: { month: 5, day: 25 },
   Oklahoma: { month: 6, day: 12 },
   Kansas: { month: 6, day: 28 },
@@ -138,8 +145,9 @@ export const STATE_HARVEST_DATES = {
 
 // Approximate planting date by state — used to compute how far through the
 // season we are. Winter wheat is planted in fall; harvest is the following
-// summer.
+// summer. The "United States" aggregate is a rough nationwide midpoint.
 export const STATE_PLANT_DATES = {
+  'United States': { month: 9, day: 20 },
   Texas: { month: 9, day: 25 },
   Oklahoma: { month: 9, day: 20 },
   Kansas: { month: 9, day: 18 },

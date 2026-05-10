@@ -53,7 +53,12 @@ export default function NavItem({ item, level, isParents = false, setSelectedID 
   const isSelected = !!matchPath({ path: item?.link ? item.link : item.url, end: false }, pathname);
 
   const textColor = 'text.primary';
-  const iconSelectedColor = 'primary.main';
+  // Use primary.light (rather than the saturated primary.main) so the
+  // drawer's selected state matches the lighter accent blue used across
+  // the Crop Studio Overview page (eyebrow text, metric-tile labels,
+  // legend accents). The right-edge selection border below stays
+  // primary.main so the active indicator still pops.
+  const iconSelectedColor = 'primary.light';
 
   return (
     <>

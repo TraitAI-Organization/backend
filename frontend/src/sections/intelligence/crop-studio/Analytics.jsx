@@ -25,6 +25,7 @@ import AppstoreOutlined from '@ant-design/icons/AppstoreOutlined';
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
 
 import MainCard from 'components/MainCard';
+import { formatCropName } from 'utils/cropName';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 const NUTRIENT_CATEGORIES = ['N (lb/ac)', 'P (lb/ac)', 'K (lb/ac)'];
@@ -632,7 +633,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                           '—'
                         )}
                       </TableCell>
-                      <TableCell>{row.crop || '—'}</TableCell>
+                      <TableCell>{row.crop ? formatCropName(row.crop) : '—'}</TableCell>
                       <TableCell>{row.variety || '—'}</TableCell>
                       <TableCell sx={{ color: mutedAccent }}>{row.season ?? '—'}</TableCell>
                       <TableCell>{row.state || '—'}</TableCell>
@@ -763,7 +764,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                     }}
                   />
                   <Chip label={`Model: ${modelDisplay}`} sx={outlinedChipSx} />
-                  <Chip label={`Crop: ${analyzedPrediction.crop || 'Unknown'}`} sx={outlinedChipSx} />
+                  <Chip label={`Crop: ${analyzedPrediction.crop ? formatCropName(analyzedPrediction.crop) : 'Unknown'}`} sx={outlinedChipSx} />
                   <Chip label={`Season: ${analyzedPrediction.season ?? 'Unknown'}`} sx={outlinedChipSx} />
                 </Stack>
               );
@@ -1057,7 +1058,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                 </Typography>
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                    <MetricCard label="Crop" value={analyzedPrediction.crop || '—'} />
+                    <MetricCard label="Crop" value={analyzedPrediction.crop ? formatCropName(analyzedPrediction.crop) : '—'} />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <MetricCard label="Variety" value={analyzedPrediction.variety || '—'} />

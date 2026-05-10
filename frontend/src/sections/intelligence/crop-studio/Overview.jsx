@@ -21,6 +21,7 @@ import Typography from '@mui/material/Typography';
 import MainCard from 'components/MainCard';
 import FieldMapPreview from 'sections/intelligence/crop-studio/FieldMapPreview';
 import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
+import { formatCropName } from 'utils/cropName';
 import {
   getDaysToHarvest,
   getSeasonProgress,
@@ -219,7 +220,11 @@ export default function Overview() {
     const controller = new AbortController();
     const loadFields = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/fields?limit=100`, { signal: controller.signal });
+        // Bumped from 100 → 500 (the API cap) so the sample reliably
+        // covers every state present in the dropdown. With 100, less-
+        // represented states can be missing from the page entirely,
+        // leaving the map without a pin for a state the user just picked.
+        const response = await fetch(`${API_BASE_URL}/fields?limit=500`, { signal: controller.signal });
         if (!response.ok) return;
         const payload = await response.json();
         const rows = Array.isArray(payload?.data) ? payload.data : [];
@@ -261,6 +266,35 @@ export default function Overview() {
     return () => controller.abort();
   }, []);
 
+  // Per-state aggregates from the API — count, total acres, avg yield,
+  // distinct crops + varieties. Sourced from /fields/states/stats/ so
+  // the map's hover popup shows real data for every state, not just
+  // those that happen to be in the 500-row mapFields sample (which
+  // skews heavily toward whichever state has the most rows).
+  const [stateStats, setStateStats] = useState({});
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadStateStats = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/fields/states/stats/`, { signal: controller.signal });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (!Array.isArray(payload)) return;
+        const byName = {};
+        payload.forEach((row) => {
+          if (row?.state) byName[row.state] = row;
+        });
+        setStateStats(byName);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          // Silent: popup will fall back to mapFields-derived aggregates.
+        }
+      }
+    };
+    loadStateStats();
+    return () => controller.abort();
+  }, []);
+
   const predStats = overview.prediction_stats || {};
   const totalFieldSeasons = overview.total_field_seasons || 0;
   const withPredictions = predStats.field_seasons_with_predictions || 0;
@@ -270,6 +304,7 @@ export default function Overview() {
     return overview.crops_available
       .map((crop) => (typeof crop === 'string' ? crop : crop?.crop_name))
       .filter(Boolean)
+      .map(formatCropName)
       .join(', ');
   }, [overview.crops_available]);
 
@@ -279,40 +314,35 @@ export default function Overview() {
   const greeting = useMemo(() => getTimeOfDayGreeting(), []);
   const todayLabel = useMemo(() => new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }), []);
 
-  // Default featured state — derived from the actual data (most-represented
-  // state by field count, only states we have wheat-stage estimates for) and
-  // falls back to Kansas. This is the auto-pick; a user override below can
-  // replace it via the banner's state dropdown.
-  const defaultFeaturedState = useMemo(() => {
-    if (!Array.isArray(mapFields) || mapFields.length === 0) return 'Kansas';
-    const counts = {};
-    mapFields.forEach((f) => {
-      if (f?.state && STATE_HARVEST_DATES[f.state]) {
-        counts[f.state] = (counts[f.state] || 0) + 1;
-      }
-    });
-    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-    return top ? top[0] : 'Kansas';
-  }, [mapFields]);
+  // Default featured state — "United States" is the nationwide aggregate
+  // and serves as the dropdown's default first option. The user can drill
+  // into a specific state via the banner's dropdown.
+  const defaultFeaturedState = 'United States';
 
-  // States the user can choose from in the banner dropdown. Sourced from
-  // /fields/states/ (the authoritative distinct-state list) when available,
-  // and falls back to states that appear in the mapFields sample so the
-  // dropdown still works during the initial load. We deliberately do NOT
-  // filter by STATE_HARVEST_DATES here — the harvest helpers fall back
-  // gracefully to Kansas defaults when a state isn't in the table, so it's
-  // better to show the user every state in their data than to silently
-  // hide some.
+  // States the user can choose from in the banner dropdown. "United States"
+  // always pinned at the top as the aggregate option, followed by the
+  // alphabetized list of distinct states actually present in the data
+  // (sourced from /fields/states/ when available, falling back to the
+  // mapFields sample during the initial load). We deliberately do NOT
+  // filter by STATE_HARVEST_DATES — the harvest helpers fall back to
+  // Kansas defaults for unknown states, so it's better to show the user
+  // every state in their data than to silently hide some.
   const availableStates = useMemo(() => {
-    if (dbStates.length > 0) return dbStates;
-    if (!Array.isArray(mapFields) || mapFields.length === 0) {
-      return Object.keys(STATE_HARVEST_DATES).sort();
+    let realStates;
+    if (dbStates.length > 0) {
+      realStates = dbStates;
+    } else if (Array.isArray(mapFields) && mapFields.length > 0) {
+      const fromMap = new Set();
+      mapFields.forEach((f) => {
+        if (f?.state) fromMap.add(f.state);
+      });
+      realStates = Array.from(fromMap).sort();
+    } else {
+      realStates = Object.keys(STATE_HARVEST_DATES)
+        .filter((s) => s !== 'United States')
+        .sort();
     }
-    const fromMap = new Set();
-    mapFields.forEach((f) => {
-      if (f?.state) fromMap.add(f.state);
-    });
-    return Array.from(fromMap).sort();
+    return ['United States', ...realStates];
   }, [dbStates, mapFields]);
 
   // User-selected override for the state dropdown — falls back to the
@@ -339,6 +369,54 @@ export default function Overview() {
       new Date(2000, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     return { plantLabel: fmt(plant.month, plant.day), harvestLabel: fmt(harvest.month, harvest.day) };
   }, [featuredState]);
+
+  // States the map should spotlight. "United States" lights up every
+  // dropdown state at once; a specific pick narrows the map to only that
+  // one. We slice off the leading "United States" entry so the highlight
+  // set always represents real states, never the aggregate label.
+  const highlightedStates = useMemo(() => {
+    const realStates = availableStates.filter((s) => s !== 'United States');
+    if (featuredState === 'United States') return realStates;
+    return [featuredState];
+  }, [featuredState, availableStates]);
+
+  // Shared Tooltip styling so all hero tooltips read as part of the page's
+  // Deep-Learning-pill family rather than the default neutral-gray MUI
+  // tooltip. Surface uses the same color-mix tint as the Field Performance
+  // Records card / state info popover; arrow inherits the same fill so it
+  // continues the surface seamlessly.
+  const themedTooltipBg = `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`;
+  const themedTooltipSlotProps = {
+    tooltip: {
+      sx: {
+        bgcolor: themedTooltipBg,
+        color: theme.palette.common.white,
+        border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+        boxShadow: `0 6px 16px ${alpha(theme.palette.common.black, 0.45)}`,
+        backgroundImage: 'none',
+        fontSize: '0.78rem',
+        fontWeight: 500,
+        letterSpacing: '0.01em',
+        px: 1.25,
+        py: 0.85,
+        borderRadius: 1,
+        maxWidth: 280
+      }
+    },
+    arrow: {
+      sx: {
+        color: themedTooltipBg,
+        // The "&::before" trick re-tints the arrow's pseudo-element so the
+        // inherited color picks up our themed bg rather than MUI's default
+        // gray. Border on the arrow keeps the outline continuous with the
+        // tooltip body's primary border.
+        '&::before': {
+          backgroundColor: themedTooltipBg,
+          border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`
+        }
+      }
+    }
+  };
 
   // No title prop on MainCard — the parent tab is already named "Overview",
   // so a second header inside the card was redundant. MainCard skips the
@@ -392,7 +470,7 @@ export default function Overview() {
               bgcolor: alpha(theme.palette.primary.main, 0.12)
             }}
           >
-            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'nowrap', minWidth: 0 }}>
               {/* "Currently in" stage indicator with a pulsing dot to
                   emphasize that this is a live state, not a label. */}
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
@@ -439,7 +517,11 @@ export default function Overview() {
                     color: alpha(theme.palette.common.white, 0.55),
                     fontSize: '0.78rem',
                     fontWeight: 500,
-                    display: { xs: 'none', sm: 'inline' }
+                    // Hidden until lg so the banner never has to wrap a
+                    // long stage detail (e.g. "Hard dough · ready to
+                    // combine") onto a second line when the drawer is open.
+                    display: { xs: 'none', lg: 'inline' },
+                    whiteSpace: 'nowrap'
                   }}
                 >
                   · {stageInfo.detail}
@@ -448,7 +530,7 @@ export default function Overview() {
                     explanation of the current stage and a "Learn more" link
                     to a reputable agronomy reference. We use Popover (not
                     Tooltip) so the link inside is actually clickable. */}
-                <Tooltip title="More about this stage" arrow>
+                <Tooltip title="More about this stage" arrow slotProps={themedTooltipSlotProps}>
                   <IconButton
                     size="small"
                     onClick={(e) => setInfoAnchor(e.currentTarget)}
@@ -467,16 +549,20 @@ export default function Overview() {
                   </IconButton>
                 </Tooltip>
               </Stack>
-              {/* Spacer pushes the right cluster (days + progress) to the
-                  far edge on wide screens; on narrow it wraps below. */}
+              {/* Spacer pushes the right cluster to the far edge on wide
+                  screens. The whole row is locked to nowrap so a narrowed
+                  viewport (e.g. drawer open) never bumps the right
+                  cluster onto a second line — instead the spacer
+                  collapses and the secondary text inside each cluster is
+                  hidden via `display: { xs: 'none' }` rules below. */}
               <Box sx={{ flex: 1, minWidth: 0 }} />
-              <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
+              <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'nowrap', flexShrink: 0 }}>
                 <Stack
                   direction="row"
                   spacing={0.75}
                   sx={{ alignItems: 'center', color: alpha(theme.palette.common.white, 0.78), fontSize: '0.8rem' }}
                 >
-                  <Typography component="span" sx={{ fontSize: 'inherit', fontWeight: 500 }}>
+                  <Typography component="span" sx={{ fontSize: 'inherit', fontWeight: 500, whiteSpace: 'nowrap' }}>
                     <Box component="span" sx={{ color: theme.palette.primary.light, fontWeight: 700 }}>
                       {daysToHarvest}
                     </Box>{' '}
@@ -492,6 +578,11 @@ export default function Overview() {
                     onClick={(e) => setStateMenuAnchor(e.currentTarget)}
                     endIcon={<DownOutlined style={{ fontSize: '0.62rem' }} />}
                     sx={{
+                      // Hover behavior mirrors the Model selection pill in
+                      // FieldTable: identical 4-property transition (bg,
+                      // border, box-shadow, color) and a 2px primary halo
+                      // on hover so the affordance reads consistently
+                      // across the page's pill family.
                       textTransform: 'none',
                       fontWeight: 700,
                       fontSize: '0.8rem',
@@ -501,13 +592,16 @@ export default function Overview() {
                       py: 0.15,
                       px: 0.85,
                       borderRadius: 999,
-                      color: theme.palette.common.white,
-                      bgcolor: alpha(theme.palette.primary.main, 0.22),
+                      color: alpha(theme.palette.primary.light, 0.95),
+                      bgcolor: alpha(theme.palette.primary.main, 0.18),
                       border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
-                      transition: 'background 0.18s ease, border-color 0.18s ease',
+                      transition:
+                        'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease',
                       '&:hover': {
-                        bgcolor: alpha(theme.palette.primary.main, 0.34),
-                        borderColor: theme.palette.primary.main
+                        color: theme.palette.common.white,
+                        bgcolor: alpha(theme.palette.primary.main, 0.32),
+                        borderColor: theme.palette.primary.main,
+                        boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.18)}`
                       }
                     }}
                   >
@@ -520,22 +614,35 @@ export default function Overview() {
                     that the bar measures against. */}
                 <Tooltip
                   arrow
+                  slotProps={themedTooltipSlotProps}
                   title={
                     <Box sx={{ p: 0.25 }}>
-                      <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.25 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.25, color: 'inherit' }}>
                         Season progress
                       </Typography>
-                      <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45 }}>
+                      <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit' }}>
                         How far {featuredState} winter wheat is through its
                         planting → harvest cycle right now.
                       </Typography>
-                      <Typography sx={{ fontSize: '0.7rem', mt: 0.5, opacity: 0.85 }}>
+                      <Typography sx={{ fontSize: '0.7rem', mt: 0.5, opacity: 0.85, color: 'inherit' }}>
                         Plant ≈ {seasonWindow.plantLabel} · Harvest ≈ {seasonWindow.harvestLabel}
                       </Typography>
                     </Box>
                   }
                 >
-                  <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', cursor: 'help' }}>
+                  <Stack
+                    direction="row"
+                    spacing={0.75}
+                    sx={{
+                      alignItems: 'center',
+                      cursor: 'help',
+                      // Drop the progress bar entirely on narrow widths
+                      // (e.g. drawer-open). The "days to harvest"
+                      // headline still tells the user where they are in
+                      // the season, and the bar reappears at md+.
+                      display: { xs: 'none', md: 'flex' }
+                    }}
+                  >
                     <Box
                       sx={{
                         width: { xs: 80, sm: 120 },
@@ -763,7 +870,19 @@ export default function Overview() {
                   height: '100%'
                 }}
               >
-                <FieldMapPreview fields={mapFields} yieldRange={overview.yield_range} />
+                <FieldMapPreview
+                  fields={mapFields}
+                  yieldRange={overview.yield_range}
+                  highlightedStates={highlightedStates}
+                  stateStats={stateStats}
+                  // Pass the dropdown's real-state count so the legend
+                  // caption reflects every state we have data for in
+                  // the DB (via /fields/states/), not just the subset
+                  // that happened to be in the 100/500-row mapFields
+                  // sample. "United States" is excluded since it's the
+                  // aggregate label, not a state.
+                  totalStatesCount={availableStates.filter((s) => s !== 'United States').length}
+                />
               </Box>
             </Grid>
           </Grid>

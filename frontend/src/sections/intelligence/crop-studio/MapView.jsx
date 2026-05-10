@@ -8,6 +8,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import MainCard from 'components/MainCard';
+import { formatCropName } from 'utils/cropName';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 const MAX_LOCATIONS = 15;
@@ -269,7 +270,7 @@ export default function MapView() {
             <Stack spacing={0.5}>
               <Typography variant="subtitle2">{hoveredField.name}</Typography>
               <Typography variant="body2">
-                {hoveredField.crop} | Season {hoveredField.season} |{' '}
+                {formatCropName(hoveredField.crop)} | Season {hoveredField.season} |{' '}
                 {typeof hoveredField.yield === 'number' && Number.isFinite(hoveredField.yield)
                   ? `${hoveredField.yield.toFixed(1)} bu/ac`
                   : 'Yield N/A'}
@@ -337,7 +338,7 @@ export default function MapView() {
                     {field.usedStateFallback ? ' (state fallback)' : ''}
                   </Typography>
                   <Stack direction="row" spacing={0.75} sx={{ mt: 1, flexWrap: 'nowrap' }}>
-                    <Chip size="small" label={field.crop} />
+                    <Chip size="small" label={formatCropName(field.crop)} />
                     <Chip size="small" variant="outlined" label={`Season ${field.season}`} />
                     <Chip
                       size="small"

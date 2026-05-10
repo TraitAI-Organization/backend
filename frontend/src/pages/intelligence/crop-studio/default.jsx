@@ -50,10 +50,42 @@ export default function CropStudioDefault() {
         variant="scrollable"
         scrollButtons="auto"
         aria-label="crop studio navigation tabs"
-        sx={{ mt: 2, px: 3, borderBottom: 1, borderColor: 'divider' }}
+        sx={{
+          mt: 2,
+          px: 3,
+          borderBottom: 1,
+          borderColor: 'divider',
+          // Active-tab underline — switched from MUI's default primary.main
+          // (saturated brand blue) to primary.light so it matches the
+          // Overview eyebrow / metric labels and the drawer's selected
+          // icon. Slight rounding + bumped height so it reads as a
+          // deliberate accent rather than a hairline.
+          '& .MuiTabs-indicator': {
+            backgroundColor: 'primary.light',
+            height: 3,
+            borderRadius: '3px 3px 0 0'
+          }
+        }}
       >
         {tabs.map((tab, index) => (
-          <Tab key={tab.label} id={`crop-studio-tab-${index}`} aria-controls={`crop-studio-tabpanel-${index}`} label={tab.label} />
+          <Tab
+            key={tab.label}
+            id={`crop-studio-tab-${index}`}
+            aria-controls={`crop-studio-tabpanel-${index}`}
+            label={tab.label}
+            sx={{
+              // Selected and hover states pick up primary.light so the
+              // label color story matches the underline indicator above.
+              fontWeight: 600,
+              letterSpacing: '0.01em',
+              '&.Mui-selected': {
+                color: 'primary.light'
+              },
+              '&:hover': {
+                color: 'primary.light'
+              }
+            }}
+          />
         ))}
       </Tabs>
       <Box sx={{ p: 3 }}>

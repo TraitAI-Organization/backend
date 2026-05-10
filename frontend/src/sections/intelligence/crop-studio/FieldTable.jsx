@@ -29,6 +29,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import FieldDetailDrawer from 'sections/intelligence/crop-studio/FieldDetailDrawer';
 import YieldDeltaChip from 'sections/intelligence/crop-studio/YieldDeltaChip';
+import { formatCropName } from 'utils/cropName';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 const DOWNLOAD_PAGE_SIZE = 500;
@@ -893,14 +894,14 @@ export default function FieldTable() {
           sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 180 }, flex: '1 1 180px' }]}
           SelectProps={{
             displayEmpty: true,
-            renderValue: (selected) => selected || 'All crops',
+            renderValue: (selected) => (selected ? formatCropName(selected) : 'All crops'),
             MenuProps: filterMenuProps
           }}
         >
           <MenuItem value="">All crops</MenuItem>
           {cropOptions.map((crop) => (
             <MenuItem key={crop} value={crop}>
-              {crop}
+              {formatCropName(crop)}
             </MenuItem>
           ))}
         </TextField>
@@ -1149,7 +1150,7 @@ export default function FieldTable() {
                     }}
                   >
                     <TableCell sx={{ color: mutedAccent, fontWeight: 600 }}>{row.fieldId}</TableCell>
-                    <TableCell>{row.crop}</TableCell>
+                    <TableCell>{formatCropName(row.crop)}</TableCell>
                     <TableCell>
                       <Stack component="span" direction="row" spacing={0.5} sx={{ alignItems: 'baseline', justifyContent: 'center' }}>
                         <Typography component="span" sx={{ fontSize: 'inherit' }}>

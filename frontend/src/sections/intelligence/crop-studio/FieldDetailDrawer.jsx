@@ -18,6 +18,7 @@ import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import YieldDeltaChip from 'sections/intelligence/crop-studio/YieldDeltaChip';
+import { formatCropName } from 'utils/cropName';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
@@ -208,7 +209,7 @@ export default function FieldDetailDrawer({
   const subtle = alpha(theme.palette.common.white, 0.55);
 
   const fieldNumber = data?.field?.field_number;
-  const cropName = data?.crop?.crop_name_en || '—';
+  const cropName = data?.crop?.crop_name_en ? formatCropName(data.crop.crop_name_en) : '—';
   const varietyName = data?.variety?.variety_name_en || '—';
   const seasonYear = data?.season?.season_year ?? '—';
   const observed = data?.yield_bu_ac;

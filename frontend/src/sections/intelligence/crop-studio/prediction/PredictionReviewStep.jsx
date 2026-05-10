@@ -22,6 +22,7 @@ import Typography from '@mui/material/Typography';
 import DownOutlined from '@ant-design/icons/DownOutlined';
 
 import { ReusableSalesChart } from 'sections/overview/dashboard/SalesChart';
+import { formatCropName } from 'utils/cropName';
 
 const MARKET_API_URL = import.meta.env.VITE_WHEAT_MARKET_API_URL;
 const USDA_REPORT_PLACEHOLDERS = [
@@ -537,7 +538,7 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
             </Typography>
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                <PredictionMetricTile label="Crop" value={String(appliedInputs.crop)} />
+                <PredictionMetricTile label="Crop" value={formatCropName(String(appliedInputs.crop))} />
               </Grid>
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <PredictionMetricTile label="Variety" value={String(appliedInputs.variety)} />

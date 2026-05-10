@@ -5,6 +5,8 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
+import { formatCropName } from 'utils/cropName';
+
 function RequiredLabel({ text }) {
   return (
     <Typography variant="subtitle2">
@@ -38,14 +40,14 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
               onChange={onChange}
               error={Boolean(validationErrors.crop)}
               helperText={validationErrors.crop ? 'Crop is required.' : undefined}
-              SelectProps={{ displayEmpty: true, renderValue: (selected) => selected || 'Select a Crop..' }}
+              SelectProps={{ displayEmpty: true, renderValue: (selected) => (selected ? formatCropName(selected) : 'Select a Crop..') }}
             >
               <MenuItem value="" disabled>
                 Select a Crop..
               </MenuItem>
               {crops.map((crop) => (
                 <MenuItem key={crop} value={crop}>
-                  {crop}
+                  {formatCropName(crop)}
                 </MenuItem>
               ))}
             </TextField>
