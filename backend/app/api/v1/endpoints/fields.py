@@ -452,6 +452,90 @@ async def list_states(
     return [{"state": state[0]} for state in states if state and state[0]]
 
 
+@router.get("/states/stats/", summary="Per-state aggregates (count, acres, avg yield, varieties)")
+async def state_stats(
+    db: Session = Depends(get_db),
+):
+    """
+    Per-state aggregates across the full field data — used by the
+    dashboard map's hover popup so it can show counts, regional avg
+    yield, and the kinds of wheat grown for every state regardless of
+    pagination. Returns one row per state with:
+
+    - `count`: distinct field-season records for the state
+    - `total_acres`: sum of distinct field acres for the state
+    - `avg_yield`: mean of populated yield_bu_ac values for the state
+    - `crops`: sorted distinct crop names planted in that state
+    - `varieties`: sorted distinct variety names planted in that state
+    """
+    from app.database import models
+
+    rows = (
+        db.query(
+            models.Field.state.label("state"),
+            models.Field.field_id.label("field_id"),
+            models.Field.acres.label("acres"),
+            models.FieldSeason.field_season_id.label("field_season_id"),
+            models.FieldSeason.yield_bu_ac.label("yield_bu_ac"),
+            models.Crop.crop_name_en.label("crop_name"),
+            models.Variety.variety_name_en.label("variety_name"),
+        )
+        .join(models.FieldSeason, models.FieldSeason.field_id == models.Field.field_id)
+        .join(models.Crop, models.Crop.crop_id == models.FieldSeason.crop_id)
+        .outerjoin(models.Variety, models.Variety.variety_id == models.FieldSeason.variety_id)
+        .filter(models.Field.state.isnot(None))
+        .filter(models.Field.state != "")
+        .all()
+    )
+
+    # Roll up in Python so we can dedupe field_id (for acres) and
+    # field_season_id (for count) without resorting to multiple queries.
+    by_state: dict[str, dict] = {}
+    for r in rows:
+        entry = by_state.setdefault(
+            r.state,
+            {
+                "state": r.state,
+                "field_ids": set(),
+                "field_season_ids": set(),
+                "yields": [],
+                "crops": set(),
+                "varieties": set(),
+                "acres_by_field": {},
+            },
+        )
+        entry["field_season_ids"].add(r.field_season_id)
+        if r.field_id is not None and r.field_id not in entry["acres_by_field"]:
+            entry["field_ids"].add(r.field_id)
+            acres = _safe_float(r.acres)
+            if acres is not None:
+                entry["acres_by_field"][r.field_id] = acres
+        y = _safe_float(r.yield_bu_ac)
+        if y is not None and y > 0:
+            entry["yields"].append(y)
+        if r.crop_name:
+            entry["crops"].add(r.crop_name)
+        if r.variety_name:
+            entry["varieties"].add(r.variety_name)
+
+    result = []
+    for state, e in by_state.items():
+        total_acres = sum(e["acres_by_field"].values())
+        avg_yield = sum(e["yields"]) / len(e["yields"]) if e["yields"] else None
+        result.append(
+            {
+                "state": state,
+                "count": len(e["field_season_ids"]),
+                "total_acres": total_acres,
+                "avg_yield": avg_yield,
+                "crops": sorted(e["crops"]),
+                "varieties": sorted(e["varieties"]),
+            }
+        )
+    result.sort(key=lambda x: x["state"])
+    return result
+
+
 @router.get("/counties/", summary="List counties")
 async def list_counties(
     db: Session = Depends(get_db),

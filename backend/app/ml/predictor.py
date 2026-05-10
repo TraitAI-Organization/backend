@@ -4,7 +4,7 @@ Prediction service - loads model and makes predictions
 import os
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 import logging
 
@@ -146,10 +146,116 @@ class PredictionService:
             else:
                 X[col] = pd.to_numeric(X[col], errors="coerce").fillna(0.0)
 
-        # 5. Predict
+        # Apply trainer-provided categorical mappings if available. Both CatBoost and
+        # PyTorch were trained on integer-encoded categoricals, so feeding raw strings
+        # at inference produces unknown-token behavior (worst case: every row becomes
+        # an out-of-vocab default). cat_mappings.json carries the exact string->int
+        # encoding used during training; "Missing" is reserved as the OOV bucket.
+        cat_mappings = self._metadata.get('cat_mappings') if self._metadata else None
+        if cat_mappings:
+            for col in self._feature_list:
+                if col not in categorical_features or col not in cat_mappings:
+                    continue
+                mapping = cat_mappings[col]
+                missing_code = mapping.get("Missing", 0)
+                X[col] = X[col].map(lambda v: mapping.get(v, missing_code)).astype('int64')
+
+        # 5. Predict (point estimate + optional input-dependent uncertainty)
         predicted_yield = float(self._model.predict(X)[0])
 
+        # Try to obtain input-dependent prediction bounds from the model itself.
+        # Two supported sources:
+        #   - CatBoost quantile ensembles expose .predict_quantiles(X) -> {q: array}
+        #   - Deep-learning uncertainty heads expose .predict_with_uncertainty(X) -> (mean, log_var)
+        raw_lower: Optional[float] = None
+        raw_upper: Optional[float] = None
+        raw_median: Optional[float] = None
+        raw_sigma: Optional[float] = None  # standardized space sigma (DL only)
+
+        if hasattr(self._model, "predict_quantiles"):
+            try:
+                qpreds = self._model.predict_quantiles(X)
+                if qpreds:
+                    qkeys = sorted(qpreds.keys())
+                    # Lower = smallest quantile, upper = largest, median = closest to 0.5.
+                    low_pred = float(qpreds[qkeys[0]][0])
+                    high_pred = float(qpreds[qkeys[-1]][0])
+                    # Tree-based quantile models don't guarantee monotonicity across
+                    # quantiles per input, so enforce it here.
+                    raw_lower = min(low_pred, high_pred)
+                    raw_upper = max(low_pred, high_pred)
+                    median_q = min(qkeys, key=lambda q: abs(q - 0.5))
+                    raw_median = float(qpreds[median_q][0])
+            except Exception as e:
+                logger.warning(f"predict_quantiles failed; falling back to RMSE bounds: {e}")
+        elif hasattr(self._model, "predict_with_uncertainty"):
+            try:
+                uq = self._model.predict_with_uncertainty(X)
+                if uq is not None:
+                    mean_arr, var_arr = uq
+                    mean_val = float(mean_arr[0])
+                    raw_second = float(var_arr[0])
+                    # The interpretation of the network's second output depends on how the
+                    # model was trained. Configurable via params.json or features.preprocessing:
+                    #   "uncertainty_output": "log_variance" | "variance" | "std"
+                    # Default is "log_variance" (matches Gaussian NLL with log-var head).
+                    params = self._metadata.get("params", {}) if self._metadata else {}
+                    # Priority: wrapper attribute (set by torch_runtime based on architecture)
+                    # > params.json > preprocessing > legacy default.
+                    uncertainty_kind = (
+                        getattr(self._model, "uncertainty_output", None)
+                        or params.get("uncertainty_output")
+                        or preprocessing.get("uncertainty_output")
+                        or "log_variance"
+                    )
+                    if uncertainty_kind == "log_variance":
+                        # Clamp to avoid overflow on extreme log-variance values.
+                        clamped = max(min(raw_second, 20.0), -20.0)
+                        sigma = float(np.sqrt(np.exp(clamped)))
+                    elif uncertainty_kind == "variance":
+                        sigma = float(np.sqrt(max(raw_second, 0.0)))
+                    elif uncertainty_kind == "std":
+                        sigma = float(abs(raw_second))
+                    else:
+                        logger.warning(
+                            f"Unknown uncertainty_output '{uncertainty_kind}'; falling back to log_variance."
+                        )
+                        clamped = max(min(raw_second, 20.0), -20.0)
+                        sigma = float(np.sqrt(np.exp(clamped)))
+
+                    raw_median = mean_val
+                    raw_sigma = sigma
+                    raw_lower = mean_val - 1.96 * sigma
+                    raw_upper = mean_val + 1.96 * sigma
+            except Exception as e:
+                logger.warning(f"predict_with_uncertainty failed; falling back to RMSE bounds: {e}")
+
+        if raw_median is not None:
+            predicted_yield = raw_median
+
+        # Global target scaler back-transform (applies to models trained with
+        # target standardization, e.g. the deep-learning model that ships
+        # target_scaler.json: {"mean": ..., "std": ...}).
+        target_scaler = self._metadata.get("target_scaler") if self._metadata else None
+        if isinstance(target_scaler, dict):
+            try:
+                ts_mean = float(target_scaler.get("mean", 0.0))
+                ts_std = float(target_scaler.get("std", 1.0)) or 1.0
+                predicted_yield = predicted_yield * ts_std + ts_mean
+                if raw_lower is not None:
+                    raw_lower = raw_lower * ts_std + ts_mean
+                if raw_upper is not None:
+                    raw_upper = raw_upper * ts_std + ts_mean
+                if raw_sigma is not None:
+                    raw_sigma = raw_sigma * ts_std
+            except Exception as e:
+                logger.warning(f"Failed to apply target_scaler back-transform: {e}")
+
         # Optional back-transform for externally standardized targets.
+        # Apply the same affine transform to bounds (linearity preserves ordering),
+        # and scale sigma by std_crop for DL uncertainty.
+        std_crop_applied = 1.0
+        mean_crop_applied = 0.0
         if preprocessing.get("target_standardization") == "crop_zscore":
             crop_col = preprocessing.get("crop_column", "crop_name_en")
             crop_stats_file = preprocessing.get("crop_statistics_file")
@@ -173,17 +279,51 @@ class PredictionService:
                             mean_crop = float(match.iloc[0]["yield_mean_crop"])
                             std_crop = float(match.iloc[0]["yield_std_crop"])
                             std_crop = std_crop if std_crop != 0 else 1.0
+                            std_crop_applied = std_crop
+                            mean_crop_applied = mean_crop
                             predicted_yield = predicted_yield * std_crop + mean_crop
+                            if raw_lower is not None:
+                                raw_lower = raw_lower * std_crop + mean_crop
+                            if raw_upper is not None:
+                                raw_upper = raw_upper * std_crop + mean_crop
+                            if raw_sigma is not None:
+                                raw_sigma = raw_sigma * std_crop
                     except Exception as e:
                         logger.warning(f"Failed to apply crop z-score back-transform: {e}")
 
-        # 6. Confidence interval
-        # For tree ensembles, we can use quantile regression or bootstrap
-        # For MVP, use a simple constant margin (or can compute from validation set residuals)
-        # Store validation RMSE from model metadata for CI
-        val_rmse = self._metadata.get('metrics', {}).get('val_rmse', 10.0)
-        confidence_lower = predicted_yield - 1.96 * val_rmse
-        confidence_upper = predicted_yield + 1.96 * val_rmse
+        # 6. Confidence interval — prefer model-derived bounds; fall back to legacy RMSE margin.
+        if raw_lower is not None and raw_upper is not None:
+            confidence_lower = raw_lower
+            confidence_upper = raw_upper
+        else:
+            val_rmse = self._metadata.get('metrics', {}).get('val_rmse', 10.0)
+            confidence_lower = predicted_yield - 1.96 * val_rmse
+            confidence_upper = predicted_yield + 1.96 * val_rmse
+
+        # Defensive clamp: the predictions table stores yields/bounds as NUMERIC(6, 2),
+        # so values must fit in ±9999.99. A miscalibrated variance head can otherwise
+        # produce values that abort the entire batch commit. We log loudly so the
+        # condition is visible rather than silently masking a real model issue.
+        bound_limit = 9999.99
+        if (
+            abs(confidence_lower) > bound_limit
+            or abs(confidence_upper) > bound_limit
+            or abs(predicted_yield) > bound_limit
+        ):
+            logger.warning(
+                "Clamping out-of-range prediction for model %s: "
+                "yield=%.3f, lower=%.3f, upper=%.3f (limit=±%.2f). "
+                "Likely a miscalibrated uncertainty head — check 'uncertainty_output' "
+                "interpretation in params.json/features.preprocessing.",
+                getattr(self._model_version, "version_tag", "?"),
+                predicted_yield,
+                confidence_lower,
+                confidence_upper,
+                bound_limit,
+            )
+            predicted_yield = max(min(predicted_yield, bound_limit), -bound_limit)
+            confidence_lower = max(min(confidence_lower, bound_limit), -bound_limit)
+            confidence_upper = max(min(confidence_upper, bound_limit), -bound_limit)
 
         # 7. Prepare result
         result = {

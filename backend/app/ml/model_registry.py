@@ -14,6 +14,45 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+class CatBoostQuantileWrapper:
+    """
+    Wraps a set of CatBoost quantile regressors (e.g. p10/p50/p90) so the
+    rest of the prediction pipeline can call .predict() and also access
+    per-input quantile bounds via .predict_quantiles().
+    """
+
+    def __init__(self, models_by_quantile: Dict[float, Any], median_quantile: float = 0.5):
+        if not models_by_quantile:
+            raise ValueError("CatBoostQuantileWrapper requires at least one quantile model.")
+        self.models_by_quantile = dict(models_by_quantile)
+        # Pick a median model for point predictions; fall back to the closest available.
+        if median_quantile in self.models_by_quantile:
+            self._median = self.models_by_quantile[median_quantile]
+            self._median_q = median_quantile
+        else:
+            chosen = min(self.models_by_quantile.keys(), key=lambda q: abs(q - median_quantile))
+            self._median = self.models_by_quantile[chosen]
+            self._median_q = chosen
+        # Mirror common CatBoost attributes for downstream introspection.
+        self.feature_names_ = getattr(self._median, "feature_names_", None)
+
+    def predict(self, X):
+        return self._median.predict(X)
+
+    def get_cat_feature_indices(self):
+        try:
+            return self._median.get_cat_feature_indices()
+        except Exception:
+            return []
+
+    def predict_quantiles(self, X) -> Dict[float, Any]:
+        return {q: m.predict(X) for q, m in self.models_by_quantile.items()}
+
+    @property
+    def quantiles(self) -> List[float]:
+        return sorted(self.models_by_quantile.keys())
+
+
 class ModelRegistry:
     """
     Handles model versioning, storage, and retrieval.
@@ -324,6 +363,42 @@ class ModelRegistry:
             )
             artifact_format = "pytorch_pth"
 
+        # If the folder ships per-quantile CatBoost artifacts (e.g. model_p10.cbm,
+        # model_p50.cbm, model_p90.cbm), upgrade the loaded model into a quantile
+        # wrapper so callers can read per-input prediction bounds.
+        if artifact_format == "catboost_cbm":
+            try:
+                import re
+                from catboost import CatBoostRegressor
+
+                quantile_files: Dict[float, str] = {}
+                pattern = re.compile(r"^model_p(\d+)\.cbm$", re.IGNORECASE)
+                for fname in os.listdir(version_dir):
+                    m = pattern.match(fname)
+                    if not m:
+                        continue
+                    q = int(m.group(1)) / 100.0
+                    quantile_files[q] = os.path.join(version_dir, fname)
+
+                if len(quantile_files) >= 2:
+                    quantile_models: Dict[float, Any] = {}
+                    for q, path in quantile_files.items():
+                        m_q = CatBoostRegressor()
+                        m_q.load_model(path)
+                        quantile_models[q] = m_q
+                    model = CatBoostQuantileWrapper(quantile_models, median_quantile=0.5)
+                    logger.info(
+                        "Loaded CatBoost quantile ensemble for %s: quantiles=%s",
+                        version_tag,
+                        sorted(quantile_models.keys()),
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Quantile ensemble detection failed for %s; falling back to single CatBoost model: %s",
+                    version_tag,
+                    e,
+                )
+
         # Backfill missing CatBoost metadata from the loaded .cbm itself.
         # External CatBoost trainers commonly ship a flat-list features.json with no
         # preprocessing block, so the feature_list / categorical_features can be empty here.
@@ -375,6 +450,50 @@ class ModelRegistry:
                 {"crop": "crop_name_en", "variety": "variety_name_en"},
             )
 
+        # Load categorical mappings if the trainer shipped them. These translate raw
+        # string category values (as seen at inference) to the integer codes the model
+        # was trained on. Without this, deep-learning embeddings + CatBoost categorical
+        # handling both receive unseen tokens for every row and produce garbage.
+        cat_mappings: Optional[Dict[str, Dict[str, int]]] = None
+        cat_mappings_path = os.path.join(version_dir, "cat_mappings.json")
+        if os.path.exists(cat_mappings_path):
+            try:
+                with open(cat_mappings_path, 'r') as f:
+                    raw = json.load(f)
+                if isinstance(raw, dict):
+                    cat_mappings = {
+                        col: {str(k): int(v) for k, v in mapping.items()}
+                        for col, mapping in raw.items()
+                        if isinstance(mapping, dict)
+                    }
+                    logger.info(
+                        "Loaded cat_mappings for %s: %d columns",
+                        version_tag,
+                        len(cat_mappings),
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to read cat_mappings.json for {version_tag}: {e}")
+
+        # Load target scaler if shipped (used to back-transform predictions trained
+        # with target normalization, e.g. y_norm = (y - mean) / std).
+        target_scaler: Optional[Dict[str, float]] = None
+        target_scaler_path = os.path.join(version_dir, "target_scaler.json")
+        if os.path.exists(target_scaler_path):
+            try:
+                with open(target_scaler_path, 'r') as f:
+                    raw = json.load(f)
+                if isinstance(raw, dict) and "mean" in raw and "std" in raw:
+                    target_scaler = {
+                        "mean": float(raw["mean"]),
+                        "std": float(raw["std"]) or 1.0,
+                    }
+                    logger.info(
+                        "Loaded target_scaler for %s: mean=%.4f std=%.4f",
+                        version_tag, target_scaler["mean"], target_scaler["std"],
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to read target_scaler.json for {version_tag}: {e}")
+
         metadata = {
             'feature_list': feature_list,
             'preprocessing': preprocessing,
@@ -382,6 +501,8 @@ class ModelRegistry:
             'params': params,
             'artifact_format': artifact_format,
             'declared_model_types': sorted(declared_types),
+            'cat_mappings': cat_mappings,
+            'target_scaler': target_scaler,
         }
 
         logger.info(f"Model {version_tag} loaded successfully.")

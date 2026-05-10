@@ -12,6 +12,8 @@ Usage:
     python -m scripts.backfill_all_models --dry-run
     python -m scripts.backfill_all_models --include-inactive
     python -m scripts.backfill_all_models --models 1,3,5
+    python -m scripts.backfill_all_models --refresh            # delete existing rows then backfill
+    python -m scripts.backfill_all_models --refresh --models 2 # refresh just model_version_id=2
 """
 import argparse
 import logging
@@ -38,6 +40,19 @@ def _select_models(db: Session, include_inactive: bool, model_ids: list[int] | N
         if hasattr(models.ModelVersion, "is_active"):
             query = query.filter(models.ModelVersion.is_active.is_(True))
     return query.order_by(models.ModelVersion.model_version_id.asc()).all()
+
+
+def _delete_existing_predictions(db: Session, model_version, dry_run: bool) -> int:
+    """Delete all existing prediction rows for a model version. Returns the count."""
+    q = db.query(models.ModelPrediction).filter(
+        models.ModelPrediction.model_version_id == model_version.model_version_id
+    )
+    count = q.count()
+    if count == 0 or dry_run:
+        return count
+    q.delete(synchronize_session=False)
+    db.commit()
+    return count
 
 
 def _backfill_one_model(db: Session, predictor: PredictionService, model_version, batch_size: int, dry_run: bool) -> int:
@@ -152,6 +167,12 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Count what would be done without writing')
     parser.add_argument('--include-inactive', action='store_true', help='Include inactive model versions')
     parser.add_argument(
+        '--refresh',
+        action='store_true',
+        help='Delete existing predictions for each targeted model before backfilling. '
+             'Use this when model artifacts have been replaced and rows must be recomputed.',
+    )
+    parser.add_argument(
         '--models',
         type=str,
         default=None,
@@ -180,18 +201,49 @@ def main():
         for mv in targets:
             production_marker = " (production)" if getattr(mv, "is_production", False) else ""
             print(f"  - id={mv.model_version_id} tag={mv.version_tag} type={mv.model_type}{production_marker}")
-        print(f"Batch size: {args.batch_size}{' [DRY RUN]' if args.dry_run else ''}")
+        flags = []
+        if args.dry_run:
+            flags.append("DRY RUN")
+        if args.refresh:
+            flags.append("REFRESH")
+        flag_suffix = f" [{' / '.join(flags)}]" if flags else ""
+        print(f"Batch size: {args.batch_size}{flag_suffix}")
         print()
 
         grand_total = 0
+        grand_deleted = 0
+        failed_models: list[str] = []
         for mv in targets:
             print(f"→ Model: {mv.version_tag} (id={mv.model_version_id}, type={mv.model_type})")
-            written = _backfill_one_model(db, predictor, mv, args.batch_size, args.dry_run)
-            grand_total += written
-            print(f"  ✓ {written:,} prediction(s) written for {mv.version_tag}.\n")
+            try:
+                if args.refresh:
+                    deleted = _delete_existing_predictions(db, mv, args.dry_run)
+                    grand_deleted += deleted
+                    action = "would delete" if args.dry_run else "deleted"
+                    print(f"  • {action} {deleted:,} existing prediction(s) for {mv.version_tag}.")
+                written = _backfill_one_model(db, predictor, mv, args.batch_size, args.dry_run)
+                grand_total += written
+                print(f"  ✓ {written:,} prediction(s) written for {mv.version_tag}.\n")
+            except Exception as e:
+                # Roll back this model's transaction so the next model starts clean.
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                failed_models.append(mv.version_tag)
+                logger.exception("Backfill for %s failed; continuing with remaining models", mv.version_tag)
+                print(f"  ✗ {mv.version_tag} aborted: {e}\n")
 
         suffix = " (dry run)" if args.dry_run else ""
+        if args.refresh:
+            print(
+                f"Refresh summary: {grand_deleted:,} existing prediction(s) "
+                f"{'would be deleted' if args.dry_run else 'deleted'} before backfill."
+            )
         print(f"Done. {grand_total:,} total prediction(s) written across {len(targets)} model(s){suffix}.")
+        if failed_models:
+            print(f"Failed models: {', '.join(failed_models)}")
+            return 1
         return 0
 
     except Exception as e:

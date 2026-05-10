@@ -182,7 +182,13 @@ def _normalize_catboost_folder(folder: Path) -> bool:
 
     model_dst = folder / "model.cbm"
     if not model_dst.exists():
-        model_src = _find_first(folder, ["*.cbm"])
+        # Prefer the median quantile (model_p50.cbm) when this is a quantile ensemble;
+        # otherwise fall back to the first .cbm in alphabetical order.
+        median_candidate = folder / "model_p50.cbm"
+        if median_candidate.exists():
+            model_src = median_candidate
+        else:
+            model_src = _find_first(folder, ["*.cbm"])
         if model_src:
             changed = _copy_if_needed(model_src, model_dst) or changed
 
@@ -320,18 +326,38 @@ def _normalize_deep_learning_folder(folder: Path, models_dir: Path) -> bool:
         category_sizes = []
     category_sizes = [int(x) for x in category_sizes if isinstance(x, (int, float))]
 
+    # Trainers ship feature_config.json with the authoritative cat/num column names.
+    # Prefer it over searching for sibling categorical_features.json files.
+    feature_config = _read_json(folder / "feature_config.json", {})
+    feature_config_cats = (
+        feature_config.get("cat_cols") if isinstance(feature_config, dict) else None
+    )
+    feature_config_nums = (
+        feature_config.get("num_cols") if isinstance(feature_config, dict) else None
+    )
+    if not isinstance(feature_config_cats, list):
+        feature_config_cats = []
+    if not isinstance(feature_config_nums, list):
+        feature_config_nums = []
+
     cat_features = _read_json(folder / "categorical_features.json", [])
     if not isinstance(cat_features, list):
         cat_features = []
+    if not cat_features and feature_config_cats:
+        cat_features = list(feature_config_cats)
     if not cat_features:
         cat_features = reference_cats
     if category_sizes and len(cat_features) != len(category_sizes):
-        if len(reference_cats) == len(category_sizes):
+        if len(feature_config_cats) == len(category_sizes):
+            cat_features = list(feature_config_cats)
+        elif len(reference_cats) == len(category_sizes):
             cat_features = reference_cats
         else:
             cat_features = [f"cat_feature_{i+1}" for i in range(len(category_sizes))]
 
     numeric_features = _load_scaler_feature_names(folder)
+    if not numeric_features and feature_config_nums:
+        numeric_features = list(feature_config_nums)
     if not numeric_features and reference_features:
         cat_set = set(cat_features)
         numeric_features = [f for f in reference_features if f not in cat_set]
