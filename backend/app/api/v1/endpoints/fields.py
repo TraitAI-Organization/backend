@@ -452,6 +452,50 @@ async def list_states(
     return [{"state": state[0]} for state in states if state and state[0]]
 
 
+@router.get("/yield-extremes/", summary="Records behind the min and max observed yield")
+async def yield_extremes(
+    db: Session = Depends(get_db),
+):
+    """
+    Return the actual field-season rows that produced the min and max
+    `yield_bu_ac` numbers shown on the dashboard's "Observed Yield Range"
+    cards. The dashboard previously surfaced just the numeric extremes;
+    this endpoint adds context (field number, crop, variety, season,
+    state, county, acres) so the user can trace the value back to a real
+    record in the DB rather than wondering which field hit it.
+    """
+    from app.database import models
+
+    base = (
+        db.query(models.FieldSeason)
+        .join(models.Field, models.Field.field_id == models.FieldSeason.field_id)
+        .join(models.Crop, models.Crop.crop_id == models.FieldSeason.crop_id)
+        .outerjoin(models.Variety, models.Variety.variety_id == models.FieldSeason.variety_id)
+        .filter(models.FieldSeason.yield_bu_ac.isnot(None))
+        .filter(models.FieldSeason.yield_bu_ac > 0)
+    )
+
+    min_row = base.order_by(models.FieldSeason.yield_bu_ac.asc()).first()
+    max_row = base.order_by(models.FieldSeason.yield_bu_ac.desc()).first()
+
+    def _serialize(fs):
+        if fs is None:
+            return None
+        return {
+            "field_season_id": fs.field_season_id,
+            "field_number": fs.field.field_number if fs.field else None,
+            "yield_bu_ac": _safe_float(fs.yield_bu_ac),
+            "acres": _safe_float(fs.field.acres) if fs.field else None,
+            "crop": fs.crop.crop_name_en if fs.crop else None,
+            "variety": fs.variety.variety_name_en if fs.variety else None,
+            "season": fs.season.season_year if fs.season else None,
+            "state": fs.field.state if fs.field else None,
+            "county": fs.field.county if fs.field else None,
+        }
+
+    return {"min": _serialize(min_row), "max": _serialize(max_row)}
+
+
 @router.get("/states/stats/", summary="Per-state aggregates (count, acres, avg yield, varieties)")
 async def state_stats(
     db: Session = Depends(get_db),

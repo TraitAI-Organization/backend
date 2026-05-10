@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
+import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
 
 import { US_STATES, US_VIEWBOX } from 'sections/intelligence/crop-studio/usStatesPaths';
 import { formatCropName, formatCropNames } from 'utils/cropName';
@@ -58,33 +60,28 @@ function aggregateByState(fields) {
   return out;
 }
 
-// Map a yield value to a tone bucket using the page's actual yield_range
-// (min/max from the overview API) as the bucket boundaries — colors here
-// agree with the Observed Yield Range section on the same page. Splits the
-// range into thirds.
-function getYieldTone(value, yieldRange, theme) {
+// Fixed agronomic yield-bucket thresholds for winter wheat (bu/ac).
+// Replaces the previous "thirds of observed min/max" logic — those
+// data-derived ranges produced confusing labels like "15–72 bu/ac" that
+// didn't map onto how growers actually think about yield. The fixed
+// breakpoints (40 / 60) align with the legend tooltip copy:
+//   Low Yield: <40 — dryland / low-rainfall regions
+//   Medium Yield: 40–60 — typical dryland / moderate productivity
+//   High Yield: >60 — irrigated or optimal-moisture regions
+const YIELD_LOW_CUT = 40;
+const YIELD_HIGH_CUT = 60;
+
+function getYieldTone(value, _yieldRange, theme) {
   if (!Number.isFinite(value)) return theme.palette.primary.light;
-  const min = Number(yieldRange?.min);
-  const max = Number(yieldRange?.max);
-  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-    return theme.palette.primary.light;
-  }
-  const lowCut = min + (max - min) / 3;
-  const highCut = min + (2 * (max - min)) / 3;
-  if (value < lowCut) return theme.palette.warning.light;
-  if (value < highCut) return theme.palette.primary.light;
+  if (value < YIELD_LOW_CUT) return theme.palette.warning.light;
+  if (value < YIELD_HIGH_CUT) return theme.palette.primary.light;
   return theme.palette.success.light;
 }
 
-function getYieldBucketLabel(value, yieldRange) {
+function getYieldBucketLabel(value) {
   if (!Number.isFinite(value)) return 'No yield data';
-  const min = Number(yieldRange?.min);
-  const max = Number(yieldRange?.max);
-  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return 'Mid range';
-  const lowCut = min + (max - min) / 3;
-  const highCut = min + (2 * (max - min)) / 3;
-  if (value < lowCut) return 'Low range';
-  if (value < highCut) return 'Mid range';
+  if (value < YIELD_LOW_CUT) return 'Low range';
+  if (value < YIELD_HIGH_CUT) return 'Medium range';
   return 'High range';
 }
 
@@ -97,12 +94,6 @@ export default function FieldMapPreview({
   // include that state. `null`/undefined falls back to "every state with
   // data is highlighted" for backwards compatibility.
   highlightedStates = null,
-  // Authoritative count for the "X states with data" legend caption.
-  // The page-level `dbStates` list (from /fields/states/) is the right
-  // source — the local `mapFields` sample only covers a slice of the DB
-  // and would undercount otherwise. Falls back to the locally-aggregated
-  // count when not provided.
-  totalStatesCount = null,
   // Pre-computed per-state aggregates from /fields/states/stats/. Keyed
   // by state name. When present, takes precedence over the locally
   // aggregated `fields` sample for the hover popup so every state shows
@@ -143,27 +134,19 @@ export default function FieldMapPreview({
   // "United States" all-states view stays quiet so 6 simultaneously
   // pulsing dots don't read as alarmist noise.
   const isSingleSelection = highlightSet?.size === 1;
-  const legendStateCount = Number.isFinite(totalStatesCount) && totalStatesCount > 0
-    ? totalStatesCount
-    : Object.keys(stateAggregates).length;
   // Hover state — drives the floating tooltip overlay near the cursor.
   const [hover, setHover] = useState({ name: null, x: 0, y: 0 });
 
-  // Yield-range bucket boundaries for the legend strip.
-  const bucketLabels = useMemo(() => {
-    const min = Number(yieldRange?.min);
-    const max = Number(yieldRange?.max);
-    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-      return { low: '< low', mid: 'mid', high: '> high' };
-    }
-    const lowCut = min + (max - min) / 3;
-    const highCut = min + (2 * (max - min)) / 3;
-    return {
-      low: `${min.toFixed(0)}–${lowCut.toFixed(0)}`,
-      mid: `${lowCut.toFixed(0)}–${highCut.toFixed(0)}`,
-      high: `${highCut.toFixed(0)}–${max.toFixed(0)}`
-    };
-  }, [yieldRange]);
+  // Legend labels for the three yield buckets. Hard-coded to match the
+  // fixed agronomic thresholds in `getYieldTone` (40 / 60 bu/ac) — the
+  // info-tooltip copy and the pin colors all key off the same numbers,
+  // so the legend reads the same way regardless of the page's actual
+  // observed min/max.
+  const bucketLabels = {
+    low: `< ${YIELD_LOW_CUT}`,
+    mid: `${YIELD_LOW_CUT}–${YIELD_HIGH_CUT}`,
+    high: `> ${YIELD_HIGH_CUT}`
+  };
 
   const handlePointerMove = (event, name) => {
     setHover({ name, x: event.clientX, y: event.clientY });
@@ -398,7 +381,7 @@ export default function FieldMapPreview({
                   >
                     {hoveredAggregate.avgYield.toFixed(1)}{' '}
                     <Box component="span" sx={{ color: alpha(theme.palette.common.white, 0.65), fontSize: '0.7rem', fontWeight: 500 }}>
-                      bu/ac · {getYieldBucketLabel(hoveredAggregate.avgYield, yieldRange)}
+                      bu/ac · {getYieldBucketLabel(hoveredAggregate.avgYield)}
                     </Box>
                   </Typography>
                 ) : (
@@ -453,22 +436,107 @@ export default function FieldMapPreview({
       {/* Legend strip — three colored dots tied to the actual yield buckets
           so the user knows what the pin colors mean. The numeric ranges
           adapt to the page's yield_range (min/max from the API). */}
-      <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', justifyContent: 'center', rowGap: 0.5 }}>
+      <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', justifyContent: 'center', rowGap: 0.5, alignItems: 'center' }}>
         <LegendDot color={theme.palette.warning.light} label={`${bucketLabels.low} bu/ac`} />
         <LegendDot color={theme.palette.primary.light} label={`${bucketLabels.mid} bu/ac`} />
         <LegendDot color={theme.palette.success.light} label={`${bucketLabels.high} bu/ac`} />
-        <Typography
-          sx={{
-            color: alpha(theme.palette.common.white, 0.45),
-            fontSize: '0.65rem',
-            fontWeight: 500,
-            letterSpacing: '0.04em',
-            alignSelf: 'center'
+        {/* Info popover — explains the agronomic interpretation of the
+            three buckets (Low / Medium / High) so users coming from a
+            seed-level mental model can map "73 bu/ac" onto "irrigated
+            eastern Kansas" or "dryland west". */}
+        <Tooltip
+          arrow
+          placement="top"
+          slotProps={{
+            tooltip: {
+              sx: {
+                bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                color: theme.palette.common.white,
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                boxShadow: `0 6px 16px ${alpha(theme.palette.common.black, 0.45)}`,
+                p: 1.25,
+                maxWidth: 320,
+                borderRadius: 1
+              }
+            },
+            arrow: {
+              sx: {
+                color: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                '&::before': { border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}` }
+              }
+            }
           }}
+          title={
+            <Stack spacing={0.6}>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', letterSpacing: '0.02em', color: 'inherit' }}>
+                Yield ranges
+              </Typography>
+              <Box>
+                <Typography component="span" sx={{ fontSize: '0.74rem', fontWeight: 700, color: theme.palette.warning.light }}>
+                  Low Yield:
+                </Typography>{' '}
+                <Typography component="span" sx={{ fontSize: '0.74rem', color: 'inherit' }}>
+                  &lt;30 – 40 bu/ac (common in low-rainfall or dryland areas like
+                  western Kansas or parts of the Western US).
+                </Typography>
+              </Box>
+              <Box>
+                <Typography component="span" sx={{ fontSize: '0.74rem', fontWeight: 700, color: theme.palette.primary.light }}>
+                  Medium Yield:
+                </Typography>{' '}
+                <Typography component="span" sx={{ fontSize: '0.74rem', color: 'inherit' }}>
+                  40 – 60 bu/ac (typical in many dryland or moderate-productivity
+                  regions).
+                </Typography>
+              </Box>
+              <Box>
+                <Typography component="span" sx={{ fontSize: '0.74rem', fontWeight: 700, color: theme.palette.success.light }}>
+                  High Yield:
+                </Typography>{' '}
+                <Typography component="span" sx={{ fontSize: '0.74rem', color: 'inherit' }}>
+                  &gt;60 – 100+ bu/ac (common in eastern Kansas, under irrigation,
+                  or with optimal moisture).
+                </Typography>
+              </Box>
+            </Stack>
+          }
         >
-          · {legendStateCount} state{legendStateCount === 1 ? '' : 's'} with data
-        </Typography>
+          <Box
+            component="span"
+            tabIndex={0}
+            aria-label="What do the yield ranges mean?"
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'help',
+              color: alpha(theme.palette.primary.light, 0.85),
+              transition: 'color 0.15s ease',
+              '&:hover, &:focus-visible': { color: theme.palette.primary.light, outline: 'none' }
+            }}
+          >
+            <InfoCircleOutlined style={{ fontSize: '0.78rem' }} />
+          </Box>
+        </Tooltip>
       </Stack>
+      {/* Caption beneath the colored-dot legend — labels what the three
+          dots represent ("Average Yield Range") rather than reporting a
+          dynamic statistic. Lives in its own row of the outer column
+          Stack so it sits flush under both the map and the dots
+          regardless of viewport width / drawer state. Always rendered;
+          there's no async data behind this label so no need to gate on
+          a load state. */}
+      <Typography
+        sx={{
+          color: alpha(theme.palette.common.white, 0.6),
+          fontSize: '0.7rem',
+          fontWeight: 600,
+          letterSpacing: '0.02em',
+          textAlign: 'center'
+        }}
+      >
+        Average Yield Range
+      </Typography>
     </Stack>
   );
 }

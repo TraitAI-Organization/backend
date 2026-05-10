@@ -772,13 +772,18 @@ export default function FieldTable() {
       <Paper
         variant="outlined"
         sx={{
-          // Match the Deep-Learning-pill / metric-tile palette so the table
-          // card reads as part of the same "primary" family of surfaces.
-          bgcolor: alpha(theme.palette.primary.main, 0.18),
-          borderColor: alpha(theme.palette.primary.main, 0.5),
+          // Mirrors the Analytics tab's "Saved Predictions" Paper exactly.
+          // The previous primary-blue surface (alpha primary 0.18) sat
+          // brighter than the head cells' `color-mix(8% primary, paper)`
+          // surface, and that visual mismatch read as "rows bleeding
+          // through the sticky header" during scroll. Switching to the
+          // same dark-paper-on-primary-border combination Analytics uses
+          // unifies the wrapper with the head bg so the sticky header
+          // appears as one continuous opaque surface.
+          bgcolor: alpha(theme.palette.background.paper, 0.4),
+          borderColor: alpha(theme.palette.primary.main, 0.22),
           borderRadius: 2,
-          overflow: 'hidden',
-          boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
+          overflow: 'hidden'
         }}
       >
         <Stack
@@ -1026,9 +1031,15 @@ export default function FieldTable() {
 
         <TableContainer
           sx={{
-            width: '100%',
-            overflowX: 'auto',
-            overflowY: 'auto',
+            // Match the Analytics "Saved Predictions" TableContainer
+            // exactly: only `maxHeight` + scrollbar styling. The previous
+            // explicit `overflowX/Y: auto` were redundant (TableContainer's
+            // default already gives auto-overflow once `maxHeight` is in
+            // play) and were the only structural difference between this
+            // table and Analytics' working sticky-header table — which
+            // suggested they were the source of the head-position
+            // discrepancy that was letting rows show above the header
+            // row during scroll.
             maxHeight: { xs: 420, md: 500 },
             ...tableScrollbarSx
           }}
@@ -1037,18 +1048,30 @@ export default function FieldTable() {
             size="small"
             stickyHeader
             sx={{
-              // Force the table to keep its full width even when the parent gets
-              // narrower (e.g. when the app drawer opens). Without this the cells
-              // compress; with it the TableContainer's overflowX: 'auto' takes
-              // over and the table simply pushes off-screen with a scrollbar,
-              // matching the behaviour of the Analytics "Saved Predictions" table.
               minWidth: 1100,
-              // Lock every cell to a single line so multi-word content like
-              // "Wheat, Hard Spring" (Crop) or "New Mexico, Quay" (Location)
-              // can't wrap and stack when the drawer opens. The parent
-              // TableContainer's overflowX: 'auto' takes over once the table
-              // exceeds the container width.
-              '& .MuiTableCell-root': { textAlign: 'center !important', whiteSpace: 'nowrap' }
+              '& .MuiTableCell-root': { textAlign: 'center !important', whiteSpace: 'nowrap' },
+              // The Mantis theme's `MuiTableHead.root` override applies
+              // `borderTop: 1px solid` and `borderBottom: 2px solid` to
+              // the `<thead>` element. With `stickyHeader`, only the head
+              // cells get `position: sticky` — those <thead> borders stay
+              // in normal flow and slide past the sticky cells during
+              // scroll, leaving a 1–3px window where rows peek through
+              // immediately above and below the sticky head. Cancelling
+              // them at the table level lets the sticky cells own the
+              // visual edge.
+              '& .MuiTableHead-root': {
+                borderTop: 'none',
+                borderBottom: 'none',
+                backgroundColor: 'transparent'
+              },
+              // Pin the sticky head cells flush to the very top of the
+              // TableContainer (top: 0 is what MUI sets, but explicitly
+              // re-stating it together with the `borderTop` reset above
+              // ensures there's zero possible gap above the cells where
+              // body rows could be visible during scroll).
+              '& .MuiTableCell-stickyHeader': {
+                top: 0
+              }
             }}
           >
             <TableHead>

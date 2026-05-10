@@ -48,7 +48,437 @@ function getTimeOfDayGreeting(date = new Date()) {
   return 'Working late';
 }
 
-function MetricTile({ label, value, unit, helper }) {
+// Top contributor breakdown for the Total Acres hero card. Renders a
+// segmented horizontal bar where each segment is a state's share of the
+// total, sorted descending. The first 3 states get distinct primary
+// shades; everything else aggregates into an "Other" segment so the bar
+// stays readable. Below the bar, we surface just the #1 contributor's
+// name + percentage as the most actionable takeaway ("your dataset is
+// concentrated in Kansas").
+function AcresStateBreakdown({ stateStats, totalAcres }) {
+  const theme = useTheme();
+  const ranked = useMemo(() => {
+    if (!stateStats) return [];
+    return Object.values(stateStats)
+      .filter((s) => s && Number.isFinite(s.total_acres) && s.total_acres > 0)
+      .sort((a, b) => (b.total_acres || 0) - (a.total_acres || 0));
+  }, [stateStats]);
+  if (ranked.length === 0 || !Number.isFinite(totalAcres) || totalAcres <= 0) {
+    return null;
+  }
+  // Three primary-tone shades for the top three states + a muted tone
+  // for the Other rollup. Order is darkest → lightest so #1 reads as
+  // "anchor" while smaller contributors fade into the background.
+  const segmentColors = [
+    theme.palette.primary.main,
+    theme.palette.primary.light,
+    alpha(theme.palette.primary.light, 0.55),
+    alpha(theme.palette.common.white, 0.18)
+  ];
+  const top = ranked.slice(0, 3);
+  const otherAcres = ranked.slice(3).reduce((sum, s) => sum + (s.total_acres || 0), 0);
+  const segments = [
+    ...top.map((s, i) => ({
+      label: s.state,
+      acres: s.total_acres,
+      pct: (s.total_acres / totalAcres) * 100,
+      color: segmentColors[i]
+    })),
+    ...(otherAcres > 0
+      ? [{ label: 'Other', acres: otherAcres, pct: (otherAcres / totalAcres) * 100, color: segmentColors[3] }]
+      : [])
+  ];
+  const leader = ranked[0];
+  return (
+    <Stack spacing={1}>
+      <Box
+        sx={{
+          display: 'flex',
+          width: '100%',
+          height: 8,
+          borderRadius: 999,
+          overflow: 'hidden',
+          bgcolor: alpha(theme.palette.common.black, 0.25)
+        }}
+      >
+        {segments.map((seg) => (
+          <Box
+            key={seg.label}
+            sx={{
+              flexGrow: seg.pct,
+              flexBasis: 0,
+              bgcolor: seg.color,
+              transition: 'flex-grow 0.4s ease'
+            }}
+          />
+        ))}
+      </Box>
+      <Stack direction="row" spacing={1.25} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+        {segments.map((seg, i) => (
+          <Stack key={seg.label} direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
+            <Box
+              component="span"
+              sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: seg.color, flexShrink: 0 }}
+            />
+            <Typography
+              sx={{
+                color: i === 0 ? theme.palette.common.white : alpha(theme.palette.common.white, 0.7),
+                fontSize: '0.72rem',
+                fontWeight: i === 0 ? 700 : 500,
+                fontVariantNumeric: 'tabular-nums'
+              }}
+            >
+              {seg.label} · {seg.pct.toFixed(0)}%
+            </Typography>
+          </Stack>
+        ))}
+      </Stack>
+      <Typography sx={{ color: alpha(theme.palette.common.white, 0.6), fontSize: '0.72rem', lineHeight: 1.4 }}>
+        Top contributor:{' '}
+        <Box component="span" sx={{ color: theme.palette.common.white, fontWeight: 700 }}>
+          {leader.state}
+        </Box>{' '}
+        — {leader.total_acres.toLocaleString(undefined, { maximumFractionDigits: 0 })} acres
+      </Typography>
+    </Stack>
+  );
+}
+
+// Crops ranking list for the Crops summary tile. Replaces the horizontal
+// segmented bar so the Summary Metrics row doesn't read as "two cards
+// with line charts." Each crop renders as its own row with the actual
+// record count on the right — small classes (e.g. 17 records of "Wheat,
+// Soft Winter") show their real number rather than rounding to "0%",
+// which would mislead users into thinking those varieties are absent.
+function CropsCompositionBar({ crops }) {
+  const theme = useTheme();
+  const items = useMemo(() => {
+    if (!Array.isArray(crops)) return [];
+    return crops
+      .map((c) => ({
+        name: typeof c === 'string' ? c : c?.crop_name,
+        count: typeof c === 'object' ? Number(c?.count) || 0 : 0
+      }))
+      .filter((c) => c.name && c.count > 0)
+      .sort((a, b) => b.count - a.count);
+  }, [crops]);
+  if (items.length === 0) return null;
+  // Each row rendered as a horizontal layout: tone-colored dot, crop
+  // name (truncates with ellipsis when the column is narrow), record
+  // count right-aligned with tabular numerals so the digits column-
+  // align between rows. Ranked dot color signals the order without
+  // needing a separate "1.", "2.", "3." numbering.
+  const palette = [
+    theme.palette.primary.main,
+    theme.palette.primary.light,
+    alpha(theme.palette.primary.light, 0.55)
+  ];
+  return (
+    <Stack spacing={0.55}>
+      {items.map((c, i) => (
+        <Stack
+          key={c.name}
+          direction="row"
+          spacing={0.75}
+          sx={{
+            alignItems: 'center',
+            // Subtle separator between rows so the list reads as a
+            // structured ranking rather than a free-flowing block of
+            // text. Last row drops the border to avoid a visual "tail".
+            pb: 0.5,
+            borderBottom: i < items.length - 1 ? `1px solid ${alpha(theme.palette.primary.main, 0.15)}` : 'none'
+          }}
+        >
+          <Box
+            component="span"
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              bgcolor: palette[i % palette.length],
+              flexShrink: 0
+            }}
+          />
+          <Typography
+            sx={{
+              color: alpha(theme.palette.common.white, 0.88),
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              lineHeight: 1.3,
+              flex: 1,
+              minWidth: 0,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}
+          >
+            {formatCropName(c.name)}
+          </Typography>
+          <Typography
+            sx={{
+              color: theme.palette.common.white,
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              lineHeight: 1.2,
+              flexShrink: 0
+            }}
+          >
+            {c.count.toLocaleString()}
+          </Typography>
+        </Stack>
+      ))}
+    </Stack>
+  );
+}
+
+// Year-chip grid for the Seasons tile. Renders seasons in a 4-column
+// grid (so 6–8 seasons read as a natural 2-row block) with chronological
+// left-to-right ordering. Latest year is filled in primary tone to
+// anchor "data is current through year X" at a glance; older seasons
+// stay outlined-only.
+function SeasonsRow({ seasons }) {
+  const theme = useTheme();
+  if (!Array.isArray(seasons) || seasons.length === 0) return null;
+  const sorted = [...seasons].sort((a, b) => Number(a) - Number(b));
+  const latest = Math.max(...seasons.map(Number).filter(Number.isFinite));
+  return (
+    <Box
+      sx={{
+        display: 'grid',
+        // Fixed 4-column grid: 6 seasons fall into a 2-row layout (4 +
+        // 2). Wider/narrower datasets still parse cleanly because each
+        // pill is a fixed cell and rows wrap predictably.
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        // Asymmetric gaps — tighter horizontal so the row of years
+        // reads as a unit, more generous vertical so the second row
+        // (current year + nearest neighbor) has clear breathing room
+        // and doesn't visually crowd the first row.
+        columnGap: 0.75,
+        rowGap: 1.25
+      }}
+    >
+      {sorted.map((year) => {
+        const isLatest = Number(year) === latest;
+        return (
+          <Box
+            key={year}
+            sx={{
+              // Larger pill geometry — chunkier vertical padding and a
+              // slightly larger font than the previous inline-row
+              // version so each year reads as a deliberate unit rather
+              // than a tag.
+              px: 1.25,
+              py: 0.6,
+              borderRadius: 1.5,
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              letterSpacing: '0.02em',
+              textAlign: 'center',
+              border: `1px solid ${isLatest ? theme.palette.primary.main : alpha(theme.palette.primary.main, 0.35)}`,
+              bgcolor: isLatest ? alpha(theme.palette.primary.main, 0.35) : 'transparent',
+              color: isLatest ? theme.palette.common.white : alpha(theme.palette.common.white, 0.78),
+              lineHeight: 1.3
+            }}
+          >
+            {year}
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+// Coverage progress bar for the Fields tile. Shows what % of the
+// dataset's field-seasons have at least one model prediction attached.
+// Color of the fill follows the same coverage-tier palette as the
+// Prediction Coverage section further down the page (info → warning →
+// success), so identical numbers look identical anywhere they appear.
+function CoverageBar({ pct }) {
+  const theme = useTheme();
+  if (!Number.isFinite(pct)) return null;
+  const tone =
+    pct >= 90
+      ? theme.palette.success.main
+      : pct >= 75
+        ? theme.palette.warning.main
+        : theme.palette.info.main;
+  return (
+    <Stack spacing={0.6}>
+      <Box
+        sx={{
+          position: 'relative',
+          width: '100%',
+          height: 6,
+          borderRadius: 999,
+          overflow: 'hidden',
+          bgcolor: alpha(theme.palette.common.black, 0.25)
+        }}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${Math.max(0, Math.min(100, pct))}%`,
+            bgcolor: tone,
+            transition: 'width 0.4s ease'
+          }}
+        />
+      </Box>
+      <Typography sx={{ color: alpha(theme.palette.common.white, 0.7), fontSize: '0.72rem', lineHeight: 1.4 }}>
+        <Box component="span" sx={{ color: theme.palette.common.white, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+          {pct.toFixed(1)}%
+        </Box>{' '}
+        with predictions
+      </Typography>
+    </Stack>
+  );
+}
+
+// Inline source-record callout for the Min/Max yield cards. Rendered
+// below the headline number as a small "card within a card" so it
+// reads as supporting provenance, not just another metric line.
+//
+// Color is the lever that ties this block to the headline number it
+// explains: warning.light for the Min card (mirrors the "Low" bucket
+// pin color), success.light for the Max card (mirrors "High"). The
+// same tone is used for the left accent bar, the caption, and the
+// field-number identifier, so a quick glance reads as "this is the
+// LOW-yield record" without having to read the caption text.
+//
+// Layout, in order of identifiability:
+// - Caption (uppercase, in tone) — explicitly directional ("Lowest-
+//   yield field"), removing any ambiguity that this is *the* record
+//   behind the headline number.
+// - Field # + Season — bold, tabular numerals so digits column-align
+//   between the Min and Max cards.
+// - Location (county, state).
+// - Crop + Variety (joined with ` · ` when both populated; routes
+//   crop through `formatCropName` for the spring-wheat normalization).
+// Acres is intentionally omitted to keep the callout compact — it's
+// available via the FieldDetailDrawer when the user clicks through.
+function SourceRecordInline({ record, tone, caption }) {
+  const theme = useTheme();
+  // Defaults so the component stays usable in any future "neutral"
+  // context where there's no min/max polarity to convey.
+  const accent = tone || theme.palette.primary.light;
+  const label = caption || 'Source record';
+  const captionStyle = {
+    color: accent,
+    fontWeight: 700,
+    fontSize: '0.62rem',
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase'
+  };
+  // Common visual frame for both the loaded and skeleton states so the
+  // box's height + accent bar stay stable and the card doesn't reflow
+  // when the API resolves.
+  const frameSx = {
+    position: 'relative',
+    pl: 1.25,
+    py: 0.5,
+    borderLeft: `3px solid ${accent}`,
+    borderRadius: '0 6px 6px 0',
+    bgcolor: alpha(accent, 0.08)
+  };
+  if (!record) {
+    return (
+      <Box sx={frameSx}>
+        <Stack spacing={0.4}>
+          <Typography sx={captionStyle}>{label}</Typography>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.4), fontSize: '0.72rem', fontStyle: 'italic' }}>
+            Loading…
+          </Typography>
+        </Stack>
+      </Box>
+    );
+  }
+  const fieldNumber = record.field_number != null ? `Field #${record.field_number}` : null;
+  const season = record.season != null ? String(record.season) : null;
+  const location = [record.county, record.state].filter(Boolean).join(', ');
+  const cropDisplay = record.crop ? formatCropName(record.crop) : null;
+  const variety = record.variety || null;
+  // Year color — distinct from both the tone (which marks the field
+  // identifier) and white (which marks "neutral" supporting text). Using
+  // primary.light keeps the year visually anchored to the rest of the
+  // page's primary-blue family without competing with the warning/success
+  // tone that owns the field-number identifier on the same line.
+  const seasonColor = theme.palette.primary.light;
+  return (
+    <Box sx={frameSx}>
+      <Stack spacing={0.35}>
+        <Typography sx={captionStyle}>{label}</Typography>
+        {fieldNumber || season ? (
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontSize: '0.8rem',
+              fontVariantNumeric: 'tabular-nums',
+              lineHeight: 1.25
+            }}
+          >
+            {fieldNumber ? (
+              // Tone-colored field identifier ties this row to the
+              // colored pin on the map and the colored bucket the
+              // headline number falls into — three places, one color.
+              <Box component="span" sx={{ color: accent }}>
+                {fieldNumber}
+              </Box>
+            ) : null}
+            {fieldNumber && season ? (
+              <Box component="span" sx={{ color: alpha(theme.palette.common.white, 0.55), fontWeight: 500 }}>
+                {' · '}
+              </Box>
+            ) : null}
+            {season ? (
+              <Box component="span" sx={{ color: seasonColor }}>
+                {season}
+              </Box>
+            ) : null}
+          </Typography>
+        ) : null}
+        {location ? (
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.78), fontSize: '0.72rem', lineHeight: 1.35 }}>
+            {location}
+          </Typography>
+        ) : null}
+        {cropDisplay ? (
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.78), fontSize: '0.72rem', lineHeight: 1.35 }}>
+            {cropDisplay}
+          </Typography>
+        ) : null}
+        {/* Variety on its own line. Always rendered as a labeled row so
+            the user can immediately tell whether the source field has a
+            recorded variety — when null we show "Not specified" rather
+            than silently omitting the row, since "no variety logged" is
+            itself meaningful provenance information. The label pill
+            (lowercase "variety:") is dim so the value reads as the
+            primary content. */}
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.7rem', fontWeight: 600 }}>
+            Variety:
+          </Typography>
+          <Typography
+            sx={{
+              color: variety ? theme.palette.common.white : alpha(theme.palette.common.white, 0.5),
+              fontSize: '0.72rem',
+              fontWeight: variety ? 600 : 500,
+              fontStyle: variety ? 'normal' : 'italic',
+              lineHeight: 1.35
+            }}
+          >
+            {variety || 'Not specified'}
+          </Typography>
+        </Stack>
+      </Stack>
+    </Box>
+  );
+}
+
+function MetricTile({ label, value, unit, helper, info, infoTooltipSlotProps, detail, hero = false }) {
   const theme = useTheme();
   return (
     <Paper
@@ -56,45 +486,80 @@ function MetricTile({ label, value, unit, helper }) {
       sx={{
         position: 'relative',
         overflow: 'hidden',
-        p: 2.25,
+        // Hero tile gets extra breathing room and a subtle radial accent
+        // so the eye lands on it first when scanning the row.
+        p: hero ? { xs: 2.5, md: 3 } : 2.25,
         height: '100%',
         borderRadius: 2,
         // Match the "Deep Learning" pill palette next to the Field Performance
         // Records title — saturated primary surface with a half-alpha primary
         // border so all summary cards on this page read as a coherent
         // "primary" family alongside the pill.
-        bgcolor: alpha(theme.palette.primary.main, 0.18),
-        borderColor: alpha(theme.palette.primary.main, 0.5),
-        // Suppress MUI's default dark-mode elevation overlay so the bgcolor
-        // renders unmodified.
-        backgroundImage: 'none',
+        bgcolor: alpha(theme.palette.primary.main, hero ? 0.22 : 0.18),
+        borderColor: alpha(theme.palette.primary.main, hero ? 0.65 : 0.5),
+        // Hero tile has a faint top-right radial glow so it reads as the
+        // headline metric even before the user parses the value. Other
+        // tiles stay flat — adding the glow everywhere would dilute the
+        // hierarchy back to "all cards equal weight."
+        backgroundImage: hero
+          ? `radial-gradient(120% 80% at 100% 0%, ${alpha(theme.palette.primary.main, 0.22)} 0%, transparent 65%)`
+          : 'none',
         // Soft drop shadow so the card feels lifted off the page background.
         // Tuned for the dark theme — a near-black shadow at moderate alpha
         // reads as depth without competing with the primary-blue surface.
-        boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
+        boxShadow: hero
+          ? `0 6px 20px ${alpha(theme.palette.common.black, 0.4)}`
+          : `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
       }}
     >
-      <Stack spacing={0.9}>
-        <Typography
-          sx={{
-            color: alpha(theme.palette.primary.light, 0.95),
-            fontWeight: 700,
-            fontSize: '0.72rem',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            lineHeight: 1.2
-          }}
-        >
-          {label}
-        </Typography>
+      <Stack spacing={hero ? 1.25 : 0.9}>
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+          <Typography
+            sx={{
+              color: alpha(theme.palette.primary.light, 0.95),
+              fontWeight: 700,
+              fontSize: hero ? '0.78rem' : '0.72rem',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              lineHeight: 1.2
+            }}
+          >
+            {label}
+          </Typography>
+          {info ? (
+            <Tooltip arrow placement="top" slotProps={infoTooltipSlotProps} title={info}>
+              <Box
+                component="span"
+                tabIndex={0}
+                aria-label={`More information about ${label}`}
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'help',
+                  color: alpha(theme.palette.primary.light, 0.7),
+                  transition: 'color 0.15s ease',
+                  '&:hover, &:focus-visible': { color: theme.palette.primary.light, outline: 'none' }
+                }}
+              >
+                <InfoCircleOutlined style={{ fontSize: '0.72rem' }} />
+              </Box>
+            </Tooltip>
+          ) : null}
+        </Stack>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'baseline', flexWrap: 'wrap', rowGap: 0.25 }}>
           <Typography
             component="span"
             sx={{
               color: theme.palette.common.white,
               fontWeight: 700,
-              fontSize: '1.6rem',
-              lineHeight: 1.15
+              // Hero gets a noticeably bigger value so the eye lands on
+              // it first. Tabular numerals so digits column-align cleanly
+              // (matters when the hero number is read alongside other
+              // numbers below it, like a state-contribution percentage).
+              fontSize: hero ? { xs: '2rem', md: '2.4rem' } : '1.6rem',
+              lineHeight: 1.1,
+              fontVariantNumeric: 'tabular-nums'
             }}
           >
             {value}
@@ -103,9 +568,9 @@ function MetricTile({ label, value, unit, helper }) {
             <Typography
               component="span"
               sx={{
-                color: alpha(theme.palette.common.white, 0.55),
+                color: alpha(theme.palette.common.white, 0.6),
                 fontWeight: 500,
-                fontSize: '0.85rem'
+                fontSize: hero ? '1rem' : '0.85rem'
               }}
             >
               {unit}
@@ -124,6 +589,13 @@ function MetricTile({ label, value, unit, helper }) {
             {helper}
           </Typography>
         ) : null}
+        {/* Structured footer block — used by the Min/Max yield cards to
+            surface the actual DB row behind the headline number, and by
+            the Avg card for parity. No hard divider here: the detail
+            content itself owns its visual treatment (the source-record
+            callout has a colored left-accent bar + tinted bg), and a
+            top divider would conflict with that frame. */}
+        {detail ? <Box sx={{ pt: 0.5 }}>{detail}</Box> : null}
       </Stack>
     </Paper>
   );
@@ -295,6 +767,31 @@ export default function Overview() {
     return () => controller.abort();
   }, []);
 
+  // Min/max yield extremes — actual DB rows behind the numbers shown on
+  // the "Observed Yield Range" cards, used to populate the info-icon
+  // tooltip on each card with real context (field number, crop, etc.).
+  const [yieldExtremes, setYieldExtremes] = useState({ min: null, max: null });
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadYieldExtremes = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/fields/yield-extremes/`, { signal: controller.signal });
+        if (!response.ok) return;
+        const payload = await response.json();
+        setYieldExtremes({
+          min: payload?.min || null,
+          max: payload?.max || null
+        });
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          // Silent: cards will show only the explanation text without row context.
+        }
+      }
+    };
+    loadYieldExtremes();
+    return () => controller.abort();
+  }, []);
+
   const predStats = overview.prediction_stats || {};
   const totalFieldSeasons = overview.total_field_seasons || 0;
   const withPredictions = predStats.field_seasons_with_predictions || 0;
@@ -305,7 +802,13 @@ export default function Overview() {
       .map((crop) => (typeof crop === 'string' ? crop : crop?.crop_name))
       .filter(Boolean)
       .map(formatCropName)
-      .join(', ');
+      // Use a middle-dot separator instead of a comma. The crop names
+      // themselves contain commas (e.g. "Wheat, Hard Winter"), so a
+      // comma-joined list reads as "Wheat, Hard Winter, Wheat, Hard
+      // Spring" — the boundary between two distinct crops blurs into
+      // one ambiguous string. The dot keeps each crop name visually
+      // self-contained.
+      .join(' · ');
   }, [overview.crops_available]);
 
   // Time-aware greeting + formatted date for the hero eyebrow. Computed once
@@ -338,9 +841,14 @@ export default function Overview() {
       });
       realStates = Array.from(fromMap).sort();
     } else {
-      realStates = Object.keys(STATE_HARVEST_DATES)
-        .filter((s) => s !== 'United States')
-        .sort();
+      // Empty during the initial load — intentionally NOT falling back
+      // to `Object.keys(STATE_HARVEST_DATES)` (the static list of every
+      // wheat-growing state). That fallback briefly counted ~17 states,
+      // which then snapped to the actual ~6 once /fields/states/
+      // resolved, producing a visible "17 → 6" flicker on the legend
+      // caption. Returning [] here means the legend simply doesn't show
+      // a count until we have authoritative data.
+      realStates = [];
     }
     return ['United States', ...realStates];
   }, [dbStates, mapFields]);
@@ -875,13 +1383,6 @@ export default function Overview() {
                   yieldRange={overview.yield_range}
                   highlightedStates={highlightedStates}
                   stateStats={stateStats}
-                  // Pass the dropdown's real-state count so the legend
-                  // caption reflects every state we have data for in
-                  // the DB (via /fields/states/), not just the subset
-                  // that happened to be in the 100/500-row mapFields
-                  // sample. "United States" is excluded since it's the
-                  // aggregate label, not a state.
-                  totalStatesCount={availableStates.filter((s) => s !== 'United States').length}
                 />
               </Box>
             </Grid>
@@ -904,21 +1405,64 @@ export default function Overview() {
         </Stack>
 
         <Grid container spacing={2}>
-          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+          {/* Hero row — Total Acres takes the full width on md+ so it
+              reads as the section's headline KPI. The three dimensional
+              tiles sit beneath at equal weight. On smaller breakpoints
+              everything stacks. */}
+          <Grid size={{ xs: 12 }}>
             <MetricTile
+              hero
               label="Total Acres"
-              value={overview.total_acres.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              helper="Sum of acres across all fields"
+              value={overview.total_acres.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              unit="acres"
+              detail={
+                <AcresStateBreakdown stateStats={stateStats} totalAcres={overview.total_acres} />
+              }
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-            <MetricTile label="Fields" value={overview.total_fields.toLocaleString()} helper="Distinct field IDs in the system" />
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+            <MetricTile
+              label="Fields"
+              value={overview.total_fields.toLocaleString()}
+              helper="Distinct field IDs in the system"
+              infoTooltipSlotProps={themedTooltipSlotProps}
+              info={
+                <Box sx={{ p: 0.25 }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.25, color: 'inherit' }}>
+                    Field records
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit' }}>
+                    Each record is a <strong>field-season</strong> — one
+                    field tracked across one growing season. The number
+                    here counts every distinct field-season in the
+                    database.
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', mt: 0.6 }}>
+                    A field record <strong>has a prediction</strong> when
+                    at least one ML model has produced a yield estimate
+                    for it. The percentage below shows how much of your
+                    dataset has been scored by our models — higher
+                    coverage means more rows are ready for analysis,
+                    comparison, and downstream reporting.
+                  </Typography>
+                </Box>
+              }
+              detail={<CoverageBar pct={coveragePct} />}
+            />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-            <MetricTile label="Seasons" value={String(overview.seasons_available.length)} helper={overview.seasons_available.join(', ')} />
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+            <MetricTile
+              label="Seasons"
+              value={String(overview.seasons_available.length)}
+              detail={<SeasonsRow seasons={overview.seasons_available} />}
+            />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-            <MetricTile label="Crops" value={String(overview.crops_available.length)} helper={cropsHelper} />
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+            <MetricTile
+              label="Crops"
+              value={String(overview.crops_available.length)}
+              detail={<CropsCompositionBar crops={overview.crops_available} />}
+            />
           </Grid>
         </Grid>
 
@@ -928,13 +1472,127 @@ export default function Overview() {
           <Typography variant="h5">Observed Yield Range</Typography>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 4 }}>
-              <MetricTile label="Min Yield" value={overview.yield_range.min.toFixed(1)} unit="bu/ac" />
+              <MetricTile
+                label="Min Yield"
+                value={overview.yield_range.min.toFixed(1)}
+                unit="bu/ac"
+                infoTooltipSlotProps={themedTooltipSlotProps}
+                info={
+                  <Box sx={{ p: 0.25 }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.25, color: 'inherit' }}>
+                      Min Yield
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit' }}>
+                      The lowest single-field yield recorded in the database
+                      across every harvested field-season. Source row shown
+                      on the card; acres available in the field detail view.
+                    </Typography>
+                  </Box>
+                }
+                detail={
+                  <SourceRecordInline
+                    record={yieldExtremes.min}
+                    tone={theme.palette.warning.light}
+                    caption="Lowest-yield field"
+                  />
+                }
+              />
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
-              <MetricTile label="Max Yield" value={overview.yield_range.max.toFixed(1)} unit="bu/ac" />
+              <MetricTile
+                label="Avg Yield"
+                value={overview.yield_range.avg.toFixed(1)}
+                unit="bu/ac"
+                infoTooltipSlotProps={themedTooltipSlotProps}
+                info={
+                  <Box sx={{ p: 0.25 }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.25, color: 'inherit' }}>
+                      Avg Yield
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit' }}>
+                      Computed by summing every observed yield value in the
+                      database and dividing by the total number of records.
+                    </Typography>
+                  </Box>
+                }
+                detail={
+                  // Parity callout for the Avg card — same colored-frame
+                  // pattern as the Min/Max source records so the three
+                  // cards read as a visually consistent set. Primary tone
+                  // here matches the "Medium" yield bucket (the legend dot
+                  // for the avg-band on the map), continuing the color-
+                  // coded relationship between headline numbers and the
+                  // bucket they belong to.
+                  <Box
+                    sx={{
+                      pl: 1.25,
+                      py: 0.5,
+                      borderLeft: `3px solid ${theme.palette.primary.light}`,
+                      borderRadius: '0 6px 6px 0',
+                      bgcolor: alpha(theme.palette.primary.light, 0.08)
+                    }}
+                  >
+                    <Stack spacing={0.35}>
+                      <Typography
+                        sx={{
+                          color: theme.palette.primary.light,
+                          fontWeight: 700,
+                          fontSize: '0.62rem',
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase'
+                        }}
+                      >
+                        Computation
+                      </Typography>
+                      <Typography
+                        sx={{
+                          fontWeight: 700,
+                          fontSize: '0.8rem',
+                          fontVariantNumeric: 'tabular-nums',
+                          lineHeight: 1.25
+                        }}
+                      >
+                        <Box component="span" sx={{ color: theme.palette.primary.light }}>
+                          {(overview.total_field_seasons || 0).toLocaleString()}
+                        </Box>{' '}
+                        <Box component="span" sx={{ color: alpha(theme.palette.common.white, 0.85) }}>
+                          records
+                        </Box>
+                      </Typography>
+                      <Typography sx={{ color: alpha(theme.palette.common.white, 0.7), fontSize: '0.72rem', lineHeight: 1.35 }}>
+                        Sum of all observed yields ÷ record count
+                      </Typography>
+                    </Stack>
+                  </Box>
+                }
+              />
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
-              <MetricTile label="Avg Yield" value={overview.yield_range.avg.toFixed(1)} unit="bu/ac" />
+              <MetricTile
+                label="Max Yield"
+                value={overview.yield_range.max.toFixed(1)}
+                unit="bu/ac"
+                infoTooltipSlotProps={themedTooltipSlotProps}
+                info={
+                  <Box sx={{ p: 0.25 }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.25, color: 'inherit' }}>
+                      Max Yield
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit' }}>
+                      The highest single-field yield recorded in the database
+                      across every harvested field-season. Source row shown
+                      on the card; acres available in the field detail view.
+                    </Typography>
+                  </Box>
+                }
+                detail={
+                  <SourceRecordInline
+                    record={yieldExtremes.max}
+                    tone={theme.palette.success.light}
+                    caption="Highest-yield field"
+                  />
+                }
+              />
             </Grid>
           </Grid>
         </Stack>
