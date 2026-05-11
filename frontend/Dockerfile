@@ -39,21 +39,44 @@ ENV VITE_API_URL=$VITE_API_URL
 #     -t traitharvest-frontend ./frontend
 #
 # Or in docker-compose, add `args:` under the `build:` block.
-ARG VITE_FIREBASE_API_KEY
-ARG VITE_FIREBASE_AUTH_DOMAIN
-ARG VITE_FIREBASE_PROJECT_ID
-ARG VITE_FIREBASE_STORAGE_BUCKET
-ARG VITE_FIREBASE_MESSAGING_SENDER_ID
-ARG VITE_FIREBASE_APP_ID
-ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
-    VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN \
-    VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID \
-    VITE_FIREBASE_STORAGE_BUCKET=$VITE_FIREBASE_STORAGE_BUCKET \
-    VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID \
-    VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
+ARG VITE_FIREBASE_API_KEY=
+ARG VITE_FIREBASE_AUTH_DOMAIN=
+ARG VITE_FIREBASE_PROJECT_ID=
+ARG VITE_FIREBASE_STORAGE_BUCKET=
+ARG VITE_FIREBASE_MESSAGING_SENDER_ID=
+ARG VITE_FIREBASE_APP_ID=
+
+# Persist Firebase build-args into .env.production.local IF they were passed.
+# Empty/unset args skip writing that line, which lets a checked-in .env.local
+# (copied in by the COPY . . above) remain the source of truth when no args
+# are provided. .env.production.local has higher priority than .env.local in
+# Vite's loader, so passed args always win.
+#
+# IMPORTANT: do NOT use `ENV VITE_FOO=$VITE_FOO` for these — that would set
+# process.env.VITE_FOO="" when the ARG is unset, which Vite treats as a set
+# (empty) value and would override .env.local at build time.
+RUN { \
+      [ -n "$VITE_FIREBASE_API_KEY" ]             && printf 'VITE_FIREBASE_API_KEY=%s\n' "$VITE_FIREBASE_API_KEY"; \
+      [ -n "$VITE_FIREBASE_AUTH_DOMAIN" ]         && printf 'VITE_FIREBASE_AUTH_DOMAIN=%s\n' "$VITE_FIREBASE_AUTH_DOMAIN"; \
+      [ -n "$VITE_FIREBASE_PROJECT_ID" ]          && printf 'VITE_FIREBASE_PROJECT_ID=%s\n' "$VITE_FIREBASE_PROJECT_ID"; \
+      [ -n "$VITE_FIREBASE_STORAGE_BUCKET" ]      && printf 'VITE_FIREBASE_STORAGE_BUCKET=%s\n' "$VITE_FIREBASE_STORAGE_BUCKET"; \
+      [ -n "$VITE_FIREBASE_MESSAGING_SENDER_ID" ] && printf 'VITE_FIREBASE_MESSAGING_SENDER_ID=%s\n' "$VITE_FIREBASE_MESSAGING_SENDER_ID"; \
+      [ -n "$VITE_FIREBASE_APP_ID" ]              && printf 'VITE_FIREBASE_APP_ID=%s\n' "$VITE_FIREBASE_APP_ID"; \
+      true; \
+    } > .env.production.local
 
 # Build the production bundle
 RUN npm run build
+
+# Sanity check: fail the build if no Firebase API key made it into the bundle.
+# Catches silent misconfigurations (missing .env.local AND missing build-args)
+# at build time instead of at first user visit.
+RUN if ! grep -q 'AIzaSy[A-Za-z0-9_-]\{10,\}' dist/js/index-*.js 2>/dev/null; then \
+      echo "ERROR: No Firebase API key found in the built bundle." >&2; \
+      echo "Either provide frontend/.env.local in the build context," >&2; \
+      echo "or pass VITE_FIREBASE_* values via --build-arg." >&2; \
+      exit 1; \
+    fi
 
 # Stage 2: Serve the built files with nginx
 FROM nginx:stable-alpine
