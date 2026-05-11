@@ -1,11 +1,11 @@
 {
-  "name": "mantis-material-free-react",
+  "name": "traitharvest-frontend",
   "version": "2.0.1",
-  "homepage": "https://mantisdashboard.com/free",
+  "homepage": "#",
   "author": {
-    "name": "CodedThemes",
-    "email": "codedthemes@gmail.com",
-    "url": "https://codedthemes.com/"
+    "name": "Shakoor Lab",
+    "email": "",
+    "url": "https://www.shakoorlab.com"
   },
   "scripts": {
     "start": "vite",

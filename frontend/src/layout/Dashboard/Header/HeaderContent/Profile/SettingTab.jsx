@@ -17,7 +17,7 @@ import UnorderedListOutlined from '@ant-design/icons/UnorderedListOutlined';
 export default function SettingTab() {
   return (
     <List component="nav" sx={{ p: 0, '& .MuiListItemIcon-root': { minWidth: 32 } }}>
-      <Link underline="none" sx={{ color: 'inherit' }} target="_blank" href="https://codedthemes.support-hub.io/">
+      <Link underline="none" sx={{ color: 'inherit' }} target="_blank" href="#">
         <ListItemButton>
           <ListItemIcon>
             <QuestionCircleOutlined />
@@ -37,7 +37,7 @@ export default function SettingTab() {
         </ListItemIcon>
         <ListItemText primary="Privacy Center" />
       </ListItemButton>
-      <Link underline="none" style={{ color: 'inherit' }} target="_blank" href="https://codedthemes.support-hub.io/">
+      <Link underline="none" style={{ color: 'inherit' }} target="_blank" href="#">
         <ListItemButton>
           <ListItemIcon>
             <CommentOutlined />

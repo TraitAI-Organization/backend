@@ -7,7 +7,6 @@ import { useTheme } from '@mui/material/styles';
 import ButtonBase from '@mui/material/ButtonBase';
 import CardContent from '@mui/material/CardContent';
 import ClickAwayListener from '@mui/material/ClickAwayListener';
-import Grid from '@mui/material/Grid';
 import Paper from '@mui/material/Paper';
 import Popper from '@mui/material/Popper';
 import Stack from '@mui/material/Stack';
@@ -113,7 +112,16 @@ export default function Profile() {
           aria-haspopup="true"
           onClick={handleToggle}
         >
-          <Avatar alt="profile user" src={avatar1} size="sm" sx={{ '&:hover': { outline: '1px solid', outlineColor: 'primary.main' } }} />
+          <Avatar
+            alt="profile user"
+            src={avatar1}
+            size="sm"
+            sx={{
+              border: '2px solid',
+              borderColor: 'primary.main',
+              '&:hover': { outline: '1px solid', outlineColor: 'primary.main' }
+            }}
+          />
         </ButtonBase>
       </Tooltip>
       <Popper
@@ -149,28 +157,34 @@ export default function Profile() {
               <ClickAwayListener onClickAway={handleClose}>
                 <MainCard elevation={0} border={false} content={false}>
                   <CardContent sx={{ px: 2.5, pt: 3 }}>
-                    <Grid container sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Grid>
-                        <Stack direction="row" sx={{ gap: 1.25, alignItems: 'center' }}>
-                          <Avatar alt="profile user" src={avatar1} sx={{ width: 32, height: 32 }} />
-                          <Stack>
-                            <Typography variant="h6">
+                    <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'nowrap' }}>
+                      <Stack direction="row" sx={{ gap: 1.25, alignItems: 'center', flex: 1, minWidth: 0 }}>
+                        <Avatar alt="profile user" src={avatar1} sx={{ width: 32, height: 32, flexShrink: 0 }} />
+                        <Stack sx={{ minWidth: 0, flex: 1 }}>
+                          <Tooltip
+                            title={user?.displayName || user?.email || 'Signed in'}
+                            slotProps={themedTooltipSlotProps}
+                          >
+                            <Typography variant="h6" noWrap sx={{ minWidth: 0 }}>
                               {user?.displayName || user?.email || 'Signed in'}
                             </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              TraitHarvest
-                            </Typography>
-                          </Stack>
+                          </Tooltip>
+                          <Typography variant="body2" color="text.secondary" noWrap>
+                            TraitHarvest
+                          </Typography>
                         </Stack>
-                      </Grid>
-                      <Grid>
-                        <Tooltip title="Logout" slotProps={themedTooltipSlotProps}>
-                          <IconButton size="large" sx={{ color: 'text.primary' }} onClick={handleLogout} aria-label="logout">
-                            <LogoutOutlined />
-                          </IconButton>
-                        </Tooltip>
-                      </Grid>
-                    </Grid>
+                      </Stack>
+                      <Tooltip title="Logout" slotProps={themedTooltipSlotProps}>
+                        <IconButton
+                          size="large"
+                          sx={{ color: 'text.primary', flexShrink: 0 }}
+                          onClick={handleLogout}
+                          aria-label="logout"
+                        >
+                          <LogoutOutlined />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
                   </CardContent>
 
                   <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
