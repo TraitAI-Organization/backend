@@ -28,21 +28,38 @@ class ExplainabilityEngine:
         """
         Get appropriate SHAP explainer for model type.
         """
-        model_type = type(model).__name__
+        # Unwrap our own quantile-ensemble wrapper (CatBoostQuantileWrapper)
+        # before dispatching. SHAP's TreeExplainer doesn't recognize the
+        # wrapper class — its __module__ is app.ml.model_registry, which
+        # matches none of the checks below — so we explain via the
+        # underlying median estimator, which IS a real CatBoost model.
+        if hasattr(model, "models_by_quantile"):
+            underlying = getattr(model, "_median", None)
+            if underlying is None and isinstance(model.models_by_quantile, dict) and model.models_by_quantile:
+                underlying = next(iter(model.models_by_quantile.values()))
+            if underlying is not None:
+                return self._get_explainer(underlying)
 
-        if hasattr(model, 'predict_vals'):  # LightGBM
+        model_type = type(model).__name__
+        model_module = (type(model).__module__ or "")
+
+        # LightGBM: LGBMRegressor / LGBMClassifier / Booster — TreeExplainer takes them directly.
+        if model_module.startswith("lightgbm") or hasattr(model, "booster_"):
             return shap.TreeExplainer(model)
-        elif hasattr(model, 'get_booster'):  # XGBoost
-            return shap.TreeExplainer(model.get_booster())
-        elif hasattr(model, 'estimators_'):  # RandomForest
+        # XGBoost: pass the underlying Booster for best compatibility.
+        if model_module.startswith("xgboost") or hasattr(model, "get_booster"):
+            return shap.TreeExplainer(model.get_booster()) if hasattr(model, "get_booster") else shap.TreeExplainer(model)
+        # CatBoost
+        if model_module.startswith("catboost"):
             return shap.TreeExplainer(model)
-        elif model.__class__.__module__.startswith("catboost") or hasattr(model, "get_feature_importance"):  # CatBoost
+        # sklearn tree ensembles (RandomForest, GradientBoosting, ExtraTrees, etc.)
+        if hasattr(model, "estimators_"):
             return shap.TreeExplainer(model)
-        else:
-            logger.warning(f"Unknown model type {model_type}, falling back to KernelExplainer")
-            if self._background_data is None or len(self._background_data) == 0:
-                raise ValueError("No background data available for KernelExplainer fallback")
-            return shap.KernelExplainer(model.predict, shap.sample(self._background_data, min(len(self._background_data), 100)))
+
+        logger.warning(f"Unknown model type {model_type} (module={model_module}), falling back to KernelExplainer")
+        if self._background_data is None or len(self._background_data) == 0:
+            raise ValueError("No background data available for KernelExplainer fallback")
+        return shap.KernelExplainer(model.predict, shap.sample(self._background_data, min(len(self._background_data), 100)))
 
     def explain_prediction(
         self,
@@ -88,6 +105,33 @@ class ExplainabilityEngine:
         if self._explainer is None or self._current_model_tag != model_version.version_tag:
             self._explainer = self._get_explainer(model)
             self._current_model_tag = model_version.version_tag
+
+        # CatBoost requires categorical features to be int or string when
+        # building a Pool. The values reaching us here have been round-tripped
+        # through `X.iloc[0].to_dict()` → `pd.DataFrame([dict])`, which loses
+        # the int64 dtype that the predictor's preprocessing set. SHAP's
+        # CatBoost path internally calls `catboost.Pool(X, cat_features=...)`,
+        # which then errors with "cat_features must be integer or string".
+        # Coerce those columns back before SHAP touches them.
+        underlying_model = getattr(model, "_median", None) or model
+        cat_indices: List[int] = []
+        get_cat_indices = getattr(underlying_model, "get_cat_feature_indices", None)
+        if callable(get_cat_indices):
+            try:
+                cat_indices = list(get_cat_indices() or [])
+            except Exception:
+                cat_indices = []
+        for idx in cat_indices:
+            if idx < 0 or idx >= len(feature_list):
+                continue
+            col = feature_list[idx]
+            series = X[col]
+            # Already int-like? Cast to int64 so Pool accepts it. Otherwise
+            # fall back to string (also valid for cat_features).
+            try:
+                X[col] = series.astype("int64")
+            except (ValueError, TypeError):
+                X[col] = series.astype(str)
 
         # Calculate SHAP values
         shap_values = self._explainer.shap_values(X)

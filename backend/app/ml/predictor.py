@@ -171,6 +171,12 @@ class PredictionService:
         raw_upper: Optional[float] = None
         raw_median: Optional[float] = None
         raw_sigma: Optional[float] = None  # standardized space sigma (DL only)
+        # Fraction of the predictive distribution covered by [lower, upper].
+        # Carried through so the frontend can label intervals honestly (a
+        # CatBoost ensemble trained on q=0.05/q=0.95 gives a 90% interval,
+        # NOT 95% — labeling everything "95%" is misleading). Default 0.95
+        # matches the legacy RMSE fallback's 1.96·sigma margin.
+        confidence_level: Optional[float] = None
 
         if hasattr(self._model, "predict_quantiles"):
             try:
@@ -186,6 +192,8 @@ class PredictionService:
                     raw_upper = max(low_pred, high_pred)
                     median_q = min(qkeys, key=lambda q: abs(q - 0.5))
                     raw_median = float(qpreds[median_q][0])
+                    # e.g. q ∈ {0.05, 0.5, 0.95} → coverage = 0.90.
+                    confidence_level = float(qkeys[-1] - qkeys[0])
             except Exception as e:
                 logger.warning(f"predict_quantiles failed; falling back to RMSE bounds: {e}")
         elif hasattr(self._model, "predict_with_uncertainty"):
@@ -227,6 +235,8 @@ class PredictionService:
                     raw_sigma = sigma
                     raw_lower = mean_val - 1.96 * sigma
                     raw_upper = mean_val + 1.96 * sigma
+                    # mean ± 1.96·σ covers ~95% of a Gaussian.
+                    confidence_level = 0.95
             except Exception as e:
                 logger.warning(f"predict_with_uncertainty failed; falling back to RMSE bounds: {e}")
 
@@ -299,6 +309,8 @@ class PredictionService:
             val_rmse = self._metadata.get('metrics', {}).get('val_rmse', 10.0)
             confidence_lower = predicted_yield - 1.96 * val_rmse
             confidence_upper = predicted_yield + 1.96 * val_rmse
+            # 1.96·val_rmse is the 95% Gaussian prediction interval.
+            confidence_level = 0.95
 
         # Defensive clamp: the predictions table stores yields/bounds as NUMERIC(6, 2),
         # so values must fit in ±9999.99. A miscalibrated variance head can otherwise
@@ -330,6 +342,7 @@ class PredictionService:
             'predicted_yield': predicted_yield,
             'confidence_lower': confidence_lower,
             'confidence_upper': confidence_upper,
+            'confidence_level': confidence_level,
             'features': X.iloc[0].to_dict(),
             'base_value': self._model.get('base_score', 0) if hasattr(self._model, 'get') else 0,
         }

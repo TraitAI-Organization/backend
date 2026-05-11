@@ -21,8 +21,36 @@ ENV VITE_API_URL=$VITE_API_URL
 # Alternative (not recommended for Docker builds):
 # ARG VITE_API_URL=http://localhost:8001/api/v1
 # ENV VITE_API_URL=$VITE_API_URL
-# This would require the backend to be accessible at localhost:8001 
+# This would require the backend to be accessible at localhost:8001
 # → only useful when frontend runs outside Docker (npm run dev without proxy)
+
+# Build-time Firebase web SDK config — Vite inlines `import.meta.env.VITE_*` at
+# build time, so these MUST be present when `npm run build` runs. They're
+# public-by-design (Firebase enforces access via security rules + authorized
+# domains), so passing them as build-args is fine. Pass via:
+#
+#   docker build \
+#     --build-arg VITE_FIREBASE_API_KEY=AIza... \
+#     --build-arg VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com \
+#     --build-arg VITE_FIREBASE_PROJECT_ID=your-project \
+#     --build-arg VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app \
+#     --build-arg VITE_FIREBASE_MESSAGING_SENDER_ID=... \
+#     --build-arg VITE_FIREBASE_APP_ID=1:... \
+#     -t traitharvest-frontend ./frontend
+#
+# Or in docker-compose, add `args:` under the `build:` block.
+ARG VITE_FIREBASE_API_KEY
+ARG VITE_FIREBASE_AUTH_DOMAIN
+ARG VITE_FIREBASE_PROJECT_ID
+ARG VITE_FIREBASE_STORAGE_BUCKET
+ARG VITE_FIREBASE_MESSAGING_SENDER_ID
+ARG VITE_FIREBASE_APP_ID
+ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
+    VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN \
+    VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID \
+    VITE_FIREBASE_STORAGE_BUCKET=$VITE_FIREBASE_STORAGE_BUCKET \
+    VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID \
+    VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
 
 # Build the production bundle
 RUN npm run build

@@ -102,6 +102,17 @@ class FieldSeasonBase(BaseSchema):
     totalN_per_ac: Optional[float] = None
     totalP_per_ac: Optional[float] = None
     totalK_per_ac: Optional[float] = None
+    # Aggregated season-level irrigation total.
+    water_applied_mm: Optional[float] = None
+    # Nitrogen-source breakdown (lb N per acre). All optional — rows from
+    # legacy ingestions may not have every source populated.
+    ammonia_lbN_per_ac: Optional[float] = None
+    urea_lbN_per_ac: Optional[float] = None
+    ammonium_nitrate_lbN_per_ac: Optional[float] = None
+    ammonium_sulfate_lbN_per_ac: Optional[float] = None
+    urea_ammonium_nitrate_solution_lbN_per_ac: Optional[float] = None
+    monoammonium_phosphate_lbN_per_ac: Optional[float] = None
+    diammonium_phosphate_lbN_per_ac: Optional[float] = None
     record_source: Optional[str] = None
     # Optional so rows with NULL data_quality_score don't fail Pydantic
     # validation when the detail endpoint serializes them.
@@ -217,6 +228,10 @@ class FeatureContribution(BaseSchema):
 class PredictionResponse(BaseSchema):
     predicted_yield: float
     confidence_interval: List[float]  # [lower, upper]
+    # Fraction of the predictive distribution that [lower, upper] covers
+    # (e.g. 0.95 for mean ± 1.96·σ; 0.90 for a q=0.05/q=0.95 quantile pair).
+    # Optional for backwards compatibility with older response payloads.
+    confidence_level: Optional[float] = None
     model_version: str
     prediction_run_id: Optional[int] = None
 
@@ -237,6 +252,7 @@ class MultiModelPredictionItem(BaseSchema):
     is_production: bool
     predicted_yield: Optional[float] = None
     confidence_interval: Optional[List[float]] = None
+    confidence_level: Optional[float] = None
     explainability: Optional[Dict[str, List[FeatureContribution]]] = None
     error: Optional[str] = None
 

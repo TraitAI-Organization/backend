@@ -233,11 +233,31 @@ export default function FieldDetailDrawer({
     Number.isFinite(observedNum) && Number.isFinite(targetNum) && targetNum > 0
       ? ((observedNum - targetNum) / targetNum) * 100
       : null;
-  const qualityScore = data?.data_quality_score;
-  const missingFlags =
-    data?.missing_data_flags && typeof data.missing_data_flags === 'object'
-      ? Object.entries(data.missing_data_flags).filter(([, v]) => v)
-      : [];
+  // Season-level water total (separate from the per-event water_applied_mm
+  // on each management event). Surfaced in the Nutrient Inputs panel so
+  // the season's irrigation total reads alongside its N/P/K totals.
+  const waterApplied = data?.water_applied_mm;
+
+  // Nitrogen-source breakdown for the season. Each entry pulls from a
+  // distinct DB column (ammonia_lbN_per_ac etc.) — we keep the labels
+  // short (well-known agronomy abbreviations) and the tone palette
+  // shifts through primary/info/success so eight sources are still
+  // visually distinguishable on the stacked bar below. Sources with
+  // null/0 values are filtered before render so the breakdown only shows
+  // what actually contributed.
+  const nitrogenSourcesAll = [
+    { key: 'ammonia', label: 'Ammonia (NH₃)', value: data?.ammonia_lbN_per_ac, color: theme.palette.primary.main },
+    { key: 'urea', label: 'Urea', value: data?.urea_lbN_per_ac, color: theme.palette.primary.light },
+    { key: 'an', label: 'Ammonium Nitrate', value: data?.ammonium_nitrate_lbN_per_ac, color: theme.palette.info.main },
+    { key: 'as', label: 'Ammonium Sulfate', value: data?.ammonium_sulfate_lbN_per_ac, color: theme.palette.info.light },
+    { key: 'uan', label: 'UAN Solution', value: data?.urea_ammonium_nitrate_solution_lbN_per_ac, color: theme.palette.success.main },
+    { key: 'map', label: 'MAP', value: data?.monoammonium_phosphate_lbN_per_ac, color: theme.palette.success.light },
+    { key: 'dap', label: 'DAP', value: data?.diammonium_phosphate_lbN_per_ac, color: theme.palette.warning.light }
+  ];
+  const nitrogenSources = nitrogenSourcesAll
+    .map((s) => ({ ...s, numeric: Number(s.value) }))
+    .filter((s) => Number.isFinite(s.numeric) && s.numeric > 0);
+  const nitrogenSourcesTotal = nitrogenSources.reduce((acc, s) => acc + s.numeric, 0);
 
   const events = Array.isArray(data?.management_events) ? data.management_events : [];
   const allPredictions = Array.isArray(data?.predictions) ? data.predictions : [];
@@ -458,74 +478,186 @@ export default function FieldDetailDrawer({
               </Box>
             </Stack>
 
-            {/* Nutrient inputs */}
+            {/* Season totals: N/P/K + irrigation. Four-tile grid keeps the
+                three macros readable while making space for water alongside,
+                so the user reads the season's whole input profile at once. */}
             <Stack spacing={1.25}>
-              <SectionLabel>Nutrient Inputs</SectionLabel>
+              <SectionLabel>Nutrient & Water Totals</SectionLabel>
               <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2, backgroundImage: 'none', boxShadow: sectionShadow }}>
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 4 }}>
+                  <Grid size={{ xs: 6, sm: 3 }}>
                     <InfoField
                       label="N (lb/ac)"
                       value={formatNumber(data?.totalN_per_ac)}
                       valueColor={alpha(theme.palette.info.light, 0.95)}
                     />
                   </Grid>
-                  <Grid size={{ xs: 4 }}>
+                  <Grid size={{ xs: 6, sm: 3 }}>
                     <InfoField
                       label="P (lb/ac)"
                       value={formatNumber(data?.totalP_per_ac)}
                       valueColor={alpha(theme.palette.warning.light, 0.95)}
                     />
                   </Grid>
-                  <Grid size={{ xs: 4 }}>
+                  <Grid size={{ xs: 6, sm: 3 }}>
                     <InfoField
                       label="K (lb/ac)"
                       value={formatNumber(data?.totalK_per_ac)}
                       valueColor={alpha(theme.palette.error.light, 0.95)}
                     />
                   </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <InfoField
+                      label="Water (mm)"
+                      value={formatNumber(waterApplied)}
+                      valueColor={alpha(theme.palette.primary.light, 0.95)}
+                    />
+                  </Grid>
                 </Grid>
               </Box>
             </Stack>
 
-            {/* Data quality */}
-            <Stack spacing={1.25}>
-              <SectionLabel>Data Quality</SectionLabel>
-              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2, backgroundImage: 'none', boxShadow: sectionShadow }}>
-                <Stack spacing={1.25}>
-                  <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
-                    <InfoField
-                      label="Score"
-                      value={
-                        typeof qualityScore === 'number'
-                          ? `${(qualityScore * 100).toFixed(0)}/100`
-                          : '—'
-                      }
-                      valueColor={getQualityTone(qualityScore, theme)}
-                    />
-                    <InfoField label="Source" value={data?.record_source || '—'} />
-                  </Stack>
-                  {missingFlags.length > 0 ? (
-                    <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
-                      {missingFlags.map(([key]) => (
-                        <Chip
-                          key={key}
-                          size="small"
-                          label={`Missing: ${key}`}
+            {/* Nitrogen source breakdown — only renders when at least one
+                source has a non-zero contribution. The stacked horizontal
+                bar gives an at-a-glance read of which sources dominate;
+                the legend below provides the exact numbers + share. */}
+            {nitrogenSources.length > 0 ? (
+              <Stack spacing={1.25}>
+                <SectionLabel>Nitrogen Source Breakdown</SectionLabel>
+                <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2, backgroundImage: 'none', boxShadow: sectionShadow }}>
+                  <Stack spacing={1.75}>
+                    <Stack direction="row" spacing={2} sx={{ alignItems: 'baseline', flexWrap: 'wrap', rowGap: 0.5 }}>
+                      <Stack spacing={0.25}>
+                        <Typography
                           sx={{
-                            bgcolor: alpha(theme.palette.warning.main, 0.15),
-                            color: theme.palette.warning.light,
-                            border: `1px solid ${alpha(theme.palette.warning.main, 0.4)}`,
-                            fontSize: '0.68rem',
-                            height: 20
+                            color: alpha(theme.palette.primary.light, 0.7),
+                            fontWeight: 600,
+                            fontSize: '0.66rem',
+                            letterSpacing: '0.08em',
+                            textTransform: 'uppercase'
+                          }}
+                        >
+                          Total from sources
+                        </Typography>
+                        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'baseline' }}>
+                          <Typography sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '1.6rem', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
+                            {formatNumber(nitrogenSourcesTotal, 2)}
+                          </Typography>
+                          <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.85rem', fontWeight: 500 }}>
+                            lb N/ac
+                          </Typography>
+                        </Stack>
+                      </Stack>
+                      {Number.isFinite(Number(data?.totalN_per_ac)) && Number(data.totalN_per_ac) > 0 ? (
+                        <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.72rem', fontWeight: 500 }}>
+                          {((nitrogenSourcesTotal / Number(data.totalN_per_ac)) * 100).toFixed(0)}% of season total N
+                        </Typography>
+                      ) : null}
+                    </Stack>
+
+                    {/* Stacked horizontal bar. Each segment is a flex-grow
+                        proportional to its share so the visual encoding
+                        matches the percentages in the legend below. */}
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        height: 14,
+                        borderRadius: 999,
+                        overflow: 'hidden',
+                        bgcolor: alpha(theme.palette.common.black, 0.3),
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                        boxShadow: `inset 0 0 6px ${alpha(theme.palette.common.black, 0.4)}`
+                      }}
+                    >
+                      {nitrogenSources.map((s, i) => (
+                        <Box
+                          key={s.key}
+                          title={`${s.label}: ${formatNumber(s.numeric, 2)} lb N/ac`}
+                          sx={{
+                            flex: s.numeric,
+                            bgcolor: s.color,
+                            transition: 'opacity 0.18s ease',
+                            borderRight: i < nitrogenSources.length - 1
+                              ? `1px solid ${alpha(theme.palette.common.black, 0.35)}`
+                              : 'none',
+                            '&:hover': { opacity: 0.85 }
                           }}
                         />
                       ))}
+                    </Box>
+
+                    {/* Legend / ranking. Sorted by descending contribution
+                        so the dominant N source leads. Tabular numerals
+                        keep the value + percent columns aligned across
+                        rows. */}
+                    <Stack spacing={0.6}>
+                      {[...nitrogenSources]
+                        .sort((a, b) => b.numeric - a.numeric)
+                        .map((s) => {
+                          const pct = nitrogenSourcesTotal > 0 ? (s.numeric / nitrogenSourcesTotal) * 100 : 0;
+                          return (
+                            <Stack
+                              key={s.key}
+                              direction="row"
+                              spacing={1}
+                              sx={{ alignItems: 'center', minWidth: 0 }}
+                            >
+                              <Box
+                                sx={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: '50%',
+                                  bgcolor: s.color,
+                                  flexShrink: 0,
+                                  boxShadow: `0 0 6px ${alpha(s.color, 0.6)}`
+                                }}
+                              />
+                              <Typography
+                                sx={{
+                                  color: theme.palette.common.white,
+                                  fontSize: '0.82rem',
+                                  fontWeight: 600,
+                                  flex: 1,
+                                  minWidth: 0,
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }}
+                              >
+                                {s.label}
+                              </Typography>
+                              <Typography
+                                sx={{
+                                  color: alpha(theme.palette.common.white, 0.85),
+                                  fontSize: '0.8rem',
+                                  fontWeight: 700,
+                                  fontVariantNumeric: 'tabular-nums',
+                                  flexShrink: 0
+                                }}
+                              >
+                                {formatNumber(s.numeric, 2)} lb
+                              </Typography>
+                              <Typography
+                                sx={{
+                                  color: alpha(theme.palette.common.white, 0.55),
+                                  fontSize: '0.72rem',
+                                  fontWeight: 600,
+                                  fontVariantNumeric: 'tabular-nums',
+                                  width: 44,
+                                  textAlign: 'right',
+                                  flexShrink: 0
+                                }}
+                              >
+                                {pct.toFixed(0)}%
+                              </Typography>
+                            </Stack>
+                          );
+                        })}
                     </Stack>
-                  ) : null}
-                </Stack>
-              </Box>
-            </Stack>
+                  </Stack>
+                </Box>
+              </Stack>
+            ) : null}
 
             {/* Predictions history */}
             <Stack spacing={1.25}>

@@ -27,7 +27,11 @@ import { BarChart } from '@mui/x-charts';
 import AppstoreOutlined from '@ant-design/icons/AppstoreOutlined';
 import CloseOutlined from '@ant-design/icons/CloseOutlined';
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
+import FallOutlined from '@ant-design/icons/FallOutlined';
+import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
 import RightOutlined from '@ant-design/icons/RightOutlined';
+import RiseOutlined from '@ant-design/icons/RiseOutlined';
+import ThunderboltOutlined from '@ant-design/icons/ThunderboltOutlined';
 
 import MainCard from 'components/MainCard';
 import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
@@ -119,6 +123,144 @@ function formatFeatureName(value) {
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
+// CSV escaping per RFC 4180: quote any cell that contains a comma, quote, or
+// newline; double internal quotes. Null/undefined become empty strings so the
+// column is still present (preserving column alignment across rows).
+function csvCell(value) {
+  if (value === null || value === undefined) return '';
+  const str = typeof value === 'string' ? value : String(value);
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+// Trigger a client-side CSV download. Encodes UTF-8 with a BOM so Excel on
+// Windows opens it correctly (without the BOM Excel guesses Windows-1252 and
+// mangles characters like ° and °C). Cleans up the blob URL after click.
+function downloadCsv(rows, filename) {
+  const csv = rows.map((cells) => cells.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  // Defer revoke so Safari has time to start the download before the URL
+  // becomes invalid. 0ms is enough in practice; we use 1s for safety.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Build a one-row-per-prediction CSV that mirrors what the user sees in the
+// Saved Predictions table PLUS the analysis-drawer values that aren't in the
+// table (confidence interval, regional baseline + source, top SHAP features).
+// `stateStats` provides the state-level regional-avg fallback the drawer uses
+// when the prediction's own county-level regional_comparison was empty.
+function buildPredictionRunsCsv(rows, modelTypesByVersionId, stateStats) {
+  const header = [
+    'Prediction Run ID',
+    'Created At',
+    'Model Type',
+    'Model Version Tag',
+    'Runtime Model Version',
+    'Crop',
+    'Variety',
+    'Season',
+    'State',
+    'County',
+    'Acres',
+    'N (lb/ac)',
+    'P (lb/ac)',
+    'K (lb/ac)',
+    'Water Applied (mm)',
+    'Predicted Yield (bu/ac)',
+    'Confidence Lower (bu/ac)',
+    'Confidence Upper (bu/ac)',
+    'Confidence Width (bu/ac)',
+    'Confidence Level (%)',
+    'Regional Avg Yield (bu/ac)',
+    'Regional Avg Source',
+    'Regional Delta vs Predicted (%)',
+    'Top Feature 1',
+    'Top Feature 2',
+    'Top Feature 3',
+    'Top Feature 4',
+    'Top Feature 5'
+  ];
+
+  const formatTopFeature = (feat) => {
+    if (!feat) return '';
+    const name = formatFeatureName(feat.feature);
+    const value = feat.value === null || feat.value === undefined ? '—' : String(feat.value);
+    const direction = String(feat.direction || '').toLowerCase() || 'unknown';
+    const importance = Math.max(Number(feat.importance) || 0, 0) * 100;
+    return `${name} (value=${value}, direction=${direction}, impact=${importance.toFixed(2)}%)`;
+  };
+
+  const body = rows.map((row) => {
+    const lower = row.confidenceLower;
+    const upper = row.confidenceUpper;
+    const predicted = row.predictedYield;
+    const width = Number.isFinite(lower) && Number.isFinite(upper) ? upper - lower : null;
+
+    // Match the drawer's fallback logic: prefer the prediction's own
+    // county-level regional_comparison, fall back to the state-level
+    // aggregate so the CSV reflects what the user saw on screen.
+    let regional = row.regionalAvgYield;
+    let regionalSource = Number.isFinite(regional) && regional > 0 ? 'county' : '';
+    if (!regionalSource) {
+      const stateRow = row.state ? stateStats[row.state] : null;
+      const stateAvg = stateRow != null ? Number(stateRow.avg_yield) : null;
+      if (Number.isFinite(stateAvg) && stateAvg > 0) {
+        regional = stateAvg;
+        regionalSource = 'state';
+      }
+    }
+    const regionalDelta =
+      Number.isFinite(regional) && regional > 0 && Number.isFinite(predicted)
+        ? ((predicted - regional) / regional) * 100
+        : null;
+
+    const modelType = modelTypesByVersionId[row.modelVersionId] || row.modelVersionTag || '';
+
+    const features = Array.isArray(row.topFeatures) ? row.topFeatures.slice(0, 5) : [];
+    const topF = [0, 1, 2, 3, 4].map((i) => formatTopFeature(features[i]));
+
+    return [
+      row.predictionRunId ?? '',
+      row.createdAt ?? '',
+      modelType,
+      row.modelVersionTag ?? '',
+      row.runtimeModelVersion ?? '',
+      row.crop ?? '',
+      row.variety ?? '',
+      row.season ?? '',
+      row.state ?? '',
+      row.county ?? '',
+      Number.isFinite(row.acres) ? row.acres : '',
+      Number.isFinite(row.totalN) ? row.totalN : '',
+      Number.isFinite(row.totalP) ? row.totalP : '',
+      Number.isFinite(row.totalK) ? row.totalK : '',
+      Number.isFinite(row.waterApplied) ? row.waterApplied : '',
+      Number.isFinite(predicted) ? predicted.toFixed(4) : '',
+      Number.isFinite(lower) ? lower.toFixed(4) : '',
+      Number.isFinite(upper) ? upper.toFixed(4) : '',
+      Number.isFinite(width) ? width.toFixed(4) : '',
+      Number.isFinite(row.confidenceLevel) && row.confidenceLevel > 0
+        ? (row.confidenceLevel * 100).toFixed(0)
+        : '',
+      Number.isFinite(regional) ? regional.toFixed(4) : '',
+      regionalSource,
+      Number.isFinite(regionalDelta) ? regionalDelta.toFixed(2) : '',
+      ...topF
+    ];
+  });
+
+  return [header, ...body];
+}
+
 // Wheat yields that exceed this threshold are almost certainly out-of-range
 // (typical yields are 30–150 bu/ac); we flag them in the table with an "Out"
 // badge so reviewers can see at a glance which predictions need scrutiny.
@@ -208,6 +350,10 @@ async function fetchPredictionRuns(signal) {
       predictedYield: toNumberOrNull(row.predicted_yield ?? responsePayload.predicted_yield),
       confidenceLower: toNumberOrNull(row.confidence_lower ?? responsePayload?.confidence_interval?.[0]),
       confidenceUpper: toNumberOrNull(row.confidence_upper ?? responsePayload?.confidence_interval?.[1]),
+      // Newer payloads carry the model's actual coverage level (e.g. 0.90 for
+      // a CatBoost q=0.05/q=0.95 ensemble). Older rows return null, and the
+      // UI falls back to the generic "Confidence interval" label.
+      confidenceLevel: toNumberOrNull(row.confidence_level ?? responsePayload?.confidence_level),
       regionalAvgYield: toNumberOrNull(regionalComparison?.avg_yield),
       topFeatures,
       requestPayload,
@@ -243,8 +389,130 @@ function getModelDisplayName(modelType) {
   return modelType || 'Unknown';
 }
 
-function MetricCard({ label, value, unit, helper, helperColor, range }) {
+function MetricCard({ label, value, unit, helper, helperColor, range, comparison, info }) {
   const theme = useTheme();
+  // Reused themed tooltip styling so every info-icon tooltip inside this
+  // card reads as part of the Overview tab's blue-on-dark family rather
+  // than the default MUI gray.
+  const themedTooltipSlotProps = info
+    ? {
+        tooltip: {
+          sx: {
+            bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+            color: theme.palette.common.white,
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+            fontSize: '0.74rem',
+            fontWeight: 500,
+            maxWidth: 320,
+            px: 1.5,
+            py: 1.1,
+            borderRadius: 1.25,
+            boxShadow: `0 6px 16px ${alpha(theme.palette.common.black, 0.45)}`
+          }
+        },
+        arrow: {
+          sx: {
+            color: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+            '&::before': {
+              backgroundColor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`
+            }
+          }
+        }
+      }
+    : null;
+
+  // Compare visualization for the Regional Average card: a horizontal bar
+  // anchored to the regional value (center) with the predicted value plotted
+  // relative to it. Direction (up/down) and tone (success/warning) are
+  // driven by sign so a glance tells you whether this prediction outperforms
+  // the regional baseline. Bounded to ±50% so an outlier prediction doesn't
+  // visually destroy the bar — anything beyond clamps to the edge with a
+  // direction arrow so the user still sees the polarity.
+  let comparisonBlock = null;
+  if (
+    comparison &&
+    Number.isFinite(Number(comparison.predicted)) &&
+    Number.isFinite(Number(comparison.regional)) &&
+    Number(comparison.regional) > 0
+  ) {
+    const predicted = Number(comparison.predicted);
+    const regional = Number(comparison.regional);
+    const deltaPct = ((predicted - regional) / regional) * 100;
+    const sign = deltaPct >= 0 ? '+' : '';
+    const isAbove = deltaPct >= 0;
+    const tone = isAbove ? theme.palette.success.light : theme.palette.warning.light;
+    // Map [-50%, +50%] → [0%, 100%]; clamp anything outside that band.
+    const markerPct = Math.max(0, Math.min(100, 50 + deltaPct));
+    const DirIcon = isAbove ? RiseOutlined : FallOutlined;
+    comparisonBlock = (
+      <Box sx={{ pt: 0.75 }}>
+        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline', mb: 0.5 }}>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.5), fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            Regional
+          </Typography>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.5), fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            Predicted
+          </Typography>
+        </Stack>
+        <Box
+          sx={{
+            position: 'relative',
+            height: 6,
+            borderRadius: 999,
+            background: `linear-gradient(90deg,
+              ${alpha(theme.palette.warning.light, 0.35)} 0%,
+              ${alpha(theme.palette.common.white, 0.18)} 50%,
+              ${alpha(theme.palette.success.light, 0.35)} 100%)`,
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+            overflow: 'visible'
+          }}
+        >
+          {/* Center tick = regional baseline */}
+          <Box
+            sx={{
+              position: 'absolute',
+              left: '50%',
+              top: -3,
+              transform: 'translateX(-50%)',
+              width: 2,
+              height: 12,
+              bgcolor: alpha(theme.palette.common.white, 0.5),
+              borderRadius: 1
+            }}
+          />
+          {/* Predicted marker — colored by direction so polarity is encoded
+              in both position and hue. */}
+          <Box
+            sx={{
+              position: 'absolute',
+              left: `${markerPct}%`,
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: 12,
+              height: 12,
+              borderRadius: '50%',
+              bgcolor: theme.palette.common.white,
+              border: `2px solid ${tone}`,
+              boxShadow: `0 0 0 3px ${alpha(tone, 0.28)}, 0 0 8px ${alpha(tone, 0.55)}`
+            }}
+          />
+        </Box>
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mt: 1.25 }}>
+          <Box sx={{ color: tone, display: 'flex', alignItems: 'center', fontSize: '0.85rem' }}>
+            <DirIcon />
+          </Box>
+          <Typography sx={{ color: tone, fontWeight: 700, fontSize: '0.82rem', fontVariantNumeric: 'tabular-nums' }}>
+            {sign}
+            {deltaPct.toFixed(1)}%
+          </Typography>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.75rem', fontWeight: 500 }}>
+            {isAbove ? 'above' : 'below'} regional avg
+          </Typography>
+        </Stack>
+      </Box>
+    );
+  }
 
   let rangeMarker = null;
   if (range && Number.isFinite(Number(range.min)) && Number.isFinite(Number(range.max)) && Number(range.max) > Number(range.min)) {
@@ -330,18 +598,41 @@ function MetricCard({ label, value, unit, helper, helperColor, range }) {
       }}
     >
       <Stack spacing={0.9}>
-        <Typography
-          sx={{
-            color: alpha(theme.palette.primary.light, 0.95),
-            fontWeight: 700,
-            fontSize: '0.72rem',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            lineHeight: 1.2
-          }}
-        >
-          {label}
-        </Typography>
+        <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
+          <Typography
+            sx={{
+              color: alpha(theme.palette.primary.light, 0.95),
+              fontWeight: 700,
+              fontSize: '0.72rem',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              lineHeight: 1.2
+            }}
+          >
+            {label}
+          </Typography>
+          {info ? (
+            <Tooltip arrow placement="top" title={info} slotProps={themedTooltipSlotProps}>
+              <Box
+                component="span"
+                tabIndex={0}
+                aria-label={`About ${label}`}
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'help',
+                  color: alpha(theme.palette.primary.light, 0.7),
+                  fontSize: '0.78rem',
+                  transition: 'color 0.15s ease',
+                  '&:hover, &:focus-visible': { color: theme.palette.primary.light, outline: 'none' }
+                }}
+              >
+                <InfoCircleOutlined />
+              </Box>
+            </Tooltip>
+          ) : null}
+        </Stack>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'baseline', flexWrap: 'wrap', rowGap: 0.25 }}>
           <Typography
             component="span"
@@ -359,7 +650,8 @@ function MetricCard({ label, value, unit, helper, helperColor, range }) {
           ) : null}
         </Stack>
         {rangeMarker}
-        {helper ? (
+        {comparisonBlock}
+        {helper && !comparisonBlock ? (
           <Typography
             sx={{
               color: helperColor || alpha(theme.palette.common.white, 0.55),
@@ -688,11 +980,58 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   const graphCardSurface = `color-mix(in srgb, ${theme.palette.primary.main} 8%, ${theme.palette.background.paper})`;
   const graphCardHeaderSurface = `color-mix(in srgb, ${theme.palette.primary.main} 12%, ${theme.palette.background.paper})`;
   const graphCardBorder = alpha(theme.palette.primary.main, 0.22);
+  // Themed BarChart sx — axes, grid lines, tick lines, and bar surface all
+  // pulled into the Overview tab's blue-on-dark palette. The bars get a
+  // subtle stroke + primary glow so they read as a tactile element rather
+  // than flat rectangles, and the axes/grid use primary-alpha so they
+  // recede behind the data instead of competing with it. Both axes are
+  // styled identically so the chart reads the same whether bars are
+  // vertical or horizontal.
   const chartBarSx = {
     '& .MuiBarElement-root': {
-      stroke: alpha(theme.palette.grey[100], 0.45),
+      stroke: alpha(theme.palette.common.white, 0.18),
       strokeWidth: 1,
-      filter: `drop-shadow(0 0 4px ${alpha(theme.palette.primary.main, 0.2)})`
+      filter: `drop-shadow(0 2px 6px ${alpha(theme.palette.primary.main, 0.35)})`,
+      transition: 'opacity 0.18s ease, filter 0.18s ease',
+      '&:hover': {
+        opacity: 0.92,
+        filter: `drop-shadow(0 3px 10px ${alpha(theme.palette.primary.main, 0.55)})`
+      }
+    },
+    // Category-label axis (bottom for vertical bars, left for horizontal
+    // bars) — bold white labels so category names are immediately readable.
+    '& .MuiChartsAxis-bottom, & .MuiChartsAxis-left': {
+      '& .MuiChartsAxis-line': { stroke: alpha(theme.palette.primary.main, 0.35) },
+      '& .MuiChartsAxis-tickLabel': {
+        fill: `${alpha(theme.palette.common.white, 0.85)} !important`,
+        fontSize: '0.8rem !important',
+        fontWeight: '700 !important',
+        letterSpacing: '0.04em'
+      },
+      '& .MuiChartsAxis-tick': { stroke: alpha(theme.palette.primary.main, 0.4) }
+    },
+    // Numeric-scale axis labels (whichever side is currently the value axis)
+    // — dimmer + tabular numerals so the scale stays subordinate to the bars.
+    '& .MuiChartsAxis-bottom .MuiChartsAxis-tickLabel[data-is-value-axis="true"], & .MuiChartsAxis-left .MuiChartsAxis-tickLabel[data-is-value-axis="true"]': {
+      fill: `${alpha(theme.palette.common.white, 0.55)} !important`,
+      fontSize: '0.72rem !important',
+      fontVariantNumeric: 'tabular-nums'
+    },
+    // Both grid orientations — barely-visible dashed primary alpha so the
+    // eye can align bar lengths without the chart feeling busy.
+    '& .MuiChartsGrid-horizontalLine, & .MuiChartsGrid-verticalLine': {
+      stroke: alpha(theme.palette.primary.main, 0.12),
+      strokeDasharray: '3 3'
+    },
+    // Axis titles ("Yield bu/ac" / "Input Amount") — primary-light so they
+    // pop against the dark surface and read as a chart-level label rather
+    // than a tick.
+    '& .MuiChartsAxis-label': {
+      fill: `${alpha(theme.palette.primary.light, 0.95)} !important`,
+      fontSize: '0.78rem !important',
+      fontWeight: '700 !important',
+      letterSpacing: '0.06em',
+      textTransform: 'uppercase'
     }
   };
   const tableScrollbarSx = {
@@ -728,8 +1067,24 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   // card just won't render if the fetch errors, since it's secondary to
   // the table below.
   const [overview, setOverview] = useState(null);
+  // Per-state aggregate stats (count, avg_yield, etc.) — same source the
+  // Overview tab's FieldMapPreview uses. Lets the analyzed-prediction
+  // drawer fall back to a state-level regional baseline when the
+  // prediction's own regional_comparison comes back empty.
+  const [stateStats, setStateStats] = useState({});
+  // Nutrient palette — three progressive primary shades so the bars read
+  // as a coherent N/P/K trio rather than three unrelated colors.
   const nutrientBarColors = [theme.palette.primary.light, theme.palette.primary.main, theme.palette.primary.dark];
-  const yieldBarColors = [theme.palette.warning.main, theme.palette.error.main, theme.palette.info.main, theme.palette.secondary.main];
+  // Yield-context palette — semantic ordering: warning.light at the low
+  // end of the CI, primary at the predicted value (the headline), success.light
+  // at the high end of the CI, and a muted neutral for the regional reference
+  // bar so it reads as "comparison context" rather than another yield value.
+  const yieldBarColors = [
+    theme.palette.warning.light,
+    theme.palette.primary.main,
+    theme.palette.success.light,
+    alpha(theme.palette.common.white, 0.4)
+  ];
 
   useEffect(() => {
     const controller = new AbortController();
@@ -782,6 +1137,33 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
     return () => controller.abort();
   }, []);
 
+  // Load per-state aggregates (same endpoint Overview's FieldMapPreview hits)
+  // so the analyzed-prediction drawer can fall back to a state-level regional
+  // avg when the prediction-time regional_comparison is null (e.g. when
+  // county-level data was unavailable at predict time).
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadStateStats = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/fields/states/stats/`, { signal: controller.signal });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (!Array.isArray(payload)) return;
+        const byName = {};
+        payload.forEach((row) => {
+          if (row?.state) byName[row.state] = row;
+        });
+        setStateStats(byName);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          // Silent — we'll just show "baseline unavailable" if both sources are empty.
+        }
+      }
+    };
+    loadStateStats();
+    return () => controller.abort();
+  }, []);
+
   useEffect(() => {
     if (!preselectedPredictionRunId) return;
     const matched = predictionRuns.find((row) => String(row.predictionRunId) === String(preselectedPredictionRunId));
@@ -802,13 +1184,22 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
 
   const yieldContextSeries = useMemo(() => {
     if (!analyzedPrediction) return [];
+    // Fall back to the state-level avg when the prediction's own
+    // regional_comparison was empty — keeps the Regional Avg bar from
+    // rendering as a flat zero when county-level data is missing.
+    let regional = analyzedPrediction.regionalAvgYield;
+    if (!Number.isFinite(regional) || regional <= 0) {
+      const stateRow = analyzedPrediction.state ? stateStats[analyzedPrediction.state] : null;
+      const stateAvg = stateRow != null ? Number(stateRow.avg_yield) : null;
+      if (Number.isFinite(stateAvg) && stateAvg > 0) regional = stateAvg;
+    }
     return [
       analyzedPrediction.confidenceLower ?? 0,
       analyzedPrediction.predictedYield ?? 0,
       analyzedPrediction.confidenceUpper ?? 0,
-      analyzedPrediction.regionalAvgYield ?? 0
+      regional ?? 0
     ];
-  }, [analyzedPrediction]);
+  }, [analyzedPrediction, stateStats]);
 
   const handleAnalyzePrediction = () => {
     if (!selectedPrediction) return;
@@ -985,9 +1376,8 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               <Typography variant="body2" sx={{ color: alpha(theme.palette.primary.light, 0.85), fontWeight: 500 }}>
                 {predictionRuns.length} prediction{predictionRuns.length === 1 ? '' : 's'}
               </Typography>
-              {/* Visual-only icon button — no download handler wired up yet. */}
               <Tooltip
-                title="Download"
+                title={predictionRuns.length > 0 ? 'Download CSV of all rows (with drawer details)' : 'No predictions to download'}
                 arrow
                 placement="top"
                 slotProps={{
@@ -1018,7 +1408,14 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               >
                 <IconButton
                   size="small"
-                  aria-label="Download saved predictions"
+                  aria-label="Download saved predictions as CSV"
+                  disabled={predictionRuns.length === 0}
+                  onClick={() => {
+                    if (predictionRuns.length === 0) return;
+                    const cells = buildPredictionRunsCsv(predictionRuns, modelTypesByVersionId, stateStats);
+                    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                    downloadCsv(cells, `traitharvest-predictions-${stamp}.csv`);
+                  }}
                   sx={{
                     color: alpha(theme.palette.primary.light, 0.9),
                     bgcolor: alpha(theme.palette.primary.main, 0.1),
@@ -1030,6 +1427,11 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                       bgcolor: alpha(theme.palette.primary.main, 0.2),
                       borderColor: theme.palette.primary.main,
                       color: theme.palette.primary.light
+                    },
+                    '&.Mui-disabled': {
+                      color: alpha(theme.palette.common.white, 0.25),
+                      borderColor: alpha(theme.palette.primary.main, 0.15),
+                      bgcolor: alpha(theme.palette.primary.main, 0.05)
                     }
                   }}
                 >
@@ -1219,19 +1621,35 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               {selectedPrediction ? `Prediction #${selectedPrediction.predictionRunId} selected` : 'No prediction selected'}
             </Typography>
             <Button
-              variant="contained"
               disabled={!selectedPrediction || isLoading}
               onClick={handleAnalyzePrediction}
               endIcon={
-                <Box component="span" aria-hidden sx={{ fontSize: '1.1rem', lineHeight: 1 }}>
+                <Box component="span" aria-hidden sx={{ fontSize: '0.95rem', lineHeight: 1 }}>
                   →
                 </Box>
               }
               sx={{
-                fontWeight: 600,
+                textTransform: 'none',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                letterSpacing: '0.01em',
+                px: 2,
+                py: 0.65,
+                borderRadius: 999,
+                color: alpha(theme.palette.primary.light, 0.95),
+                bgcolor: alpha(theme.palette.primary.main, 0.18),
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+                transition: 'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease',
+                '&:hover': {
+                  color: theme.palette.common.white,
+                  bgcolor: alpha(theme.palette.primary.main, 0.32),
+                  borderColor: theme.palette.primary.main,
+                  boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.18)}`
+                },
                 '&.Mui-disabled': {
-                  backgroundColor: alpha(theme.palette.primary.main, 0.32),
-                  color: alpha(theme.palette.text.primary, 0.6)
+                  color: alpha(theme.palette.common.white, 0.4),
+                  bgcolor: alpha(theme.palette.primary.main, 0.08),
+                  borderColor: alpha(theme.palette.primary.main, 0.2)
                 }
               }}
             >
@@ -1242,17 +1660,23 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
 
         {!analyzedPrediction ? (
           <Alert
-            severity="success"
+            severity="info"
             variant="outlined"
             sx={{
-              backgroundColor: alpha(theme.palette.success.light, 0.12),
-              borderColor: alpha(theme.palette.success.main, 0.28),
-              color: theme.palette.success.main,
+              backgroundColor: alpha(theme.palette.primary.main, 0.12),
+              borderColor: alpha(theme.palette.primary.main, 0.45),
+              color: alpha(theme.palette.common.white, 0.85),
+              borderRadius: 2,
               '& .MuiAlert-icon': {
-                color: alpha(theme.palette.success.main, 0.85)
+                color: alpha(theme.palette.primary.light, 0.95)
+              },
+              '& .MuiAlert-message': {
+                color: alpha(theme.palette.common.white, 0.85),
+                fontWeight: 500
               },
               '& .MuiAlert-message strong': {
-                color: theme.palette.primary.main
+                color: theme.palette.primary.light,
+                fontWeight: 700
               }
             }}
           >
@@ -1377,9 +1801,32 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               const lower = analyzedPrediction.confidenceLower;
               const upper = analyzedPrediction.confidenceUpper;
               const predicted = analyzedPrediction.predictedYield;
-              const regional = analyzedPrediction.regionalAvgYield;
+              // Prefer the prediction's own regional_comparison (county-level
+              // when available, computed at predict time). Fall back to the
+              // state-level avg from /fields/states/stats/ — same source the
+              // Overview tab's FieldMap uses — so the user almost never sees
+              // an empty baseline when the state is known.
+              let regional = analyzedPrediction.regionalAvgYield;
+              let regionalSource = regional != null ? 'county' : null;
+              if (!Number.isFinite(regional) || regional <= 0) {
+                const stateName = analyzedPrediction.state;
+                const stateRow = stateName ? stateStats[stateName] : null;
+                const stateAvg = stateRow != null ? Number(stateRow.avg_yield) : null;
+                if (Number.isFinite(stateAvg) && stateAvg > 0) {
+                  regional = stateAvg;
+                  regionalSource = 'state';
+                }
+              }
               const hasInterval = Number.isFinite(lower) && Number.isFinite(upper) && upper > lower;
               const hasRegional = Number.isFinite(regional) && regional > 0 && Number.isFinite(predicted);
+              // Backend-reported coverage fraction (0.95 for Gaussian DL,
+              // 0.90 for CatBoost q=0.05/q=0.95 ensembles, etc). Falls back
+              // to a generic label for older rows missing the field.
+              const confidenceLevel = analyzedPrediction.confidenceLevel;
+              const confidenceLabel =
+                Number.isFinite(confidenceLevel) && confidenceLevel > 0
+                  ? `${Math.round(confidenceLevel * 100)}% confidence interval`
+                  : "Model's confidence interval";
 
               let regionalHelper = null;
               let regionalHelperColor = null;
@@ -1398,35 +1845,114 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                 locationParts.push(String(analyzedPrediction.season));
               }
 
+              const regionalSampleSize = (() => {
+                const r = analyzedPrediction.responsePayload?.regional_comparison;
+                const n = r && Number(r.sample_size);
+                if (regionalSource === 'county' && Number.isFinite(n) && n > 0) return n;
+                const stateRow = analyzedPrediction.state ? stateStats[analyzedPrediction.state] : null;
+                const stateN = stateRow != null ? Number(stateRow.field_count ?? stateRow.count) : null;
+                if (regionalSource === 'state' && Number.isFinite(stateN) && stateN > 0) return stateN;
+                return null;
+              })();
+
               return (
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, md: 3 }}>
+                  <Grid size={{ xs: 12, md: 6 }}>
                     <MetricCard
                       label="Predicted Yield"
                       value={formatNumber(predicted)}
                       unit="bu/ac"
-                      helper="95% confidence interval (bu/ac)"
+                      // Helper text reflects the model's actual coverage
+                      // (confidence_level, e.g. 0.90 for a CatBoost
+                      // q=0.05/q=0.95 ensemble or 0.95 for a Gaussian DL
+                      // uncertainty head). Older predictions without the
+                      // field fall back to the generic label.
+                      helper={`${confidenceLabel} (bu/ac)`}
                       range={hasInterval ? { min: lower, max: upper, value: predicted } : null}
+                      info={
+                        <Box sx={{ p: 0.25 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
+                            Predicted yield
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
+                            The model's point estimate (typically its median quantile or mean output) in bushels per acre,
+                            for the inputs you submitted.
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
+                            The horizontal bar plots where the prediction falls inside the model's confidence interval.
+                            The bounds come live from the model — quantile predictions for tree ensembles,
+                            or mean ± 1.96·σ for DL models with an uncertainty head.
+                          </Typography>
+                        </Box>
+                      }
                     />
                   </Grid>
-                  <Grid size={{ xs: 12, md: 3 }}>
+                  <Grid size={{ xs: 12, md: 6 }}>
                     <MetricCard
                       label="Confidence Width"
                       value={hasInterval ? formatNumber(upper - lower) : '—'}
                       unit={hasInterval ? 'bu/ac' : null}
+                      // Same range-bar visualization as Predicted Yield but
+                      // with no marker — the bar IS the width here, with
+                      // its endpoints labeled so the user can read both
+                      // bounds visually rather than scanning the helper text.
+                      range={hasInterval ? { min: lower, max: upper } : null}
                       helper={hasInterval ? `Range: ${formatNumber(lower)} — ${formatNumber(upper)}` : null}
+                      info={
+                        <Box sx={{ p: 0.25 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
+                            Confidence width
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
+                            Upper bound minus lower bound (bu/ac). A <Box component="span" sx={{ fontWeight: 700 }}>narrower</Box>{' '}
+                            width means the model is more confident about this specific input.
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
+                            Use this to compare runs: two predictions can have the same yield but very different uncertainty.
+                            Wider intervals usually point to inputs that are unusual relative to the training data.
+                          </Typography>
+                        </Box>
+                      }
                     />
                   </Grid>
-                  <Grid size={{ xs: 12, md: 3 }}>
+                  <Grid size={{ xs: 12, md: 6 }}>
                     <MetricCard
-                      label="Regional Average"
+                      label={`Regional Average${analyzedPrediction.state ? ` · ${analyzedPrediction.state}` : ''}`}
                       value={hasRegional ? formatNumber(regional) : '—'}
                       unit={hasRegional ? 'bu/ac' : null}
-                      helper={regionalHelper}
+                      // Compare block (mini bar + delta + arrow) renders when
+                      // both numbers are present. The free-text helper
+                      // remains as a fallback for the no-regional-data case.
+                      comparison={hasRegional ? { predicted, regional } : null}
+                      helper={!hasRegional ? 'Regional baseline unavailable' : null}
                       helperColor={regionalHelperColor}
+                      info={
+                        <Box sx={{ p: 0.25 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
+                            Regional average yield
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
+                            Average observed yield from your historical field records in this region. We try the prediction's{' '}
+                            <Box component="span" sx={{ fontWeight: 700 }}>county</Box> first (computed at predict time),
+                            then fall back to the <Box component="span" sx={{ fontWeight: 700 }}>state</Box> aggregate
+                            (the same source the Overview tab's FieldMap uses).
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
+                            The mini-bar shows where the prediction sits relative to this baseline. A green marker to the right
+                            means the model expects this input to outperform the regional average; a yellow marker to the left
+                            means it expects to underperform.
+                          </Typography>
+                          {regionalSource ? (
+                            <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
+                              Source: <Box component="span" sx={{ fontWeight: 700 }}>{regionalSource === 'county' ? 'county-level' : 'state-level'}</Box>{' '}
+                              {regionalSampleSize ? `· n = ${regionalSampleSize.toLocaleString()} field-seasons` : null}
+                            </Typography>
+                          ) : null}
+                        </Box>
+                      }
                     />
                   </Grid>
-                  <Grid size={{ xs: 12, md: 3 }}>
+                  <Grid size={{ xs: 12, md: 6 }}>
                     <MetricCard
                       label="Created At"
                       value={formatDateTime(analyzedPrediction.createdAt)}
@@ -1445,70 +1971,132 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                 (Number.isFinite(totalN) && totalN > 0) ||
                 (Number.isFinite(totalP) && totalP > 0) ||
                 (Number.isFinite(totalK) && totalK > 0);
+              // Re-derive the yield-context numbers locally — they're scoped
+              // to the metrics-row IIFE above and aren't visible here.
+              const lower = analyzedPrediction.confidenceLower;
+              const upper = analyzedPrediction.confidenceUpper;
+              const predicted = analyzedPrediction.predictedYield;
+              let regional = analyzedPrediction.regionalAvgYield;
+              if (!Number.isFinite(regional) || regional <= 0) {
+                const stateName = analyzedPrediction.state;
+                const stateRow = stateName ? stateStats[stateName] : null;
+                const stateAvg = stateRow != null ? Number(stateRow.avg_yield) : null;
+                if (Number.isFinite(stateAvg) && stateAvg > 0) regional = stateAvg;
+              }
+              const hasInterval = Number.isFinite(lower) && Number.isFinite(upper) && upper > lower;
+              const hasRegional = Number.isFinite(regional) && regional > 0;
 
               // Fixed inner content height for both chart cards — accommodates the
-              // BarChart's 280px SVG plus any legend/axis padding so the chart and
-              // the empty state always render at the same total height.
-              const chartContentHeight = 320;
+              // BarChart's SVG plus any legend/axis padding so the chart and
+              // the empty state always render at the same total height. Taller
+              // than before so the bars get the breathing room they need at
+              // the drawer's width.
+              const chartContentHeight = 380;
+              // Match the SVG height to the wrapping Box's content area so the
+              // BarChart fills the card vertically with no dead space below.
+              // The wrapping Box uses px: 0, py: 0 (no vertical padding), so
+              // the SVG height equals the Box's full height.
+              const chartSvgHeight = chartContentHeight;
               const chartCardSx = {
-                bgcolor: graphCardSurface,
-                border: `1px solid ${graphCardBorder}`,
+                bgcolor: alpha(theme.palette.primary.main, 0.14),
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.45)}`,
                 borderRadius: 2,
                 backgroundImage: 'none',
+                boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`,
                 // Stretch the card to fill its Grid item so siblings equalize
                 // even if one card's intrinsic content is taller than the other.
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 '& .MuiCardHeader-root': {
-                  bgcolor: 'transparent',
-                  borderBottom: `1px solid ${graphCardBorder}`,
+                  bgcolor: alpha(theme.palette.primary.main, 0.12),
+                  borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
                   px: 2.5,
-                  py: 1.75
+                  py: 1.5
                 },
                 '& .MuiCardHeader-title': {
                   color: theme.palette.common.white,
                   fontWeight: 700,
                   letterSpacing: '0.01em',
-                  fontSize: '1rem'
+                  fontSize: '0.95rem'
                 }
               };
 
               return (
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, lg: 6 }}>
+                  <Grid size={{ xs: 12 }}>
                     <MainCard title="Yield Context" content={false} sx={chartCardSx}>
-                      <Box sx={{ p: 2, height: chartContentHeight, boxSizing: 'border-box' }}>
+                      {/* Edge-to-edge horizontal padding so the SVG fills
+                          the card. Internal margins are tuned so the Y-axis
+                          title fits at left and tick labels at bottom — no
+                          extra slack. */}
+                      <Box sx={{ px: 0, py: 0, height: chartContentHeight, boxSizing: 'border-box' }}>
                         <BarChart
-                          height={280}
+                          height={chartSvgHeight}
+                          hideLegend
                           sx={chartBarSx}
+                          margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
+                          grid={{ horizontal: true }}
                           xAxis={[
                             {
                               scaleType: 'band',
                               data: YIELD_CATEGORIES,
-                              colorMap: { type: 'ordinal', values: YIELD_CATEGORIES, colors: yieldBarColors }
+                              colorMap: { type: 'ordinal', values: YIELD_CATEGORIES, colors: yieldBarColors },
+                              categoryGapRatio: 0.35,
+                              barGapRatio: 0.1
                             }
                           ]}
-                          series={[{ data: yieldContextSeries, label: 'Yield (bu/ac)' }]}
+                          yAxis={[
+                            {
+                              valueFormatter: (v) => formatNumber(v, 1),
+                              label: 'Yield bu/ac',
+                              width: 64
+                            }
+                          ]}
+                          series={[
+                            {
+                              data: yieldContextSeries,
+                              valueFormatter: (v) => `${formatNumber(v, 2)} bu/ac`
+                            }
+                          ]}
+                          borderRadius={10}
                         />
                       </Box>
                     </MainCard>
                   </Grid>
-                  <Grid size={{ xs: 12, lg: 6 }}>
+                  <Grid size={{ xs: 12 }}>
                     <MainCard title="Nutrient Inputs" content={false} sx={chartCardSx}>
                       {hasNutrients ? (
-                        <Box sx={{ p: 2, height: chartContentHeight, boxSizing: 'border-box' }}>
+                        <Box sx={{ px: 0, py: 0, height: chartContentHeight, boxSizing: 'border-box' }}>
                           <BarChart
-                            height={280}
+                            height={chartSvgHeight}
+                            hideLegend
                             sx={chartBarSx}
+                            margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
+                            grid={{ horizontal: true }}
                             xAxis={[
                               {
                                 scaleType: 'band',
                                 data: NUTRIENT_CATEGORIES,
-                                colorMap: { type: 'ordinal', values: NUTRIENT_CATEGORIES, colors: nutrientBarColors }
+                                colorMap: { type: 'ordinal', values: NUTRIENT_CATEGORIES, colors: nutrientBarColors },
+                                categoryGapRatio: 0.35,
+                                barGapRatio: 0.1
                               }
                             ]}
-                            series={[{ data: nutrientSeries, label: 'Input Amount' }]}
+                            yAxis={[
+                              {
+                                valueFormatter: (v) => formatNumber(v, 1),
+                                label: 'Input Amount',
+                                width: 64
+                              }
+                            ]}
+                            series={[
+                              {
+                                data: nutrientSeries,
+                                valueFormatter: (v) => formatNumber(v, 2)
+                              }
+                            ]}
+                            borderRadius={10}
                           />
                         </Box>
                       ) : (
@@ -1559,26 +2147,134 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
             <Paper
               variant="outlined"
               sx={{
-                p: 2,
-                bgcolor: graphCardSurface,
-                borderColor: graphCardBorder
+                p: { xs: 2, md: 2.5 },
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.primary.main, 0.14),
+                borderColor: alpha(theme.palette.primary.main, 0.45),
+                boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
               }}
             >
-              <Stack spacing={1.25}>
-                <Typography
-                  variant="subtitle2"
-                  sx={{
-                    color: alpha(theme.palette.primary.light, 0.92),
-                    fontWeight: 600,
-                    letterSpacing: '0.02em',
-                    textTransform: 'uppercase',
-                    textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
-                  }}
-                >
-                  Top Features
-                </Typography>
-                <TableContainer sx={{ border: 1, borderColor: accentBlue, borderRadius: 1, ...tableScrollbarSx }}>
-                  <Table size="small" sx={{ minWidth: 860 }}>
+              <Stack spacing={2}>
+                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                  <Box
+                    sx={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 1.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: alpha(theme.palette.primary.main, 0.25),
+                      border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+                      color: theme.palette.primary.light,
+                      fontSize: '1.1rem'
+                    }}
+                  >
+                    <ThunderboltOutlined />
+                  </Box>
+                  <Stack spacing={0.1} sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '0.95rem', letterSpacing: '0.02em' }}>
+                      Top Contributing Features
+                    </Typography>
+                    <Typography sx={{ color: alpha(theme.palette.common.white, 0.6), fontSize: '0.76rem', fontWeight: 500 }}>
+                      Ranked by SHAP impact{analyzedPrediction.topFeatures.length > 0 ? ` · ${analyzedPrediction.topFeatures.length} feature${analyzedPrediction.topFeatures.length === 1 ? '' : 's'}` : ''}
+                    </Typography>
+                  </Stack>
+                  <Tooltip
+                    arrow
+                    placement="left"
+                    title={
+                      <Box sx={{ p: 0.25 }}>
+                        <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
+                          About direction & impact
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.75 }}>
+                          <Box component="span" sx={{ color: theme.palette.success.light, fontWeight: 700 }}>Positive</Box>{' '}
+                          features pushed this prediction <Box component="span" sx={{ fontWeight: 700 }}>up</Box> from the
+                          model's baseline — they made the predicted yield higher than the model's average expectation.
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.75 }}>
+                          <Box component="span" sx={{ color: theme.palette.warning.light, fontWeight: 700 }}>Negative</Box>{' '}
+                          features pulled it <Box component="span" sx={{ fontWeight: 700 }}>down</Box> — they made the prediction
+                          lower than the baseline.
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
+                          <Box component="span" sx={{ fontWeight: 700 }}>Impact</Box> is the share of total |SHAP| value
+                          this feature owns. The bar visualizes that share so longer bars carry more of the explanation.
+                        </Typography>
+                      </Box>
+                    }
+                    slotProps={{
+                      tooltip: {
+                        sx: {
+                          bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                          color: theme.palette.common.white,
+                          border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                          fontSize: '0.74rem',
+                          fontWeight: 500,
+                          maxWidth: 320,
+                          px: 1.5,
+                          py: 1.1,
+                          borderRadius: 1.25,
+                          boxShadow: `0 6px 16px ${alpha(theme.palette.common.black, 0.45)}`
+                        }
+                      },
+                      arrow: {
+                        sx: {
+                          color: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                          '&::before': {
+                            backgroundColor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                            border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`
+                          }
+                        }
+                      }
+                    }}
+                  >
+                    <Box
+                      component="span"
+                      tabIndex={0}
+                      aria-label="About direction and impact"
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'help',
+                        color: alpha(theme.palette.primary.light, 0.7),
+                        fontSize: '0.95rem',
+                        flexShrink: 0,
+                        '&:hover, &:focus-visible': { color: theme.palette.primary.light, outline: 'none' }
+                      }}
+                    >
+                      <InfoCircleOutlined />
+                    </Box>
+                  </Tooltip>
+                </Stack>
+
+                {/* Compact legend strip clarifying positive/negative tone
+                    inline so the meaning is visible without hover. */}
+                {analyzedPrediction.topFeatures.length > 0 ? (
+                  <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+                    <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
+                      <Box sx={{ color: theme.palette.success.light, display: 'flex', fontSize: '0.85rem' }}>
+                        <RiseOutlined />
+                      </Box>
+                      <Typography sx={{ color: alpha(theme.palette.common.white, 0.75), fontSize: '0.72rem', fontWeight: 600 }}>
+                        Positive = pushed yield up
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
+                      <Box sx={{ color: theme.palette.warning.light, display: 'flex', fontSize: '0.85rem' }}>
+                        <FallOutlined />
+                      </Box>
+                      <Typography sx={{ color: alpha(theme.palette.common.white, 0.75), fontSize: '0.72rem', fontWeight: 600 }}>
+                        Negative = pulled yield down
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                ) : null}
+
+                <TableContainer sx={{ border: 1, borderColor: accentBlue, borderRadius: 1.25, ...tableScrollbarSx }}>
+                  <Table size="small" sx={{ minWidth: 760 }}>
                     <TableHead>
                       <TableRow
                         sx={{
@@ -1586,16 +2282,20 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                             bgcolor: headerBlue,
                             borderBottomColor: accentBlue,
                             borderBottomWidth: 2,
-                            color: theme.palette.text.primary,
-                            whiteSpace: 'nowrap'
+                            color: alpha(theme.palette.common.white, 0.85),
+                            whiteSpace: 'nowrap',
+                            fontWeight: 700,
+                            fontSize: '0.72rem',
+                            letterSpacing: '0.08em',
+                            textTransform: 'uppercase'
                           }
                         }}
                       >
                         <TableCell>Feature</TableCell>
                         <TableCell>Value</TableCell>
                         <TableCell>Direction</TableCell>
-                        <TableCell align="right">Importance</TableCell>
-                        <TableCell>Contribution</TableCell>
+                        <TableCell align="right">Impact</TableCell>
+                        <TableCell sx={{ minWidth: 180 }}>Contribution</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1603,21 +2303,52 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                         analyzedPrediction.topFeatures.map((feature, index) => {
                           const importance = Math.max(toNumberOrNull(feature?.importance) || 0, 0);
                           const barPct = Math.min(importance * 100, 100);
-                          const direction = String(feature?.direction || '').toLowerCase();
-                          const directionColor = direction === 'positive' ? 'success' : direction === 'negative' ? 'error' : 'default';
+                          const directionKey = String(feature?.direction || '').toLowerCase();
+                          const isPositive = directionKey === 'positive';
+                          const isNegative = directionKey === 'negative';
+                          const dirTone = isPositive ? theme.palette.success.light : isNegative ? theme.palette.warning.light : alpha(theme.palette.common.white, 0.55);
+                          const DirIcon = isNegative ? FallOutlined : RiseOutlined;
+                          const dirLabel = isPositive ? 'Positive' : isNegative ? 'Negative' : 'Unknown';
                           return (
                             <TableRow key={`${feature.feature}-${index}`} hover sx={{ bgcolor: rowSurface }}>
-                              <TableCell>{formatFeatureName(feature?.feature)}</TableCell>
-                              <TableCell>{String(feature?.value ?? '—')}</TableCell>
-                              <TableCell>
-                                <Chip size="small" color={directionColor} label={direction || 'unknown'} variant="outlined" />
+                              <TableCell sx={{ color: theme.palette.common.white, fontWeight: 600 }}>
+                                {formatFeatureName(feature?.feature)}
                               </TableCell>
-                              <TableCell align="right">{formatNumber(importance * 100, 2)}%</TableCell>
+                              <TableCell sx={{ color: alpha(theme.palette.common.white, 0.85), fontVariantNumeric: 'tabular-nums' }}>
+                                {String(feature?.value ?? '—')}
+                              </TableCell>
+                              <TableCell>
+                                <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
+                                  <Box sx={{ color: dirTone, display: 'flex', fontSize: '0.95rem' }}>
+                                    {(isPositive || isNegative) ? <DirIcon /> : null}
+                                  </Box>
+                                  <Typography sx={{ color: dirTone, fontSize: '0.78rem', fontWeight: 700 }}>
+                                    {dirLabel}
+                                  </Typography>
+                                </Stack>
+                              </TableCell>
+                              <TableCell align="right" sx={{ color: theme.palette.common.white, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                                {formatNumber(importance * 100, 2)}%
+                              </TableCell>
                               <TableCell sx={{ minWidth: 180 }}>
                                 <Box
-                                  sx={{ height: 8, borderRadius: 1, bgcolor: alpha(theme.palette.primary.main, 0.18), overflow: 'hidden' }}
+                                  sx={{
+                                    height: 8,
+                                    borderRadius: 999,
+                                    bgcolor: alpha(theme.palette.common.black, 0.3),
+                                    overflow: 'hidden'
+                                  }}
                                 >
-                                  <Box sx={{ width: `${barPct}%`, height: '100%', bgcolor: theme.palette.primary.main }} />
+                                  <Box
+                                    sx={{
+                                      width: `${barPct}%`,
+                                      height: '100%',
+                                      background: isNegative
+                                        ? `linear-gradient(90deg, ${alpha(theme.palette.warning.light, 0.85)} 0%, ${theme.palette.warning.main} 100%)`
+                                        : `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.75)} 0%, ${theme.palette.primary.light} 100%)`,
+                                      transition: 'width 0.5s ease'
+                                    }}
+                                  />
                                 </Box>
                               </TableCell>
                             </TableRow>
@@ -1626,7 +2357,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                       ) : (
                         <TableRow sx={{ bgcolor: rowSurface }}>
                           <TableCell colSpan={5}>
-                            <Typography variant="body2" sx={{ color: alpha(theme.palette.grey[300], 0.92), fontWeight: 500 }}>
+                            <Typography variant="body2" sx={{ color: alpha(theme.palette.common.white, 0.7), fontWeight: 500, py: 1 }}>
                               Explainability data was not returned for this prediction.
                             </Typography>
                           </TableCell>
@@ -1641,59 +2372,69 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
             <Paper
               variant="outlined"
               sx={{
-                p: 2,
-                bgcolor: graphCardSurface,
-                borderColor: graphCardBorder
+                p: { xs: 2, md: 2.5 },
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.primary.main, 0.14),
+                borderColor: alpha(theme.palette.primary.main, 0.45),
+                boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
               }}
             >
-              <Stack spacing={1.25}>
-                <Typography
-                  variant="subtitle2"
-                  sx={{
-                    color: alpha(theme.palette.primary.light, 0.92),
-                    fontWeight: 600,
-                    letterSpacing: '0.02em',
-                    textTransform: 'uppercase',
-                    textShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.28)}`
-                  }}
-                >
-                  Inputs Applied To Model
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Stack spacing={2}>
+                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                  <Box
+                    sx={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 1.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: alpha(theme.palette.primary.main, 0.25),
+                      border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+                      color: theme.palette.primary.light,
+                      fontSize: '1.1rem'
+                    }}
+                  >
+                    <InfoCircleOutlined />
+                  </Box>
+                  <Stack spacing={0.1}>
+                    <Typography sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '0.95rem', letterSpacing: '0.02em' }}>
+                      Inputs Applied To Model
+                    </Typography>
+                    <Typography sx={{ color: alpha(theme.palette.common.white, 0.6), fontSize: '0.76rem', fontWeight: 500 }}>
+                      The exact request payload that produced this prediction
+                    </Typography>
+                  </Stack>
+                </Stack>
+                <Grid container spacing={1.5}>
+                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
                     <MetricCard label="Crop" value={analyzedPrediction.crop ? formatCropName(analyzedPrediction.crop) : '—'} />
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
                     <MetricCard label="Variety" value={analyzedPrediction.variety || '—'} />
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
                     <MetricCard label="Season" value={analyzedPrediction.season ?? '—'} />
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
                     <MetricCard label="Acres" value={formatNumber(analyzedPrediction.acres)} />
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
                     <MetricCard label="N (lb/ac)" value={formatNumber(analyzedPrediction.totalN)} />
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
                     <MetricCard label="P (lb/ac)" value={formatNumber(analyzedPrediction.totalP)} />
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
                     <MetricCard label="K (lb/ac)" value={formatNumber(analyzedPrediction.totalK)} />
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
                     <MetricCard label="Water Applied (mm)" value={formatNumber(analyzedPrediction.waterApplied)} />
                   </Grid>
-                  {/* <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                    <MetricCard label="Latitude" value={formatNumber(analyzedPrediction.lat, 6)} />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                    <MetricCard label="Longitude" value={formatNumber(analyzedPrediction.long, 6)} />
-                  </Grid> */}
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
                     <MetricCard label="State" value={analyzedPrediction.state || '—'} />
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
                     <MetricCard label="County" value={analyzedPrediction.county || '—'} />
                   </Grid>
                 </Grid>
@@ -1707,7 +2448,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
         ) : (
           /* ===================== VIEW B — MODEL & DATA =====================
              Model Performance macro card on top (the model's track record),
-             followed by the Field Performance Records table (with its
+             followed by the Field & Harvest Records table (with its
              "Why is predicting yields important?" banner inside). This is
              the reference view — context the user reads occasionally
              rather than acts on every visit. */

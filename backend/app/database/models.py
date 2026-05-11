@@ -106,6 +106,17 @@ class FieldSeason(Base):
     totalP_per_ac = Column(DECIMAL(6, 3))
     totalK_per_ac = Column(DECIMAL(6, 3))
 
+    # NOTE: water_applied_mm + the N-source breakdown columns
+    # (ammonia_lbN_per_ac, urea_lbN_per_ac, ammonium_nitrate_lbN_per_ac,
+    # ammonium_sulfate_lbN_per_ac, urea_ammonium_nitrate_solution_lbN_per_ac,
+    # monoammonium_phosphate_lbN_per_ac, diammonium_phosphate_lbN_per_ac)
+    # are NOT declared on this model because their presence varies across
+    # deployments — production has them from the ETL pipeline; local dev
+    # schemas may not. Declaring them here forces SQLAlchemy to SELECT them
+    # in every query, which 500s with UndefinedColumn on databases that
+    # lack them. The detail endpoint probes information_schema and reads
+    # whichever columns exist via raw SQL; see fields.py.
+
     # Metadata
     record_source = Column(String(200))
     data_quality_score = Column(DECIMAL(3, 2), default=1.0)

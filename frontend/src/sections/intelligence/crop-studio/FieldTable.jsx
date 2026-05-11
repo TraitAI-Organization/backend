@@ -823,7 +823,7 @@ export default function FieldTable({
         >
           <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, color: theme.palette.text.primary, letterSpacing: '0.01em' }}>
-              Field Performance Records
+              Field &amp; Harvest Records
             </Typography>
             {showModelSelector && availableModels.length > 0 ? (
               <Button

@@ -1,14 +1,46 @@
+import { useEffect, useMemo, useState } from 'react';
+
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 
+import HistoryOutlined from '@ant-design/icons/HistoryOutlined';
+import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
+
 import { formatCropName } from 'utils/cropName';
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
+
+// Coerce numeric API values (number | null | undefined) into the string
+// representation the form's controlled inputs expect. Empty string means
+// "no value", which is what the form treats as a cleared field.
+function numToFormString(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : '';
+}
+
+// Compact one-line summary of a saved run, used as the dropdown menu item
+// label. Order is "crop · variety · season · state · county" so the bits
+// that matter most for distinguishing runs (crop and season) lead.
+function summarizePrefillRun(run) {
+  if (!run) return '';
+  const parts = [];
+  if (run.crop) parts.push(formatCropName(run.crop));
+  if (run.variety) parts.push(run.variety);
+  if (run.season != null && run.season !== '') parts.push(String(run.season));
+  const loc = [run.state, run.county].filter(Boolean).join(', ');
+  if (loc) parts.push(loc);
+  return parts.join(' · ');
+}
 
 // Field label component — small uppercase caption tinted to the primary
 // family, mirroring the InfoField pattern in ModelSelectionStep so the
@@ -61,11 +93,88 @@ function SectionHeader({ children }) {
   );
 }
 
-export default function PredictionInputStep({ formValues, onChange, crops, varieties, seasons, states, counties, validationErrors = {} }) {
+export default function PredictionInputStep({
+  formValues,
+  onChange,
+  onPrefill,
+  crops,
+  varieties,
+  seasons,
+  states,
+  counties,
+  validationErrors = {}
+}) {
   const theme = useTheme();
   const hasCrop = Boolean(formValues.crop);
   const hasVarietiesForCrop = varieties.length > 0;
   const isVarietyDisabled = !hasCrop || !hasVarietiesForCrop;
+
+  // Saved prediction runs the user can prefill from. Same /predict/history
+  // endpoint Analytics uses; pulled to a generous 50 entries so users with a
+  // moderate run history see most of their work without paging. Failures are
+  // silent — the banner just hides when the list is empty, so a broken
+  // endpoint never blocks the manual form path.
+  const [prefillRuns, setPrefillRuns] = useState([]);
+  const [selectedPrefillId, setSelectedPrefillId] = useState('');
+  const [prefillLoadError, setPrefillLoadError] = useState('');
+
+  useEffect(() => {
+    if (typeof onPrefill !== 'function') return undefined;
+    const controller = new AbortController();
+    const loadHistory = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/predict/history?limit=50&page=1`, { signal: controller.signal });
+        if (!response.ok) {
+          setPrefillLoadError('Could not load previous runs.');
+          return;
+        }
+        const payload = await response.json();
+        const rows = Array.isArray(payload) ? payload : [];
+        // Map the API row into the shape this component needs. We pull
+        // canonical column names first and fall back to the request payload
+        // so older rows missing the flat columns still resolve. Numeric
+        // fields are coerced into strings (the form's controlled inputs
+        // hold strings, not numbers) via numToFormString.
+        const normalized = rows
+          .map((row) => {
+            const req = row.request_payload || {};
+            return {
+              id: row.prediction_run_id,
+              createdAt: row.created_at,
+              crop: row.crop || req.crop || '',
+              variety: row.variety || req.variety || '',
+              season: row.season ?? req.season ?? '',
+              state: row.state || req.state || '',
+              county: row.county || req.county || '',
+              acres: numToFormString(row.acres ?? req.acres),
+              totalN: numToFormString(row.totalN_per_ac ?? req.totalN_per_ac),
+              totalP: numToFormString(row.totalP_per_ac ?? req.totalP_per_ac),
+              totalK: numToFormString(row.totalK_per_ac ?? req.totalK_per_ac),
+              waterApplied: numToFormString(row.water_applied_mm ?? req.water_applied_mm)
+            };
+          })
+          .filter((row) => row.id != null);
+        setPrefillRuns(normalized);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setPrefillLoadError(error.message || 'Could not load previous runs.');
+        }
+      }
+    };
+    loadHistory();
+    return () => controller.abort();
+  }, [onPrefill]);
+
+  const selectedPrefillRun = useMemo(
+    () => prefillRuns.find((r) => String(r.id) === String(selectedPrefillId)) || null,
+    [prefillRuns, selectedPrefillId]
+  );
+
+  const handleApplyPrefill = () => {
+    if (!selectedPrefillRun || typeof onPrefill !== 'function') return;
+    const { id: _id, createdAt: _createdAt, ...patch } = selectedPrefillRun;
+    onPrefill(patch);
+  };
 
   // Surface tokens matched to the Overview tab's metric-tile family:
   // bright primary-tinted bg with a half-alpha primary border + soft
@@ -216,6 +325,231 @@ export default function PredictionInputStep({ formValues, onChange, crops, varie
           0 is also allowed.
         </Typography>
       </Stack>
+
+      {/* Prefill banner — optional shortcut that lets the user jump-start
+          the form with a previous run's values. Hidden when no runs are
+          available so the form path is unaffected for first-time users. */}
+      {prefillRuns.length > 0 ? (
+        <Paper
+          variant="outlined"
+          sx={{
+            // Slightly cooler tint than the main form card so the banner
+            // reads as a secondary affordance, not a duplicate primary panel.
+            bgcolor: alpha(theme.palette.primary.main, 0.14),
+            borderColor: alpha(theme.palette.primary.main, 0.45),
+            borderRadius: 2,
+            backgroundImage: 'none',
+            boxShadow: cardShadow,
+            overflow: 'hidden'
+          }}
+        >
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={{ xs: 1.5, md: 2 }}
+            sx={{
+              alignItems: { xs: 'stretch', md: 'center' },
+              px: { xs: 2, md: 2.5 },
+              py: 1.75
+            }}
+          >
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flex: 1, minWidth: 0 }}>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 1.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: alpha(theme.palette.primary.main, 0.25),
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+                  color: theme.palette.primary.light,
+                  fontSize: '1.05rem',
+                  flexShrink: 0
+                }}
+              >
+                <HistoryOutlined />
+              </Box>
+              <Stack spacing={0.15} sx={{ minWidth: 0 }}>
+                <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
+                  <Typography
+                    sx={{
+                      color: theme.palette.common.white,
+                      fontWeight: 700,
+                      fontSize: '0.92rem',
+                      letterSpacing: '0.02em'
+                    }}
+                  >
+                    Prefill from a previous run
+                  </Typography>
+                  <Tooltip
+                    arrow
+                    placement="top"
+                    title="Copies crop, variety, season, location, and applied inputs from the selected run into the form below. You can still edit any field after prefilling."
+                    slotProps={{
+                      tooltip: {
+                        sx: {
+                          bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                          color: theme.palette.common.white,
+                          border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                          fontSize: '0.74rem',
+                          fontWeight: 500,
+                          maxWidth: 300,
+                          px: 1.25,
+                          py: 0.85,
+                          borderRadius: 1.25
+                        }
+                      },
+                      arrow: {
+                        sx: { color: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})` }
+                      }
+                    }}
+                  >
+                    <Box
+                      component="span"
+                      tabIndex={0}
+                      aria-label="About prefilling"
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        cursor: 'help',
+                        color: alpha(theme.palette.primary.light, 0.7),
+                        fontSize: '0.85rem',
+                        '&:hover, &:focus-visible': { color: theme.palette.primary.light, outline: 'none' }
+                      }}
+                    >
+                      <InfoCircleOutlined />
+                    </Box>
+                  </Tooltip>
+                </Stack>
+                <Typography
+                  sx={{
+                    color: alpha(theme.palette.common.white, 0.6),
+                    fontSize: '0.78rem',
+                    fontWeight: 500,
+                    lineHeight: 1.4
+                  }}
+                >
+                  Optional — pick a saved run to copy its inputs into the form.
+                </Typography>
+              </Stack>
+            </Stack>
+
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ width: { xs: '100%', md: 'auto' }, alignItems: { xs: 'stretch', sm: 'center' } }}
+            >
+              <TextField
+                select
+                size="small"
+                value={selectedPrefillId}
+                onChange={(event) => setSelectedPrefillId(event.target.value)}
+                sx={{
+                  ...themedFieldSx,
+                  minWidth: { xs: '100%', sm: 320 },
+                  '& .MuiOutlinedInput-root': {
+                    ...themedFieldSx['& .MuiOutlinedInput-root'],
+                    fontSize: '0.85rem'
+                  }
+                }}
+                SelectProps={{
+                  displayEmpty: true,
+                  renderValue: (selected) => {
+                    if (!selected) {
+                      return (
+                        <Box component="span" sx={{ color: alpha(theme.palette.common.white, 0.55) }}>
+                          Choose a previous run…
+                        </Box>
+                      );
+                    }
+                    const run = prefillRuns.find((r) => String(r.id) === String(selected));
+                    if (!run) return String(selected);
+                    return `#${run.id} · ${summarizePrefillRun(run)}`;
+                  },
+                  ...themedSelectMenuProps
+                }}
+              >
+                <MenuItem value="" disabled>
+                  Choose a previous run…
+                </MenuItem>
+                {prefillRuns.map((run) => (
+                  <MenuItem key={run.id} value={run.id}>
+                    <Stack spacing={0.15} sx={{ minWidth: 0 }}>
+                      <Typography
+                        sx={{
+                          color: theme.palette.common.white,
+                          fontWeight: 700,
+                          fontSize: '0.85rem',
+                          lineHeight: 1.25
+                        }}
+                      >
+                        Run #{run.id}
+                      </Typography>
+                      <Typography
+                        sx={{
+                          color: alpha(theme.palette.common.white, 0.7),
+                          fontSize: '0.76rem',
+                          fontWeight: 500,
+                          lineHeight: 1.3,
+                          whiteSpace: 'normal'
+                        }}
+                      >
+                        {summarizePrefillRun(run) || '—'}
+                      </Typography>
+                    </Stack>
+                  </MenuItem>
+                ))}
+              </TextField>
+              <Button
+                disabled={!selectedPrefillRun}
+                onClick={handleApplyPrefill}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  letterSpacing: '0.01em',
+                  px: 2,
+                  py: 0.7,
+                  borderRadius: 999,
+                  color: alpha(theme.palette.primary.light, 0.95),
+                  bgcolor: alpha(theme.palette.primary.main, 0.18),
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+                  transition: 'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease',
+                  whiteSpace: 'nowrap',
+                  '&:hover': {
+                    color: theme.palette.common.white,
+                    bgcolor: alpha(theme.palette.primary.main, 0.32),
+                    borderColor: theme.palette.primary.main,
+                    boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.18)}`
+                  },
+                  '&.Mui-disabled': {
+                    color: alpha(theme.palette.common.white, 0.4),
+                    bgcolor: alpha(theme.palette.primary.main, 0.08),
+                    borderColor: alpha(theme.palette.primary.main, 0.2)
+                  }
+                }}
+              >
+                Prefill
+              </Button>
+            </Stack>
+          </Stack>
+          {prefillLoadError ? (
+            <Box
+              sx={{
+                px: { xs: 2, md: 2.5 },
+                py: 1,
+                borderTop: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+                bgcolor: alpha(theme.palette.warning.main, 0.06)
+              }}
+            >
+              <Typography sx={{ color: theme.palette.warning.light, fontSize: '0.75rem' }}>
+                {prefillLoadError}
+              </Typography>
+            </Box>
+          ) : null}
+        </Paper>
+      ) : null}
 
       <Paper
         variant="outlined"

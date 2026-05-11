@@ -3,6 +3,7 @@ Fields endpoint - filtering, listing, details
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List, Optional
 import math
 
@@ -230,6 +231,52 @@ async def get_field_season_detail(
         except AttributeError:
             return None
 
+    # Optional columns on field_seasons — present in some deployments, not
+    # others. We probe information_schema for which ones exist, then read
+    # them via raw SQL so the endpoint works on either schema without
+    # SQLAlchemy 500ing when the columns are missing. Column names are
+    # validated against this whitelist before string interpolation, so
+    # there is no SQL injection surface.
+    OPTIONAL_FIELD_SEASON_COLUMNS = [
+        "water_applied_mm",
+        "ammonia_lbN_per_ac",
+        "urea_lbN_per_ac",
+        "ammonium_nitrate_lbN_per_ac",
+        "ammonium_sulfate_lbN_per_ac",
+        "urea_ammonium_nitrate_solution_lbN_per_ac",
+        "monoammonium_phosphate_lbN_per_ac",
+        "diammonium_phosphate_lbN_per_ac",
+    ]
+    optional_values = {c: None for c in OPTIONAL_FIELD_SEASON_COLUMNS}
+    try:
+        present_cols = {
+            row[0]
+            for row in db.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'field_seasons' AND column_name = ANY(:cols)"
+                ),
+                {"cols": OPTIONAL_FIELD_SEASON_COLUMNS},
+            ).fetchall()
+        }
+        if present_cols:
+            # Double-quote each column to preserve case-sensitive Postgres
+            # identifiers like "ammonia_lbN_per_ac" (which would lower-case
+            # otherwise and fail to resolve).
+            select_list = ", ".join(f'"{c}"' for c in sorted(present_cols))
+            row = db.execute(
+                text(f"SELECT {select_list} FROM field_seasons WHERE field_season_id = :id"),
+                {"id": field_season_id},
+            ).mappings().first()
+            if row:
+                for c in present_cols:
+                    optional_values[c] = _f(row.get(c))
+    except Exception:
+        # Probe failure should not break the endpoint — the response just
+        # carries nulls for all optional fields and the drawer hides the
+        # N-source panel.
+        pass
+
     # Build response (every numeric/datetime field passes through _f / _iso so
     # NULL values in the DB don't blow up the response builder).
     response = {
@@ -243,6 +290,18 @@ async def get_field_season_detail(
         "totalN_per_ac": _f(fs.totalN_per_ac),
         "totalP_per_ac": _f(fs.totalP_per_ac),
         "totalK_per_ac": _f(fs.totalK_per_ac),
+        # Aggregated season-level irrigation total + N-source breakdown.
+        # Values come from the information_schema probe above; columns
+        # missing in this deployment are returned as null and the drawer
+        # hides their UI panel.
+        "water_applied_mm": optional_values["water_applied_mm"],
+        "ammonia_lbN_per_ac": optional_values["ammonia_lbN_per_ac"],
+        "urea_lbN_per_ac": optional_values["urea_lbN_per_ac"],
+        "ammonium_nitrate_lbN_per_ac": optional_values["ammonium_nitrate_lbN_per_ac"],
+        "ammonium_sulfate_lbN_per_ac": optional_values["ammonium_sulfate_lbN_per_ac"],
+        "urea_ammonium_nitrate_solution_lbN_per_ac": optional_values["urea_ammonium_nitrate_solution_lbN_per_ac"],
+        "monoammonium_phosphate_lbN_per_ac": optional_values["monoammonium_phosphate_lbN_per_ac"],
+        "diammonium_phosphate_lbN_per_ac": optional_values["diammonium_phosphate_lbN_per_ac"],
         "record_source": fs.record_source,
         "data_quality_score": _f(fs.data_quality_score),
         "missing_data_flags": fs.missing_data_flags,

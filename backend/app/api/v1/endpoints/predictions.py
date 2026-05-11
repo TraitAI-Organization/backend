@@ -138,7 +138,10 @@ async def predict_yield(
                 base_value=prediction_result.get('base_value', 0.0)
             )
         except Exception as explain_err:
-            logger.warning(f"Explainability unavailable for model {model_version.version_tag}: {explain_err}")
+            logger.warning(
+                f"Explainability unavailable for model {model_version.version_tag}: {explain_err}",
+                exc_info=True,
+            )
 
         # Build response
         response = PredictionResponse(
@@ -147,6 +150,7 @@ async def predict_yield(
                 prediction_result['confidence_lower'],
                 prediction_result['confidence_upper']
             ],
+            confidence_level=prediction_result.get('confidence_level'),
             model_version=model_version.version_tag,
             regional_comparison=regional_comparison,
             explainability={
@@ -248,7 +252,10 @@ async def predict_yield_specific_model(
                 base_value=prediction_result.get('base_value', 0.0)
             )
         except Exception as explain_err:
-            logger.warning(f"Explainability unavailable for model {model_version.version_tag}: {explain_err}")
+            logger.warning(
+                f"Explainability unavailable for model {model_version.version_tag}: {explain_err}",
+                exc_info=True,
+            )
 
         response = PredictionResponse(
             predicted_yield=prediction_result['predicted_yield'],
@@ -256,6 +263,7 @@ async def predict_yield_specific_model(
                 prediction_result['confidence_lower'],
                 prediction_result['confidence_upper']
             ],
+            confidence_level=prediction_result.get('confidence_level'),
             model_version=model_version.version_tag,
             regional_comparison=regional_comparison,
             explainability={
@@ -344,7 +352,10 @@ async def predict_yield_all_models(
                         base_value=result.get("base_value", 0.0),
                     )
                 except Exception as explain_err:
-                    logger.warning(f"All-model explainability unavailable for {mv.version_tag}: {explain_err}")
+                    logger.warning(
+                        f"All-model explainability unavailable for {mv.version_tag}: {explain_err}",
+                        exc_info=True,
+                    )
 
                 items.append(
                     MultiModelPredictionItem(
@@ -357,6 +368,7 @@ async def predict_yield_all_models(
                             result["confidence_lower"],
                             result["confidence_upper"],
                         ],
+                        confidence_level=result.get("confidence_level"),
                         explainability={
                             "top_features": [
                                 FeatureContribution(
@@ -431,6 +443,7 @@ async def batch_predict_yield(
                         result['confidence_lower'],
                         result['confidence_upper']
                     ],
+                    confidence_level=result.get('confidence_level'),
                     model_version=model_version.version_tag,
                     regional_comparison=None,
                     explainability=None,

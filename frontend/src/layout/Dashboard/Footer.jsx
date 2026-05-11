@@ -1,9 +1,11 @@
 // material-ui
+import { alpha, useTheme } from '@mui/material/styles';
 import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 export default function Footer() {
+  const theme = useTheme();
   return (
     <Stack
       direction={{ xs: 'column', sm: 'row' }}
@@ -11,7 +13,17 @@ export default function Footer() {
     >
       <Typography variant="caption">
         &copy; All rights reserved{' '}
-        <Link href="https://www.shakoorlab.com" target="_blank" underline="hover">
+        <Link
+          href="https://www.shakoorlab.com"
+          target="_blank"
+          underline="hover"
+          sx={{
+            color: theme.palette.primary.light,
+            fontWeight: 700,
+            transition: 'color 0.15s ease',
+            '&:hover, &:focus-visible': { color: alpha(theme.palette.primary.light, 0.85) }
+          }}
+        >
           Shakoor Lab
         </Link>
       </Typography>

@@ -258,6 +258,27 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     });
   };
 
+  // Bulk prefill from a previous prediction run. Patches every key in the
+  // incoming object in one render, then re-runs validation so any submit-
+  // attempt error state reflects the new values. We don't clear variety /
+  // county on crop/state change here (the way handleInputChange does)
+  // because the incoming patch is internally consistent — it pairs each
+  // crop with its own variety and each state with its own county.
+  const handleInputPrefill = (patch) => {
+    if (!patch || typeof patch !== 'object') return;
+    setFormValues((prev) => {
+      const next = { ...prev, ...patch };
+      if (hasAttemptedInputSubmit) {
+        const nextErrors = getSelectionErrors(next);
+        setInputSelectionErrors(nextErrors);
+        if (Object.keys(nextErrors).length === 0) {
+          setPredictionError('');
+        }
+      }
+      return next;
+    });
+  };
+
   const buildPredictionPayload = () => {
     const payload = { crop: formValues.crop };
 
@@ -425,6 +446,7 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
             <PredictionInputStep
               formValues={formValues}
               onChange={handleInputChange}
+              onPrefill={handleInputPrefill}
               crops={cropOptions}
               varieties={varietyOptions}
               seasons={seasonOptions}
