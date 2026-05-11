@@ -37,7 +37,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, 
 // TODO: pull from an auth/user context once that lands. Hardcoded for the
 // dev session so the greeting reads as personal. Swap to `user?.firstName`
 // (or whatever the eventual user shape provides) when wiring auth in.
-const USER_NAME = 'General Mills';
+const USER_NAME = 'Wheat Producers';
 
 // Time-of-day greeting. Returns a string like "Good morning" / "Good afternoon"
 // / "Good evening", or "Working late" past 10pm so the late-night case feels
