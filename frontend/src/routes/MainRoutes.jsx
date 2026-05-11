@@ -3,6 +3,7 @@ import { lazy } from 'react';
 // project imports
 import Loadable from 'components/Loadable';
 import DashboardLayout from 'layout/Dashboard';
+import RequireAuth from 'auth/RequireAuth';
 
 // render- Dashboard
 const DashboardDefault = Loadable(lazy(() => import('pages/overview/dashboard/default')));
@@ -13,7 +14,11 @@ const FieldMindDefault = Loadable(lazy(() => import('pages/copilot/fieldmind/def
 
 const MainRoutes = {
   path: '/',
-  element: <DashboardLayout />,
+  element: (
+    <RequireAuth>
+      <DashboardLayout />
+    </RequireAuth>
+  ),
   children: [
     {
       path: 'dashboard',

@@ -28,6 +28,7 @@
     "@mui/system": "7.3.6",
     "@mui/x-charts": "8.22.1",
     "@vitejs/plugin-react": "5.1.2",
+    "firebase": "^10.14.1",
     "formik": "2.4.9",
     "framer-motion": "12.23.26",
     "lodash-es": "4.17.22",

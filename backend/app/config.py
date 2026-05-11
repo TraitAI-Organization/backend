@@ -44,5 +44,13 @@ class Settings(BaseSettings):
     # UI configuration
     ui_config_path: str = "data/ui_config.json"
 
+    # Firebase Auth (for verifying ID tokens on protected routes)
+    # firebase_project_id: required to enable verification.
+    # firebase_credentials_path: optional path to a service-account JSON. If
+    #   unset, firebase-admin falls back to the GOOGLE_APPLICATION_CREDENTIALS
+    #   env var or to Application Default Credentials.
+    firebase_project_id: Optional[str] = None
+    firebase_credentials_path: Optional[str] = None
+
 
 settings = Settings()

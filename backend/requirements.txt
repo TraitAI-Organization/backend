@@ -22,3 +22,6 @@ celery==5.3.4
 loguru==0.7.2
 sentry-sdk[fastapi]==1.38.0
 python-multipart==0.0.6
+
+# Firebase Auth ID-token verification
+firebase-admin==6.5.0

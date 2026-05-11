@@ -17,20 +17,52 @@ import Typography from '@mui/material/Typography';
 
 // third-party
 import { Formik } from 'formik';
+import * as Yup from 'yup';
 
 // project imports
 import IconButton from 'components/@extended/IconButton';
 import AnimateButton from 'components/@extended/AnimateButton';
 import { APP_DEFAULT_PATH } from 'config';
+import { useAuth } from 'auth/AuthContext';
 
 // assets
 import EyeOutlined from '@ant-design/icons/EyeOutlined';
 import EyeInvisibleOutlined from '@ant-design/icons/EyeInvisibleOutlined';
 
-// ============================|| JWT - LOGIN ||============================ //
+// ============================|| FIREBASE - LOGIN ||============================ //
+
+/**
+ * Maps Firebase Auth error codes into friendly inline messages.
+ * Reference: https://firebase.google.com/docs/auth/admin/errors
+ *
+ * Note: as of Firebase v10, Email Enumeration Protection collapses several of
+ * the older codes (`user-not-found`, `wrong-password`) into a single
+ * `invalid-credential` to avoid leaking which emails exist. We handle both.
+ */
+function describeFirebaseError(err) {
+  const code = err?.code || '';
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/invalid-email':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'Incorrect email or password.';
+    case 'auth/user-disabled':
+      return 'This account has been disabled. Contact an administrator.';
+    case 'auth/too-many-requests':
+      return 'Too many failed attempts. Please wait a moment and try again.';
+    case 'auth/network-request-failed':
+      return 'Network error — check your connection and try again.';
+    case 'auth/operation-not-allowed':
+      return 'Email/password sign-in is not enabled. Contact an administrator.';
+    default:
+      return err?.message || 'Sign-in failed. Please try again.';
+  }
+}
 
 export default function AuthLogin({ isDemo = false }) {
   const navigate = useNavigate();
+  const { signIn } = useAuth();
   const [checked, setChecked] = React.useState(false);
 
   const [showPassword, setShowPassword] = React.useState(false);
@@ -46,37 +78,49 @@ export default function AuthLogin({ isDemo = false }) {
     <>
       <Formik
         initialValues={{
-          username: '',
+          email: '',
           password: '',
           submit: null
         }}
-        onSubmit={() => {
-          // TODO: replace with real authentication once the auth endpoint is wired up.
-          navigate(APP_DEFAULT_PATH);
+        validationSchema={Yup.object().shape({
+          email: Yup.string().email('Must be a valid email').max(255).required('Email is required'),
+          password: Yup.string().max(128).required('Password is required')
+        })}
+        onSubmit={async (values, { setErrors, setStatus, setSubmitting }) => {
+          try {
+            await signIn({ email: values.email, password: values.password });
+            setStatus({ success: true });
+            navigate(APP_DEFAULT_PATH, { replace: true });
+          } catch (err) {
+            setStatus({ success: false });
+            setErrors({ submit: describeFirebaseError(err) });
+          } finally {
+            setSubmitting(false);
+          }
         }}
       >
-        {({ errors, handleBlur, handleChange, handleSubmit, touched, values }) => (
+        {({ errors, handleBlur, handleChange, handleSubmit, isSubmitting, touched, values }) => (
           <form noValidate onSubmit={handleSubmit}>
             <Grid container spacing={3}>
               <Grid size={12}>
                 <Stack sx={{ gap: 1 }}>
-                  <InputLabel htmlFor="username-login">Username</InputLabel>
+                  <InputLabel htmlFor="email-login">Email</InputLabel>
                   <OutlinedInput
-                    id="username-login"
-                    type="text"
-                    value={values.username}
-                    name="username"
+                    id="email-login"
+                    type="email"
+                    value={values.email}
+                    name="email"
                     onBlur={handleBlur}
                     onChange={handleChange}
-                    placeholder="Enter your username"
-                    autoComplete="username"
+                    placeholder="you@example.com"
+                    autoComplete="email"
                     fullWidth
-                    error={Boolean(touched.username && errors.username)}
+                    error={Boolean(touched.email && errors.email)}
                   />
                 </Stack>
-                {touched.username && errors.username && (
-                  <FormHelperText error id="standard-weight-helper-text-username-login">
-                    {errors.username}
+                {touched.email && errors.email && (
+                  <FormHelperText error id="standard-weight-helper-text-email-login">
+                    {errors.email}
                   </FormHelperText>
                 )}
               </Grid>
@@ -134,10 +178,23 @@ export default function AuthLogin({ isDemo = false }) {
                   </Link>
                 </Stack>
               </Grid>
+              {errors.submit && (
+                <Grid size={12}>
+                  <FormHelperText error>{errors.submit}</FormHelperText>
+                </Grid>
+              )}
               <Grid size={12}>
                 <AnimateButton>
-                  <Button fullWidth size="large" variant="contained" color="primary" type="submit">
-                    Sign in
+                  <Button
+                    disableElevation
+                    disabled={isSubmitting}
+                    fullWidth
+                    size="large"
+                    variant="contained"
+                    color="primary"
+                    type="submit"
+                  >
+                    {isSubmitting ? 'Signing in…' : 'Sign in'}
                   </Button>
                 </AnimateButton>
               </Grid>

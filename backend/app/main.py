@@ -18,6 +18,7 @@ from app.api.v1.routers import (
     exports_router,
     data_upload_router,
     manual_entry_router,
+    auth_router,
 )
 from app.api.admin import router as admin_router
 from app.core.exceptions import NutritionAIError
@@ -129,6 +130,7 @@ app.include_router(models_router, prefix="/api/v1/models", tags=["models"])
 app.include_router(exports_router, prefix="/api/v1/export", tags=["exports"])
 app.include_router(data_upload_router, prefix="/api/v1/data", tags=["data-upload"])
 app.include_router(manual_entry_router, prefix="/api/v1/manual-entry", tags=["manual-entry"])
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(admin_router)
 
 if __name__ == "__main__":

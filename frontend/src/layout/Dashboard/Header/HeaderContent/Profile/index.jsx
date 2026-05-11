@@ -24,6 +24,7 @@ import Avatar from 'components/@extended/Avatar';
 import MainCard from 'components/MainCard';
 import Transitions from 'components/@extended/Transitions';
 import IconButton from 'components/@extended/IconButton';
+import { useAuth } from 'auth/AuthContext';
 
 // assets
 import LogoutOutlined from '@ant-design/icons/LogoutOutlined';
@@ -52,6 +53,7 @@ function a11yProps(index) {
 export default function Profile() {
   const theme = useTheme();
   const navigate = useNavigate();
+  const { signOut, user } = useAuth();
   const themedTooltipSlotProps = {
     tooltip: {
       sx: {
@@ -77,10 +79,17 @@ export default function Profile() {
     setOpen(false);
   };
 
-  const handleLogout = () => {
-    // TODO: clear auth state / tokens once authentication is wired up.
+  const handleLogout = async () => {
     setOpen(false);
-    navigate('/login');
+    try {
+      await signOut();
+    } catch (err) {
+      // Sign-out can fail if the network drops mid-call. The local session is
+      // already cleared by Firebase in most cases, so navigate regardless.
+      // eslint-disable-next-line no-console
+      console.warn('[auth] signOut failed', err);
+    }
+    navigate('/login', { replace: true });
   };
 
   const [value, setValue] = useState(0);
@@ -145,9 +154,11 @@ export default function Profile() {
                         <Stack direction="row" sx={{ gap: 1.25, alignItems: 'center' }}>
                           <Avatar alt="profile user" src={avatar1} sx={{ width: 32, height: 32 }} />
                           <Stack>
-                            <Typography variant="h6">Nadia Shakoor</Typography>
+                            <Typography variant="h6">
+                              {user?.displayName || user?.email || 'Signed in'}
+                            </Typography>
                             <Typography variant="body2" color="text.secondary">
-                              Principal Investigator
+                              TraitHarvest
                             </Typography>
                           </Stack>
                         </Stack>
