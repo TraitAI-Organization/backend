@@ -9,11 +9,13 @@
 // short `description` (what's actually happening to the plant) and a
 // `link` to a reputable agronomy reference for deeper reading.
 //
-// All links go to Wikipedia's "Cereal growth staging scales" article — a
-// stable, neutral, substantive reference that covers Feekes, Zadoks, and
-// BBCH scales in one place. Wikipedia URLs are extremely durable; the
-// previous extension-site links rotted.
-const WHEAT_STAGE_REFERENCE_URL = 'https://en.wikipedia.org/wiki/Cereal_growth_staging_scales';
+// All links go to the University of Nebraska-Lincoln CropWatch wheat
+// section — a freely accessible, well-maintained land-grant extension
+// resource that covers the same Feekes/Zadoks growth-stage material
+// with a clear agronomic-application slant. UNL CropWatch is a
+// long-standing institutional resource maintained by university
+// extension agronomists.
+const WHEAT_STAGE_REFERENCE_URL = 'https://cropwatch.unl.edu/wheat';
 
 const WHEAT_STAGES = [
   {

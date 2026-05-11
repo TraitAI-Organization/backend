@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import CloseOutlined from '@ant-design/icons/CloseOutlined';
 import DownOutlined from '@ant-design/icons/DownOutlined';
 import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
+import Collapse from '@mui/material/Collapse';
 
 import { alpha, useTheme } from '@mui/material/styles';
 import Box from '@mui/material/Box';
@@ -46,6 +48,146 @@ function getTimeOfDayGreeting(date = new Date()) {
   if (hour >= 12 && hour < 17) return 'Good afternoon';
   if (hour >= 17 && hour < 22) return 'Good evening';
   return 'Working late';
+}
+
+// Smooth-scroll link to the simplified FieldTable. Used inside the
+// min/max yield tooltips so a user reading "acres available in the
+// field detail view" can jump straight to the table without losing
+// their place on the page. Rendered as an anchor so middle-click /
+// cmd-click still works as a fallback navigation, but the default
+// click triggers `scrollIntoView({ behavior: 'smooth' })` for the
+// in-page animation. Lives in this file so it can target the
+// `id="overview-field-records"` anchor we set on the table below.
+function FieldDetailViewLink({ children = 'field detail view' }) {
+  const theme = useTheme();
+  return (
+    <Box
+      component="a"
+      href="#overview-field-records"
+      onClick={(event) => {
+        const target = document.getElementById('overview-field-records');
+        if (!target) return;
+        event.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }}
+      sx={{
+        color: theme.palette.primary.light,
+        fontWeight: 700,
+        textDecoration: 'underline',
+        textDecorationThickness: '1px',
+        textUnderlineOffset: '2px',
+        cursor: 'pointer',
+        transition: 'color 0.15s ease',
+        '&:hover, &:focus-visible': { color: theme.palette.common.white, outline: 'none' }
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+// Banner card that sits above the simplified FieldTable on the Overview
+// tab. Mirrors the visual pattern of the original "Why predict yields"
+// banner (Paper + clickable header row + collapsible body) so the user
+// experience stays consistent, but the copy describes what the table
+// below actually shows: each row is a field-season, click a row for a
+// richer detail view. Default-open so first-time viewers don't have to
+// hunt for the explanation.
+function OverviewTableBanner() {
+  const theme = useTheme();
+  const [open, setOpen] = useState(true);
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        bgcolor: alpha(theme.palette.primary.main, 0.18),
+        borderColor: alpha(theme.palette.primary.main, 0.5),
+        borderRadius: 2,
+        backgroundImage: 'none',
+        overflow: 'hidden',
+        boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={1.5}
+        sx={{
+          alignItems: 'center',
+          px: 2.25,
+          py: 1.5,
+          cursor: 'pointer',
+          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) }
+        }}
+        onClick={() => setOpen((prev) => !prev)}
+        role="button"
+        aria-expanded={open}
+        aria-label="Toggle field records explanation"
+      >
+        <Box
+          sx={{
+            color: alpha(theme.palette.primary.light, 0.95),
+            fontSize: '1.05rem',
+            display: 'flex',
+            alignItems: 'center'
+          }}
+        >
+          <InfoCircleOutlined />
+        </Box>
+        <Typography
+          sx={{
+            flex: 1,
+            fontWeight: 700,
+            color: theme.palette.common.white,
+            fontSize: '0.92rem',
+            letterSpacing: '0.01em'
+          }}
+        >
+          About your field records
+        </Typography>
+        <IconButton
+          size="small"
+          aria-label={open ? 'Close explanation' : 'Open explanation'}
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen((prev) => !prev);
+          }}
+          sx={{
+            color: alpha(theme.palette.common.white, 0.7),
+            '&:hover': {
+              color: theme.palette.common.white,
+              bgcolor: alpha(theme.palette.primary.main, 0.18)
+            }
+          }}
+        >
+          {open ? <CloseOutlined style={{ fontSize: '0.85rem' }} /> : <DownOutlined style={{ fontSize: '0.85rem' }} />}
+        </IconButton>
+      </Stack>
+      <Collapse in={open} unmountOnExit>
+        <Box sx={{ px: 2.25, pb: 2, pl: 5.25 }}>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.85), fontSize: '0.88rem', lineHeight: 1.6 }}>
+            Each row below is a{' '}
+            <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
+              field-season
+            </Box>{' '}
+            — a single field tracked through one growing season. The
+            table summarizes the observed (real-harvest) yield alongside
+            its key inputs: crop and variety, acres, geographic
+            location, and applied nutrients. Use the filters above the
+            table to narrow by crop, variety, season, state, or county.
+          </Typography>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.85), fontSize: '0.88rem', lineHeight: 1.6, mt: 1.25 }}>
+            Click the{' '}
+            <Box component="span" sx={{ fontWeight: 700, color: theme.palette.primary.light }}>
+              chevron (›)
+            </Box>{' '}
+            on any row to open an in-depth view of that field-season,
+            including the full management history, applied operations,
+            and any model predictions attached to the record.
+          </Typography>
+        </Box>
+      </Collapse>
+    </Paper>
+  );
 }
 
 // Top contributor breakdown for the Total Acres hero card. Renders a
@@ -1485,7 +1627,8 @@ export default function Overview() {
                     <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit' }}>
                       The lowest single-field yield recorded in the database
                       across every harvested field-season. Source row shown
-                      on the card; acres available in the field detail view.
+                      on the card; acres available in the{' '}
+                      <FieldDetailViewLink />.
                     </Typography>
                   </Box>
                 }
@@ -1581,7 +1724,8 @@ export default function Overview() {
                     <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit' }}>
                       The highest single-field yield recorded in the database
                       across every harvested field-season. Source row shown
-                      on the card; acres available in the field detail view.
+                      on the card; acres available in the{' '}
+                      <FieldDetailViewLink />.
                     </Typography>
                   </Box>
                 }
@@ -1599,106 +1743,25 @@ export default function Overview() {
 
         <Divider />
 
-        <Stack spacing={1.5}>
-          <Stack spacing={0.25}>
-            <Typography variant="h5">Prediction Statistics</Typography>
-            <Typography sx={{ color: alpha(theme.palette.common.white, 0.5), fontSize: '0.8rem' }}>
-              {(predStats.field_predictions_total || 0).toLocaleString()} field predictions ·{' '}
-              {(predStats.prediction_runs_total || 0).toLocaleString()} prediction runs
-            </Typography>
-          </Stack>
+        {/* Prediction Statistics moved → Analytics tab as the new
+            "Model Performance" macro-view card. Overview now stays focused
+            on observed/field-grounded data; Analytics owns the
+            model-output story end-to-end (macro stats → prediction list →
+            per-prediction analysis). */}
 
-          {/* Coverage card — same Deep-Learning-pill palette as the metric
-              tiles so all summary cards on this page share the same saturated
-              primary surface and matching half-alpha border. */}
-          <Paper
-            variant="outlined"
-            sx={{
-              bgcolor: alpha(theme.palette.primary.main, 0.18),
-              borderColor: alpha(theme.palette.primary.main, 0.5),
-              borderRadius: 2,
-              p: 2.25,
-              backgroundImage: 'none',
-              boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
-            }}
-          >
-            <Stack spacing={1.25}>
-              <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography
-                  sx={{
-                    color: alpha(theme.palette.primary.light, 0.95),
-                    fontWeight: 700,
-                    fontSize: '0.72rem',
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  Coverage
-                </Typography>
-                <Stack direction="row" spacing={0.75} sx={{ alignItems: 'baseline' }}>
-                  <Typography
-                    component="span"
-                    sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '1.25rem', lineHeight: 1.15 }}
-                  >
-                    {coveragePct.toFixed(1)}%
-                  </Typography>
-                  <Typography component="span" sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.78rem' }}>
-                    of field-seasons
-                  </Typography>
-                </Stack>
-              </Stack>
-              <LinearProgress
-                variant="determinate"
-                value={coveragePct}
-                sx={{
-                  height: 8,
-                  borderRadius: 2,
-                  bgcolor: alpha(theme.palette.primary.main, 0.18),
-                  '& .MuiLinearProgress-bar': {
-                    borderRadius: 2,
-                    bgcolor:
-                      coveragePct >= 90
-                        ? theme.palette.success.main
-                        : coveragePct >= 75
-                          ? theme.palette.warning.main
-                          : theme.palette.info.main
-                  }
-                }}
-              />
-              <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.78rem' }}>
-                {withPredictions.toLocaleString()} of {totalFieldSeasons.toLocaleString()} field-seasons have predictions
-              </Typography>
-            </Stack>
-          </Paper>
-
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 6, md: 3 }}>
-              <MetricTile
-                label="Total Predictions"
-                value={(predStats.total_predictions || 0).toLocaleString()}
-                helper="Across all stored predictions"
-              />
-            </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
-              <MetricTile
-                label="Avg Predicted Yield"
-                value={(predStats.predicted_yield_avg || 0).toFixed(1)}
-                unit="bu/ac"
-                helper="Mean across predictions"
-              />
-            </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
-              <MetricTile label="Min Predicted" value={(predStats.predicted_yield_min || 0).toFixed(1)} unit="bu/ac" />
-            </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
-              <MetricTile label="Max Predicted" value={(predStats.predicted_yield_max || 0).toFixed(1)} unit="bu/ac" />
-            </Grid>
-          </Grid>
-        </Stack>
-
-        <Divider />
-
-        <FieldTable />
+        {/* Simplified field-records table for the Overview tab. The
+            chevron stays so users can drill into a row's full details.
+            The model-toggle pill and the Predicted Yield column are
+            both hidden — Overview is an "observed reality" view; the
+            model-prediction lens lives over on the Analytics tab. The
+            `id` is the smooth-scroll anchor used by the min/max yield
+            tooltips' "field detail view" links. */}
+        <FieldTable
+          id="overview-field-records"
+          showModelSelector={false}
+          showPredictedYieldColumn={false}
+          banner={<OverviewTableBanner />}
+        />
       </Stack>
     </MainCard>
   );

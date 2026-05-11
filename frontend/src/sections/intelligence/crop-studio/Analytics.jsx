@@ -5,6 +5,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
+import Drawer from '@mui/material/Drawer';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -17,14 +18,19 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 import { BarChart } from '@mui/x-charts';
 import AppstoreOutlined from '@ant-design/icons/AppstoreOutlined';
+import CloseOutlined from '@ant-design/icons/CloseOutlined';
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
+import RightOutlined from '@ant-design/icons/RightOutlined';
 
 import MainCard from 'components/MainCard';
+import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
 import { formatCropName } from 'utils/cropName';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
@@ -35,6 +41,62 @@ function toNumberOrNull(value) {
   if (value === null || value === undefined || value === '') return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+// Relative-time formatter — turns an ISO timestamp into a short human
+// phrase like "5 minutes ago" / "2 days ago" / "3 months ago". Used by
+// the Model Performance card to surface the freshness of the last run.
+// Returns null for invalid inputs so callers can render-guard cleanly.
+function getRelativeTime(timestamp) {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 0) return 'just now';
+  const seconds = Math.floor(diffMs / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? '' : 's'} ago`;
+}
+
+// Inline SVG sparkline — month-over-month avg-yield trend in the Model
+// Performance strip. Deliberately tiny (84×24 px) so it sits next to the
+// "Avg Predicted" stat as a glanceable trend indicator without competing
+// with the headline number. Renders nothing for fewer than 2 data points
+// (a sparkline of 1 point is meaningless). Uses non-scaling stroke +
+// rounded line caps for a soft, premium feel at small sizes.
+function Sparkline({ data, color, width = 84, height = 24 }) {
+  if (!Array.isArray(data) || data.length < 2) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const stepX = width / (data.length - 1);
+  // Pad y by 2px top/bottom so the line + endpoint dots don't clip at
+  // the SVG bounds when a value is at the min or max of the dataset.
+  const pad = 2;
+  const innerHeight = height - pad * 2;
+  const points = data.map((v, i) => ({
+    x: i * stepX,
+    y: pad + innerHeight - ((v - min) / range) * innerHeight
+  }));
+  const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+  const last = points[points.length - 1];
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>
+      <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      {/* Subtle endpoint emphasis on the most recent month — orients the
+          eye toward "now" and hints at trend direction. */}
+      <circle cx={last.x} cy={last.y} r={2} fill={color} />
+    </svg>
+  );
 }
 
 function formatNumber(value, decimals = 2) {
@@ -314,6 +376,309 @@ function MetricCard({ label, value, unit, helper, helperColor, range }) {
   );
 }
 
+// ============================================================================
+// ModelPerformanceCard — macro-view summary of what the model has produced
+// across the user's data. Sits at the top of the Analytics tab as a single
+// compact Paper so the page reads as a clear "zoom-in":
+//
+//   1. Macro:  what the model has done overall  ← this card
+//   2. Browse: the saved-predictions table       ← below
+//   3. Micro:  the analyzed prediction view      ← appears on selection
+//
+// Visually subordinate to the Saved Predictions card below it (tighter
+// padding, smaller numbers, single contained surface) so it informs without
+// dominating the working area.
+// ============================================================================
+function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHistory }) {
+  const theme = useTheme();
+  if (!overview) return null;
+
+  const stats = overview?.prediction_stats || {};
+  const totalFieldSeasons = overview?.total_field_seasons || 0;
+  const withPredictions = stats.field_seasons_with_predictions || 0;
+  const coveragePct = totalFieldSeasons ? (100 * withPredictions) / totalFieldSeasons : 0;
+  const fieldPredictionsTotal = stats.field_predictions_total || 0;
+  const predictionRunsTotal = stats.prediction_runs_total || 0;
+
+  // Color for the coverage bar — escalates from neutral info to warning to
+  // success as coverage improves. Same thresholds the Overview's previous
+  // Coverage card used so the visual story is preserved across the move.
+  const coverageBarColor =
+    coveragePct >= 90 ? theme.palette.success.main : coveragePct >= 75 ? theme.palette.warning.main : theme.palette.info.main;
+
+  // The four headline stats. Held in a config array so the JSX stays
+  // declarative and the layout is trivially extensible — drop in a new
+  // metric here and it slots into the grid without restructuring.
+  // The "Avg Predicted" entry carries `trend: true` — the strip renders a
+  // small sparkline beside its number when month-over-month data exists,
+  // showing the recent trajectory without needing a separate chart card.
+  const stats4 = [
+    { label: 'Total Predictions', value: (stats.total_predictions || 0).toLocaleString(), unit: null },
+    { label: 'Avg Predicted', value: (stats.predicted_yield_avg || 0).toFixed(1), unit: 'bu/ac', trend: true },
+    { label: 'Min Predicted', value: (stats.predicted_yield_min || 0).toFixed(1), unit: 'bu/ac' },
+    { label: 'Max Predicted', value: (stats.predicted_yield_max || 0).toFixed(1), unit: 'bu/ac' }
+  ];
+
+  const lastRunRelative = getRelativeTime(lastRunAt);
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        // Same Deep-Learning-pill palette as the Saved Predictions card
+        // and Overview metric tiles — keeps the page in one visual family.
+        bgcolor: alpha(theme.palette.primary.main, 0.18),
+        borderColor: alpha(theme.palette.primary.main, 0.5),
+        borderRadius: 2,
+        overflow: 'hidden',
+        backgroundImage: 'none',
+        boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
+      }}
+    >
+      {/* Header strip — title + run count summary on the right. Uses the
+          same px/py rhythm as the Saved Predictions table card header so
+          the two cards align visually when stacked. */}
+      <Stack
+        direction="row"
+        sx={{
+          px: 2.5,
+          py: 1.5,
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
+          flexWrap: 'wrap',
+          gap: 1
+        }}
+      >
+        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'baseline', flexWrap: 'wrap', rowGap: 0.25 }}>
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              color: theme.palette.common.white,
+              letterSpacing: '0.01em'
+            }}
+          >
+            Model Performance
+          </Typography>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.78rem' }}>
+            Aggregate of every prediction the model has produced across your data
+          </Typography>
+        </Stack>
+        {/* Right-side metadata cluster — total counts, last-run freshness,
+            and a quiet "View runs history →" link that scrolls to the
+            Saved Predictions table below. The link is rendered as a
+            secondary text-button so it doesn't compete with the primary
+            "Analyze Prediction" CTA. */}
+        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
+          <Typography sx={{ color: alpha(theme.palette.primary.light, 0.85), fontSize: '0.75rem', fontWeight: 600 }}>
+            {fieldPredictionsTotal.toLocaleString()} field predictions ·{' '}
+            {predictionRunsTotal.toLocaleString()} runs
+          </Typography>
+          {lastRunRelative ? (
+            <>
+              <Box
+                component="span"
+                aria-hidden
+                sx={{ color: alpha(theme.palette.common.white, 0.3), fontSize: '0.75rem' }}
+              >
+                ·
+              </Box>
+              <Tooltip
+                title={lastRunAt ? `Last run: ${new Date(lastRunAt).toLocaleString()}` : ''}
+                arrow
+                placement="top"
+              >
+                <Typography
+                  component="span"
+                  sx={{
+                    color: alpha(theme.palette.common.white, 0.65),
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    cursor: 'help'
+                  }}
+                >
+                  Last run {lastRunRelative}
+                </Typography>
+              </Tooltip>
+            </>
+          ) : null}
+          {onViewRunsHistory ? (
+            <Button
+              size="small"
+              onClick={onViewRunsHistory}
+              endIcon={<RightOutlined style={{ fontSize: '0.62rem' }} />}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+                letterSpacing: '0.01em',
+                minHeight: 0,
+                py: 0.15,
+                px: 0.85,
+                borderRadius: 999,
+                color: alpha(theme.palette.primary.light, 0.95),
+                bgcolor: 'transparent',
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+                transition:
+                  'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease',
+                '&:hover': {
+                  color: theme.palette.common.white,
+                  bgcolor: alpha(theme.palette.primary.main, 0.18),
+                  borderColor: theme.palette.primary.main,
+                  boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.18)}`
+                }
+              }}
+            >
+              View runs history
+            </Button>
+          ) : null}
+        </Stack>
+      </Stack>
+
+      {/* Coverage row — eyebrow label + helper on the left, the number on
+          the right, thin progress bar spanning the full width below.
+          Reads as a single unit: "X% covered, here's the visual." */}
+      <Box sx={{ px: 2.5, pt: 1.75, pb: 1.5 }}>
+        <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Stack spacing={0.25}>
+            <Typography
+              sx={{
+                color: alpha(theme.palette.primary.light, 0.95),
+                fontWeight: 700,
+                fontSize: '0.7rem',
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase'
+              }}
+            >
+              Coverage
+            </Typography>
+            <Typography sx={{ color: alpha(theme.palette.common.white, 0.6), fontSize: '0.78rem' }}>
+              {withPredictions.toLocaleString()} of {totalFieldSeasons.toLocaleString()} field-seasons predicted
+            </Typography>
+          </Stack>
+          <Stack direction="row" spacing={0.6} sx={{ alignItems: 'baseline' }}>
+            <Typography
+              sx={{
+                color: theme.palette.common.white,
+                fontWeight: 700,
+                fontSize: '1.4rem',
+                lineHeight: 1.1,
+                fontVariantNumeric: 'tabular-nums'
+              }}
+            >
+              {coveragePct.toFixed(1)}%
+            </Typography>
+          </Stack>
+        </Stack>
+        <LinearProgress
+          variant="determinate"
+          value={coveragePct}
+          sx={{
+            height: 6,
+            borderRadius: 1,
+            bgcolor: alpha(theme.palette.primary.main, 0.22),
+            '& .MuiLinearProgress-bar': {
+              borderRadius: 1,
+              bgcolor: coverageBarColor
+            }
+          }}
+        />
+      </Box>
+
+      <Divider sx={{ borderColor: alpha(theme.palette.primary.main, 0.18) }} />
+
+      {/* Four-stat strip — Total Predictions / Avg / Min / Max. Smaller
+          values than the previous full MetricTile (1.4rem vs 1.6rem) so
+          the strip feels secondary to the table's working surface below.
+          Vertical dividers between stats give visual rhythm without
+          adding card chrome. */}
+      <Box sx={{ px: 2.5, py: 1.75 }}>
+        <Grid container spacing={0}>
+          {stats4.map((stat, idx) => (
+            <Grid
+              size={{ xs: 6, sm: 3 }}
+              key={stat.label}
+              sx={{
+                px: { xs: 0.5, sm: 1.5 },
+                borderRight: {
+                  xs: 'none',
+                  sm:
+                    idx < stats4.length - 1
+                      ? `1px solid ${alpha(theme.palette.primary.light, 0.18)}`
+                      : 'none'
+                }
+              }}
+            >
+              <Stack spacing={0.4}>
+                <Typography
+                  sx={{
+                    color: alpha(theme.palette.primary.light, 0.85),
+                    fontWeight: 700,
+                    fontSize: '0.65rem',
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {stat.label}
+                </Typography>
+                <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.25 }}>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'baseline' }}>
+                    <Typography
+                      sx={{
+                        color: theme.palette.common.white,
+                        fontWeight: 700,
+                        fontSize: '1.4rem',
+                        lineHeight: 1.1,
+                        fontVariantNumeric: 'tabular-nums'
+                      }}
+                    >
+                      {stat.value}
+                    </Typography>
+                    {stat.unit ? (
+                      <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.75rem', fontWeight: 500 }}>
+                        {stat.unit}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                  {/* Trend sparkline — only on the "Avg Predicted" stat,
+                      and only when we have at least 2 months of data. The
+                      tooltip surfaces the underlying month-by-month
+                      values so a hovering user can read the actual
+                      trajectory rather than just see the curve. */}
+                  {stat.trend && Array.isArray(avgYieldTrend) && avgYieldTrend.length >= 2 ? (
+                    <Tooltip
+                      arrow
+                      placement="top"
+                      title={
+                        <Box sx={{ p: 0.25 }}>
+                          <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, mb: 0.25 }}>
+                            Avg predicted yield · last {avgYieldTrend.length} mo
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.7rem', opacity: 0.85 }}>
+                            {avgYieldTrend.map((v) => v.toFixed(1)).join(' → ')} bu/ac
+                          </Typography>
+                        </Box>
+                      }
+                    >
+                      <Box sx={{ display: 'inline-flex', cursor: 'help' }}>
+                        <Sparkline
+                          data={avgYieldTrend}
+                          color={alpha(theme.palette.primary.light, 0.9)}
+                        />
+                      </Box>
+                    </Tooltip>
+                  ) : null}
+                </Stack>
+              </Stack>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
+    </Paper>
+  );
+}
+
 export default function Analytics({ preselectedPredictionRunId = null }) {
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
@@ -356,6 +721,13 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [modelTypesByVersionId, setModelTypesByVersionId] = useState({});
+  // Aggregate overview from /fields/overview — drives the new "Model
+  // Performance" macro-view card at the top of the Analytics tab. Carries
+  // `total_field_seasons` (denominator for coverage) and `prediction_stats`
+  // (the totals + min/avg/max predicted yield). Failure is silent — the
+  // card just won't render if the fetch errors, since it's secondary to
+  // the table below.
+  const [overview, setOverview] = useState(null);
   const nutrientBarColors = [theme.palette.primary.light, theme.palette.primary.main, theme.palette.primary.dark];
   const yieldBarColors = [theme.palette.warning.main, theme.palette.error.main, theme.palette.info.main, theme.palette.secondary.main];
 
@@ -385,6 +757,28 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
 
     loadPredictionRuns();
 
+    return () => controller.abort();
+  }, []);
+
+  // Pull the aggregate overview that powers the Model Performance card at
+  // the top of the tab. Same endpoint the Overview tab uses; we just need
+  // total_field_seasons + prediction_stats.
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadOverview = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/fields/overview`, { signal: controller.signal });
+        if (!response.ok) return;
+        const payload = await response.json();
+        setOverview(payload);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          // Silent — Model Performance card just won't render. The table
+          // below it is the primary working surface either way.
+        }
+      }
+    };
+    loadOverview();
     return () => controller.abort();
   }, []);
 
@@ -421,22 +815,157 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
     setAnalyzedPrediction(selectedPrediction);
   };
 
+  // Sub-navigation: the Analytics tab is split into two task-shaped views
+  // selected via a ToggleButtonGroup at the top.
+  //   'predictions' — Saved Predictions table + analyzed-prediction drawer
+  //                   (the action-oriented working surface)
+  //   'model-data'  — Model Performance card + Field Records table
+  //                   (the reference-oriented context surface)
+  // Default to 'predictions' since that's the primary work users come here
+  // for; the Model & Data view is consulted occasionally.
+  const [analyticsView, setAnalyticsView] = useState('predictions');
+
+  const handleViewChange = (_, newView) => {
+    if (!newView) return; // ToggleButtonGroup fires null when active is re-clicked; ignore.
+    setAnalyticsView(newView);
+    // Switching away from Predictions auto-closes the analysis drawer so
+    // it doesn't linger over a view it doesn't belong on.
+    if (newView !== 'predictions') {
+      setAnalyzedPrediction(null);
+    }
+  };
+
+  // "View runs history" — clicked from the Model Performance card on the
+  // Model & Data view. Switches to the Predictions view first (where the
+  // Saved Predictions table actually lives) and then scrolls to it. The
+  // setTimeout defers the scroll until React has had a chance to render
+  // the Predictions view; without that, getElementById finds nothing
+  // because the table isn't mounted yet.
+  const handleViewRunsHistory = () => {
+    setAnalyticsView('predictions');
+    setTimeout(() => {
+      const el = document.getElementById('saved-predictions-table');
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 60);
+  };
+
+  // Derive last-run timestamp + month-over-month avg-yield trend from the
+  // already-fetched predictionRuns. Both feed the Model Performance card:
+  // `lastRunAt` becomes the "Last run · 2 days ago" stamp in the header,
+  // `avgYieldTrend` becomes the sparkline beside the Avg Predicted stat.
+  // We cap the trend at the last 6 months so the sparkline stays readable
+  // at its tiny 84×24 footprint.
+  const predictionTimeline = useMemo(() => {
+    if (!Array.isArray(predictionRuns) || predictionRuns.length === 0) return null;
+    const valid = predictionRuns.filter(
+      (r) => r?.createdAt && Number.isFinite(Number(r?.predictedYield))
+    );
+    if (valid.length === 0) return null;
+    const sorted = [...valid].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    const lastRunAt = sorted[sorted.length - 1].createdAt;
+
+    // Group by year-month, average predicted yield per month.
+    const byMonth = new Map();
+    for (const run of sorted) {
+      const d = new Date(run.createdAt);
+      if (Number.isNaN(d.getTime())) continue;
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+      const entry = byMonth.get(key) || { sum: 0, count: 0 };
+      entry.sum += Number(run.predictedYield);
+      entry.count += 1;
+      byMonth.set(key, entry);
+    }
+    // Map iteration order is insertion order; since we sorted by date
+    // first, the months come out chronologically without re-sorting.
+    const monthlyAvgs = Array.from(byMonth.values()).map((e) => e.sum / e.count);
+    const trend = monthlyAvgs.slice(-6);
+    return { lastRunAt, avgYieldTrend: trend };
+  }, [predictionRuns]);
+
   return (
     <MainCard title="Prediction Analytics">
       <Stack spacing={2.5}>
-        <Typography variant="body1" color="text.primary">
-          Select a saved prediction from the table, then run analysis using the exact values used for that prediction.
-        </Typography>
+        {/* Sub-navigation: pill-style segmented control splitting this tab
+            into the action-oriented Predictions view and the
+            reference-oriented Model & Data view. Wider rectangle than the
+            other pills on the page (no whitespace-nowrap) so the labels
+            read clearly; primary-blue tonal family matches the rest of
+            the Crop Studio surfaces. */}
+        <Box>
+          <ToggleButtonGroup
+            value={analyticsView}
+            exclusive
+            onChange={handleViewChange}
+            aria-label="Analytics view"
+            sx={{
+              borderRadius: 999,
+              p: 0.4,
+              bgcolor: alpha(theme.palette.primary.main, 0.1),
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.32)}`,
+              gap: 0.5,
+              // Stretch and re-style each ToggleButton so they sit as
+              // soft pills inside the outer rounded container.
+              '& .MuiToggleButton-root': {
+                border: 'none',
+                borderRadius: 999,
+                px: 2.25,
+                py: 0.5,
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.82rem',
+                letterSpacing: '0.01em',
+                color: alpha(theme.palette.common.white, 0.7),
+                transition: 'background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease',
+                '&:hover': {
+                  color: theme.palette.common.white,
+                  bgcolor: alpha(theme.palette.primary.main, 0.18)
+                },
+                '&.Mui-selected': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.4),
+                  color: theme.palette.common.white,
+                  boxShadow: `0 1px 0 ${alpha(theme.palette.primary.main, 0.55)}`,
+                  '&:hover': {
+                    bgcolor: alpha(theme.palette.primary.main, 0.48)
+                  }
+                }
+              }
+            }}
+          >
+            <ToggleButton value="predictions">Predictions</ToggleButton>
+            <ToggleButton value="model-data">Model &amp; Data</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
 
-        {loadError ? <Alert severity="error">{loadError}</Alert> : null}
+        {/* ===================== VIEW A — PREDICTIONS ===================== */}
+        {analyticsView === 'predictions' ? (
+          <>
+            {/* Brief context line above the table — clarifies the user's path
+                through the page (browse the table → select → analyze). */}
+            <Typography variant="body1" color="text.primary">
+              Select a saved prediction from the table below, then run analysis using the exact values used for that prediction.
+            </Typography>
+
+            {loadError ? <Alert severity="error">{loadError}</Alert> : null}
 
         <Paper
+          id="saved-predictions-table"
           variant="outlined"
           sx={{
-            bgcolor: alpha(theme.palette.background.paper, 0.4),
-            borderColor: alpha(theme.palette.primary.main, 0.22),
+            // Match the Deep-Learning-pill / metric-tile palette so the
+            // Saved Predictions card reads as part of the same "primary"
+            // family of surfaces as the Overview cards and the Field
+            // Performance Records table card.
+            bgcolor: alpha(theme.palette.primary.main, 0.18),
+            borderColor: alpha(theme.palette.primary.main, 0.5),
             borderRadius: 2,
-            overflow: 'hidden'
+            overflow: 'hidden',
+            // `scrollMarginTop` gives the smooth-scroll from "View runs
+            // history" some breathing room so the card's header isn't
+            // jammed against the top of the viewport when the link lands.
+            scrollMarginTop: 24,
+            boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
           }}
         >
           <Stack
@@ -711,8 +1240,6 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
           </Stack>
         </Paper>
 
-        <Divider />
-
         {!analyzedPrediction ? (
           <Alert
             severity="success"
@@ -733,6 +1260,82 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
             prediction.
           </Alert>
         ) : (
+          // Analyzed view now lives in a right-anchored Drawer instead of
+          // expanding inline below the table. Two reasons: (1) the
+          // analysis content has grown — chip row + 4 metric cards + 2
+          // chart cards + Top Features + Inputs Applied — and pushing the
+          // table off-screen each time a prediction was analyzed broke the
+          // user's "browse → drill in → back to browse" rhythm; (2) the
+          // Drawer keeps the macro+browse layers visible behind the
+          // micro view, so the page reads as a layered focus rather than
+          // one long scroll. The Drawer's `open` is bound to the truthy
+          // analyzedPrediction; closing the Drawer just clears the state.
+          <Drawer
+            anchor="right"
+            open
+            onClose={() => setAnalyzedPrediction(null)}
+            PaperProps={{
+              sx: {
+                width: { xs: '100%', md: 720, lg: 820 },
+                bgcolor: theme.palette.background.paper,
+                borderLeft: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                backgroundImage: 'none',
+                display: 'flex',
+                flexDirection: 'column'
+              }
+            }}
+          >
+            {/* Drawer header — eyebrow + "Prediction #N" title on the
+                left, X close button on the right. Sticky-feeling because
+                the body below it scrolls. */}
+            <Stack
+              direction="row"
+              sx={{
+                px: 3,
+                py: 2,
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
+                bgcolor: alpha(theme.palette.primary.main, 0.12),
+                flexShrink: 0
+              }}
+            >
+              <Stack spacing={0.25}>
+                <Typography
+                  sx={{
+                    color: alpha(theme.palette.primary.light, 0.85),
+                    fontWeight: 700,
+                    fontSize: '0.7rem',
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  Prediction Analysis
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
+                  Prediction #{analyzedPrediction.predictionRunId}
+                </Typography>
+              </Stack>
+              <IconButton
+                onClick={() => setAnalyzedPrediction(null)}
+                sx={{
+                  color: alpha(theme.palette.common.white, 0.7),
+                  '&:hover': {
+                    color: theme.palette.common.white,
+                    bgcolor: alpha(theme.palette.primary.main, 0.18)
+                  }
+                }}
+                aria-label="Close prediction analysis"
+              >
+                <CloseOutlined />
+              </IconButton>
+            </Stack>
+
+            {/* Scrollable body — `flex: 1` lets it consume remaining
+                drawer height; `overflowY: auto` confines the scroll so
+                the header stays pinned while the analysis content
+                scrolls underneath. */}
+            <Box sx={{ p: 3, overflowY: 'auto', flex: 1 }}>
           <Stack spacing={2.5}>
             {(() => {
               // Resolve the friendly model name from the looked-up model_type, falling
@@ -1097,6 +1700,33 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               </Stack>
             </Paper>
           </Stack>
+            </Box>
+          </Drawer>
+        )}
+          </>
+        ) : (
+          /* ===================== VIEW B — MODEL & DATA =====================
+             Model Performance macro card on top (the model's track record),
+             followed by the Field Performance Records table (with its
+             "Why is predicting yields important?" banner inside). This is
+             the reference view — context the user reads occasionally
+             rather than acts on every visit. */
+          <>
+            <ModelPerformanceCard
+              overview={overview}
+              lastRunAt={predictionTimeline?.lastRunAt}
+              avgYieldTrend={predictionTimeline?.avgYieldTrend}
+              onViewRunsHistory={handleViewRunsHistory}
+            />
+
+            {/* Field-level records table — chevron + row-click affordance
+                hidden because Analytics is read-only context; the Overview
+                tab keeps a chevron-enabled copy for drilling into field
+                detail. The "Why predict yields on harvests?" explainer
+                banner is rendered inside FieldTable, so it lands here
+                automatically. */}
+            <FieldTable showChevron={false} />
+          </>
         )}
       </Stack>
     </MainCard>

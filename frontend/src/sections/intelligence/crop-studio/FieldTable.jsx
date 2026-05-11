@@ -3,14 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CloseOutlined from '@ant-design/icons/CloseOutlined';
 import DownOutlined from '@ant-design/icons/DownOutlined';
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
-import FilterOutlined from '@ant-design/icons/FilterOutlined';
 import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
 import RightOutlined from '@ant-design/icons/RightOutlined';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Collapse from '@mui/material/Collapse';
 import IconButton from '@mui/material/IconButton';
-import LinearProgress from '@mui/material/LinearProgress';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
@@ -235,7 +233,30 @@ function writeStoredModelId(value) {
   }
 }
 
-export default function FieldTable() {
+export default function FieldTable({
+  // Show the per-model toggle pill in the table header (the
+  // CatBoost / Deep Learning selector). The Overview tab now hides
+  // this — there's no per-model swap there.
+  showModelSelector = true,
+  // Include the "Predicted Yield (bu/ac)" column. Hidden on the
+  // Overview tab's simplified table where the observed yield is the
+  // only yield signal of interest.
+  showPredictedYieldColumn = true,
+  // Render the right-edge affordance chevron on each row AND make
+  // rows clickable (opens the FieldDetailDrawer). When false, both
+  // the chevron and the click behaviour disappear — the table reads
+  // as a static reference rather than an interactive list.
+  showChevron = true,
+  // Banner above the table. `undefined` uses the built-in default
+  // ("Why is predicting yields on harvests important?"). Pass `null`
+  // to suppress the banner entirely. Pass a ReactNode to render
+  // custom banner content in the same Paper shell.
+  banner,
+  // Optional DOM id forwarded to the outermost wrapper so callers
+  // can anchor smooth-scroll links to this table (e.g. the min/max
+  // yield tooltip's "field detail view" link).
+  id
+}) {
   const theme = useTheme();
   const accentBlue = alpha(theme.palette.primary.main, 0.45);
   // Scrollbar styling — softer primary tints so the bar visually belongs
@@ -345,9 +366,8 @@ export default function FieldTable() {
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('fieldId');
   const [filters, setFilters] = useState(initialServerFilters);
-  // Drawer + filter-row toggle state.
+  // Drawer state.
   const [selectedFieldSeasonId, setSelectedFieldSeasonId] = useState(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   // Hint banner ("Why predicted yield on rows we already harvested?") starts
   // collapsed so the page is clean on first paint; user can expand it for
   // context and dismiss it when they're done.
@@ -655,7 +675,6 @@ export default function FieldTable() {
 
   const visibleRows = sortedRows;
   const hasActiveFilters = Boolean(filters.crop || filters.variety || filters.season || filters.state || filters.county);
-  const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const downloadLabel = hasActiveFilters ? 'Download Filtered CSV' : 'Download CSV';
 
   // Currently selected model + its palette (color tokens) for the toggle pill.
@@ -672,17 +691,24 @@ export default function FieldTable() {
   }, []);
 
   return (
-    <Stack spacing={2}>
+    <Stack id={id} spacing={2}>
       {loadError ? (
         <Typography variant="body2" color="error.main">
           {loadError}
         </Typography>
       ) : null}
 
-      {/* Why-predict explainer card — matches the Deep-Learning-pill palette
-          used by the rest of the Overview cards (saturated primary surface +
-          half-alpha primary border + soft drop shadow) so it reads as a
-          first-class card rather than an inline hint. Collapsed by default. */}
+      {/* Banner slot above the table. Callers can pass a custom
+          ReactNode via `banner`, pass `null` to suppress entirely, or
+          leave it undefined to fall through to the default "Why
+          predict yields" explainer below. */}
+      {banner === null ? null : banner !== undefined ? (
+        banner
+      ) : (
+      // Why-predict explainer card — matches the Deep-Learning-pill palette
+      // used by the rest of the Overview cards (saturated primary surface +
+      // half-alpha primary border + soft drop shadow) so it reads as a
+      // first-class card rather than an inline hint. Collapsed by default.
       <Paper
         variant="outlined"
         sx={{
@@ -768,22 +794,19 @@ export default function FieldTable() {
           </Box>
         </Collapse>
       </Paper>
+      )}
 
       <Paper
         variant="outlined"
         sx={{
-          // Mirrors the Analytics tab's "Saved Predictions" Paper exactly.
-          // The previous primary-blue surface (alpha primary 0.18) sat
-          // brighter than the head cells' `color-mix(8% primary, paper)`
-          // surface, and that visual mismatch read as "rows bleeding
-          // through the sticky header" during scroll. Switching to the
-          // same dark-paper-on-primary-border combination Analytics uses
-          // unifies the wrapper with the head bg so the sticky header
-          // appears as one continuous opaque surface.
-          bgcolor: alpha(theme.palette.background.paper, 0.4),
-          borderColor: alpha(theme.palette.primary.main, 0.22),
+          // Match the Deep-Learning-pill / metric-tile palette so the table
+          // card reads as part of the same "primary" family of surfaces
+          // (Overview metric tiles, Coverage card, Why Predict banner).
+          bgcolor: alpha(theme.palette.primary.main, 0.18),
+          borderColor: alpha(theme.palette.primary.main, 0.5),
           borderRadius: 2,
-          overflow: 'hidden'
+          overflow: 'hidden',
+          boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
         }}
       >
         <Stack
@@ -802,7 +825,7 @@ export default function FieldTable() {
             <Typography variant="subtitle1" sx={{ fontWeight: 700, color: theme.palette.text.primary, letterSpacing: '0.01em' }}>
               Field Performance Records
             </Typography>
-            {availableModels.length > 0 ? (
+            {showModelSelector && availableModels.length > 0 ? (
               <Button
                 ref={modelButtonRef}
                 size="small"
@@ -833,63 +856,26 @@ export default function FieldTable() {
                 {modelLabel}
               </Button>
             ) : null}
-            {/* Filters toggle — lives inside the card header next to the model selector. */}
-            <Button
-              size="small"
-              startIcon={<FilterOutlined style={{ fontSize: '0.7rem' }} />}
-              endIcon={
-                <Box
-                  component="span"
-                  sx={{
-                    display: 'inline-flex',
-                    transition: 'transform 0.2s ease',
-                    transform: filtersOpen ? 'rotate(-180deg)' : 'rotate(0deg)',
-                    fontSize: '0.7rem'
-                  }}
-                >
-                  <DownOutlined />
-                </Box>
-              }
-              onClick={() => setFiltersOpen((prev) => !prev)}
-              sx={{
-                textTransform: 'none',
-                fontWeight: 600,
-                fontSize: '0.72rem',
-                letterSpacing: '0.02em',
-                minHeight: 0,
-                whiteSpace: 'nowrap',
-                py: 0.3,
-                px: 1.25,
-                borderRadius: 999,
-                color: alpha(theme.palette.primary.light, 0.95),
-                bgcolor: alpha(theme.palette.primary.main, 0.1),
-                border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-                transition: 'background 0.18s ease, border-color 0.18s ease, color 0.18s ease',
-                '&:hover': {
-                  color: theme.palette.common.white,
-                  bgcolor: alpha(theme.palette.primary.main, 0.22),
-                  borderColor: theme.palette.primary.main
-                }
-              }}
-            >
-              Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-            </Button>
           </Stack>
           <Typography variant="body2" sx={{ color: alpha(theme.palette.primary.light, 0.85), fontWeight: 500 }}>
             {totalRows.toLocaleString()} record{totalRows === 1 ? '' : 's'}
           </Typography>
         </Stack>
 
-        <Collapse in={filtersOpen} unmountOnExit>
-          <Box
-            sx={{
-              px: 2.5,
-              py: 2,
-              borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
-              bgcolor: alpha(theme.palette.background.paper, 0.4)
-            }}
-          >
-            <Stack direction="row" sx={{ width: '100%', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Filters live permanently above the table now (no Collapse
+            toggle). The previous toggleable filters used to expose a
+            sticky-header bleed-through bug when collapsed; keeping the
+            filters always rendered both simplifies the UX and ensures
+            the head sits cleanly anchored. */}
+        <Box
+          sx={{
+            px: 2.5,
+            py: 2,
+            borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
+            bgcolor: alpha(theme.palette.background.paper, 0.4)
+          }}
+        >
+          <Stack direction="row" sx={{ width: '100%', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
         <TextField
           select
           size="small"
@@ -1019,27 +1005,22 @@ export default function FieldTable() {
         >
           Clear Filters
         </Button>
-            </Stack>
-          </Box>
-        </Collapse>
+          </Stack>
+        </Box>
 
-        {/* Stale-while-revalidate: only show the loading bar on the very first
-            fetch (no rows yet). Subsequent re-fetches (model toggle, filter
-            change, page change) keep the existing rows on screen and update
-            silently when the new response arrives. */}
-        {isLoading && rows.length === 0 ? <LinearProgress /> : null}
+        {/* Pure stale-while-revalidate: no loading bar above the table.
+            Filter / page / model changes keep the previous rows on
+            screen and silently swap them when the new response lands.
+            The empty-body row inside the TableBody (gated on
+            `isLoading && visibleRows.length === 0`) handles the very
+            first paint and the empty-result cases, so the bar above
+            was redundant — and worse, it flashed whenever a filter
+            change followed a zero-result state (rows.length === 0
+            + isLoading=true momentarily satisfied the old condition).
+            Removing it eliminates that flash entirely. */}
 
         <TableContainer
           sx={{
-            // Match the Analytics "Saved Predictions" TableContainer
-            // exactly: only `maxHeight` + scrollbar styling. The previous
-            // explicit `overflowX/Y: auto` were redundant (TableContainer's
-            // default already gives auto-overflow once `maxHeight` is in
-            // play) and were the only structural difference between this
-            // table and Analytics' working sticky-header table — which
-            // suggested they were the source of the head-position
-            // discrepancy that was letting rows show above the header
-            // row during scroll.
             maxHeight: { xs: 420, md: 500 },
             ...tableScrollbarSx
           }}
@@ -1049,29 +1030,7 @@ export default function FieldTable() {
             stickyHeader
             sx={{
               minWidth: 1100,
-              '& .MuiTableCell-root': { textAlign: 'center !important', whiteSpace: 'nowrap' },
-              // The Mantis theme's `MuiTableHead.root` override applies
-              // `borderTop: 1px solid` and `borderBottom: 2px solid` to
-              // the `<thead>` element. With `stickyHeader`, only the head
-              // cells get `position: sticky` — those <thead> borders stay
-              // in normal flow and slide past the sticky cells during
-              // scroll, leaving a 1–3px window where rows peek through
-              // immediately above and below the sticky head. Cancelling
-              // them at the table level lets the sticky cells own the
-              // visual edge.
-              '& .MuiTableHead-root': {
-                borderTop: 'none',
-                borderBottom: 'none',
-                backgroundColor: 'transparent'
-              },
-              // Pin the sticky head cells flush to the very top of the
-              // TableContainer (top: 0 is what MUI sets, but explicitly
-              // re-stating it together with the `borderTop` reset above
-              // ensures there's zero possible gap above the cells where
-              // body rows could be visible during scroll).
-              '& .MuiTableCell-stickyHeader': {
-                top: 0
-              }
+              '& .MuiTableCell-root': { textAlign: 'center !important', whiteSpace: 'nowrap' }
             }}
           >
             <TableHead>
@@ -1117,17 +1076,19 @@ export default function FieldTable() {
                   }
                 }}
               >
-                {columns.map((column) => (
-                  <TableCell key={column.id} sortDirection={orderBy === column.id ? order : false}>
-                    <TableSortLabel
-                      active={orderBy === column.id}
-                      direction={orderBy === column.id ? order : 'asc'}
-                      onClick={() => handleRequestSort(column.id)}
-                    >
-                      {column.label}
-                    </TableSortLabel>
-                  </TableCell>
-                ))}
+                {columns
+                  .filter((column) => showPredictedYieldColumn || column.id !== 'predictedYield')
+                  .map((column) => (
+                    <TableCell key={column.id} sortDirection={orderBy === column.id ? order : false}>
+                      <TableSortLabel
+                        active={orderBy === column.id}
+                        direction={orderBy === column.id ? order : 'asc'}
+                        onClick={() => handleRequestSort(column.id)}
+                      >
+                        {column.label}
+                      </TableSortLabel>
+                    </TableCell>
+                  ))}
               </TableRow>
             </TableHead>
 
@@ -1142,7 +1103,14 @@ export default function FieldTable() {
                   typeof row.confidenceUpper === 'number' &&
                   Number.isFinite(row.confidenceLower) &&
                   Number.isFinite(row.confidenceUpper);
-                const isClickable = row.fieldSeasonId !== null && row.fieldSeasonId !== undefined;
+                // Row click → opens the detail drawer. Gated on both
+                // (a) the row having a real field_season_id (some
+                // legacy rows don't), and (b) the parent allowing the
+                // chevron — when chevron is hidden the row click is
+                // suppressed too, since clickable-without-affordance is
+                // a discoverability footgun.
+                const isClickable =
+                  showChevron && row.fieldSeasonId !== null && row.fieldSeasonId !== undefined;
                 return (
                   <TableRow
                     key={row.rowId}
@@ -1201,26 +1169,28 @@ export default function FieldTable() {
                         <Typography component="span" sx={{ color: subtleText }}>—</Typography>
                       )}
                     </TableCell>
-                    <TableCell>
-                      {hasPredictedYield ? (
-                        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', justifyContent: 'center' }}>
-                          <Stack direction="row" spacing={0.5} sx={{ alignItems: 'baseline' }}>
-                            <Typography
-                              component="span"
-                              sx={{ color: alpha(theme.palette.primary.light, 0.95), fontWeight: 700, fontSize: '0.9rem' }}
-                            >
-                              {formatMetric(row.predictedYield)}
-                            </Typography>
-                            <Typography component="span" sx={{ color: subtleText, fontSize: '0.72rem' }}>
-                              bu/ac
-                            </Typography>
+                    {showPredictedYieldColumn ? (
+                      <TableCell>
+                        {hasPredictedYield ? (
+                          <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', justifyContent: 'center' }}>
+                            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'baseline' }}>
+                              <Typography
+                                component="span"
+                                sx={{ color: alpha(theme.palette.primary.light, 0.95), fontWeight: 700, fontSize: '0.9rem' }}
+                              >
+                                {formatMetric(row.predictedYield)}
+                              </Typography>
+                              <Typography component="span" sx={{ color: subtleText, fontSize: '0.72rem' }}>
+                                bu/ac
+                              </Typography>
+                            </Stack>
+                            <YieldDeltaChip predicted={row.predictedYield} observed={row.observedYield} />
                           </Stack>
-                          <YieldDeltaChip predicted={row.predictedYield} observed={row.observedYield} />
-                        </Stack>
-                      ) : (
-                        <Typography component="span" sx={{ color: subtleText }}>—</Typography>
-                      )}
-                    </TableCell>
+                        ) : (
+                          <Typography component="span" sx={{ color: subtleText }}>—</Typography>
+                        )}
+                      </TableCell>
+                    ) : null}
                     <TableCell>
                       <Stack component="span" direction="row" spacing={0.5} sx={{ alignItems: 'baseline', justifyContent: 'center' }}>
                         <Typography

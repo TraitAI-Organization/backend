@@ -9,6 +9,7 @@ import Step from '@mui/material/Step';
 import StepLabel from '@mui/material/StepLabel';
 import Stepper from '@mui/material/Stepper';
 import Typography from '@mui/material/Typography';
+import { alpha, useTheme } from '@mui/material/styles';
 
 import MainCard from 'components/MainCard';
 import ModelSelectionStep from 'sections/intelligence/crop-studio/prediction/ModelSelectionStep';
@@ -61,6 +62,7 @@ function getSelectionErrors(values) {
 }
 
 export default function PredictionWizard({ onOpenPredictionsTable }) {
+  const theme = useTheme();
   const [activeStep, setActiveStep] = useState(0);
 
   const [models, setModels] = useState([]);
@@ -451,16 +453,103 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
         <Divider />
 
         <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <Button onClick={handleBack} disabled={activeStep === 0 || isSettingProduction || isSubmittingPrediction}>
+          {/* Back — outlined pill in the project's primary-blue family.
+              Matches the pattern used by the Filters / Clear Filters
+              buttons in FieldTable: alpha-primary bg + half-alpha
+              primary border + primary.light text. Hover saturates the
+              bg + brightens the border. Disabled state stays in the
+              blue family (instead of MUI's neutral grey) so the wizard
+              footer reads as cohesive when the button is inactive. */}
+          <Button
+            onClick={handleBack}
+            disabled={activeStep === 0 || isSettingProduction || isSubmittingPrediction}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              letterSpacing: '0.02em',
+              px: 2.25,
+              py: 0.65,
+              borderRadius: 999,
+              color: alpha(theme.palette.primary.light, 0.95),
+              bgcolor: alpha(theme.palette.primary.main, 0.1),
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+              transition: 'background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease',
+              '&:hover': {
+                color: theme.palette.common.white,
+                bgcolor: alpha(theme.palette.primary.main, 0.22),
+                borderColor: theme.palette.primary.main,
+                boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.18)}`
+              },
+              '&.Mui-disabled': {
+                bgcolor: alpha(theme.palette.primary.main, 0.04),
+                color: alpha(theme.palette.primary.light, 0.35),
+                borderColor: alpha(theme.palette.primary.main, 0.18)
+              }
+            }}
+          >
             Back
           </Button>
 
           {activeStep < 2 ? (
-            <Button variant="contained" onClick={handleContinue} disabled={isPrimaryDisabled}>
+            // Continue (primary action) — solid primary.main fill, white
+            // text, hover lifts toward primary.dark with a soft glow.
+            // Mirrors the "Analyze Prediction" CTA in Analytics for
+            // visual continuity across the product.
+            <Button
+              variant="contained"
+              onClick={handleContinue}
+              disabled={isPrimaryDisabled}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                fontSize: '0.9rem',
+                letterSpacing: '0.02em',
+                px: 2.75,
+                py: 0.75,
+                borderRadius: 999,
+                bgcolor: theme.palette.primary.main,
+                color: theme.palette.common.white,
+                boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.45)}`,
+                transition: 'background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease',
+                '&:hover': {
+                  bgcolor: theme.palette.primary.dark,
+                  boxShadow: `0 6px 16px ${alpha(theme.palette.primary.main, 0.55)}, 0 0 0 3px ${alpha(theme.palette.primary.main, 0.22)}`
+                },
+                '&.Mui-disabled': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.32),
+                  color: alpha(theme.palette.common.white, 0.6),
+                  boxShadow: 'none'
+                }
+              }}
+            >
               {primaryButtonLabel}
             </Button>
           ) : (
-            <Button variant="contained" onClick={handleResetWizard}>
+            // Start New Prediction (terminal-state primary) — same
+            // visual treatment as Continue so the wizard's CTA slot
+            // stays consistent across all three steps.
+            <Button
+              variant="contained"
+              onClick={handleResetWizard}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                fontSize: '0.9rem',
+                letterSpacing: '0.02em',
+                px: 2.75,
+                py: 0.75,
+                borderRadius: 999,
+                bgcolor: theme.palette.primary.main,
+                color: theme.palette.common.white,
+                boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.45)}`,
+                transition: 'background 0.18s ease, box-shadow 0.18s ease',
+                '&:hover': {
+                  bgcolor: theme.palette.primary.dark,
+                  boxShadow: `0 6px 16px ${alpha(theme.palette.primary.main, 0.55)}, 0 0 0 3px ${alpha(theme.palette.primary.main, 0.22)}`
+                }
+              }}
+            >
               Start New Prediction
             </Button>
           )}

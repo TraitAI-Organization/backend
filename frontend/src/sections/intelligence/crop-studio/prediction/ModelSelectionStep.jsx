@@ -1,27 +1,30 @@
+import { useState } from 'react';
+
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
+import Collapse from '@mui/material/Collapse';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
+import IconButton from '@mui/material/IconButton';
 import Paper from '@mui/material/Paper';
 import Radio from '@mui/material/Radio';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
+import CloseOutlined from '@ant-design/icons/CloseOutlined';
+import DownOutlined from '@ant-design/icons/DownOutlined';
 import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
 
-function formatTrainingDate(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString();
-}
-
 // Maps a raw model_type string from the API to a human-readable title,
-// long-form description, and the relative interpretability / speed
-// indicators used by the metric bars on the model card. Anything we don't
-// recognize falls back to a neutral profile so the UI still renders.
+// long-form description, and the relative interpretability indicator
+// shown on the model card. Speed used to live here too but was dropped
+// — the metric bars now surface real API-sourced data (validation RMSE
+// and training-date freshness) instead of two hardcoded heuristics.
+// Interpretability stays as a hand-curated label because it's
+// genuinely useful for users picking between models and the API
+// doesn't expose anything equivalent.
 function getModelMeta(modelType) {
   const key = String(modelType || '').toLowerCase();
 
@@ -30,8 +33,7 @@ function getModelMeta(modelType) {
       title: 'Deep Learning',
       description:
         'A flexible neural network that captures complex, non-linear relationships across many numeric inputs. Performs best when combining spectral, weather, and soil features. Less transparent but highly adaptive to varied field conditions.',
-      interpretability: { label: 'Low', percent: 25, tone: 'warning' },
-      speed: { label: 'Fast', percent: 78, tone: 'success' }
+      interpretability: { label: 'Low', percent: 25, tone: 'warning' }
     };
   }
 
@@ -40,8 +42,7 @@ function getModelMeta(modelType) {
       title: 'CatBoost',
       description:
         'A gradient boosting model well-suited for categorical and mixed-type inputs like field records and management data. More interpretable and stable — a strong choice for understanding which factors are driving your predictions.',
-      interpretability: { label: 'High', percent: 88, tone: 'success' },
-      speed: { label: 'Very Fast', percent: 96, tone: 'success' }
+      interpretability: { label: 'High', percent: 88, tone: 'success' }
     };
   }
 
@@ -49,16 +50,14 @@ function getModelMeta(modelType) {
     return {
       title: 'Random Forest',
       description: 'An ensemble of decision trees that balances accuracy with interpretability. Robust to noisy inputs and missing data.',
-      interpretability: { label: 'Medium', percent: 60, tone: 'info' },
-      speed: { label: 'Fast', percent: 75, tone: 'success' }
+      interpretability: { label: 'Medium', percent: 60, tone: 'info' }
     };
   }
 
   return {
     title: modelType || 'Custom Model',
     description: 'Custom registered model. Run a prediction to see how it performs on your inputs.',
-    interpretability: { label: 'Unknown', percent: 50, tone: 'default' },
-    speed: { label: 'Unknown', percent: 50, tone: 'default' }
+    interpretability: { label: 'Unknown', percent: 50, tone: 'default' }
   };
 }
 
@@ -67,6 +66,61 @@ function toneToColor(tone, theme) {
   if (tone === 'success') return theme.palette.success.main;
   if (tone === 'info') return theme.palette.info.main;
   return alpha(theme.palette.common.white, 0.45);
+}
+
+// Validation-RMSE display for the first metric bar. Reads the real
+// `performance_metrics.val_rmse` from the API; returns an `available:
+// false` payload when the model's metrics object doesn't carry an
+// RMSE (e.g. the Deep Learning model exposes `final_loss` instead).
+// The bar fill is mapped against a fixed 30-bu/ac reference span:
+// 0 bu/ac RMSE = 100% bar (perfect), 30+ bu/ac RMSE = 0% bar (poor).
+// That reference is calibrated to the observed yield distribution
+// (~15–187 bu/ac), so an RMSE of 10 lands at ~67% — visually "good
+// but not perfect," which matches how a domain expert would read it.
+// Tones step in three bands: <10 → success, <20 → info, ≥20 → warning.
+function getValRmseDisplay(model) {
+  const rmseRaw = model?.performance_metrics?.val_rmse;
+  const rmse = typeof rmseRaw === 'number' && Number.isFinite(rmseRaw) ? rmseRaw : null;
+  if (rmse === null) {
+    return { available: false, label: '—', percent: 0, tone: 'default' };
+  }
+  const RMSE_REFERENCE_SPAN = 30;
+  const percent = Math.max(0, Math.min(100, (1 - rmse / RMSE_REFERENCE_SPAN) * 100));
+  const tone = rmse < 10 ? 'success' : rmse < 20 ? 'info' : 'warning';
+  return {
+    available: true,
+    label: `${rmse.toFixed(1)} bu/ac`,
+    percent,
+    tone
+  };
+}
+
+// Training-date freshness for the third metric bar. Reads the real
+// `training_date` from the API and computes "how recent" relative to
+// a 1-year horizon: same-day = 100% bar, 1 year old = 0% bar. Tone
+// steps reward fresh models (≤90 days → success, ≤180 → info, older
+// → warning), nudging users toward retraining when the bar is dim.
+// Date label is locale-formatted (e.g., "Apr 6, 2026") so it reads
+// the same across all the dates on this page.
+function getFreshnessDisplay(model) {
+  const dateRaw = model?.training_date;
+  if (!dateRaw) {
+    return { available: false, label: '—', percent: 0, tone: 'default' };
+  }
+  const trained = new Date(dateRaw);
+  if (Number.isNaN(trained.getTime())) {
+    return { available: false, label: '—', percent: 0, tone: 'default' };
+  }
+  const FRESHNESS_HORIZON_DAYS = 365;
+  const daysAgo = Math.max(0, (Date.now() - trained.getTime()) / 86_400_000);
+  const percent = Math.max(0, Math.min(100, (1 - daysAgo / FRESHNESS_HORIZON_DAYS) * 100));
+  const tone = daysAgo <= 90 ? 'success' : daysAgo <= 180 ? 'info' : 'warning';
+  return {
+    available: true,
+    label: trained.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+    percent,
+    tone
+  };
 }
 
 function MetricBar({ label, percent, valueLabel, color }) {
@@ -122,14 +176,24 @@ function InfoField({ label, children }) {
 
 export default function ModelSelectionStep({ models, selectedModelId, onSelect, isLoading, loadError, actionError }) {
   const theme = useTheme();
+  // Hint banner is collapsible — closed by default so the wizard's
+  // primary content (the model cards) leads the page on first paint.
+  // Users who want the "Which model should I pick?" guidance can pop
+  // it open with a single click on the header.
+  const [hintOpen, setHintOpen] = useState(false);
 
-  // Same color tokens used by the Overview metric cards and the styled table
-  // Papers in Analytics / Field Records, so this step shares one surface theme.
-  const cardSurface = `color-mix(in srgb, ${theme.palette.primary.main} 8%, ${theme.palette.background.paper})`;
-  const cardDefaultBorder = alpha(theme.palette.primary.main, 0.22);
-  const cardHoverBorder = alpha(theme.palette.primary.main, 0.5);
+  // Surface tokens matched to the Overview tab's metric-tile family —
+  // bright primary-tinted bg with a half-alpha primary border + soft
+  // drop shadow. Previously used a darker `color-mix(8% primary, paper)`
+  // surface that read as muted navy and felt visually disconnected
+  // from the rest of the page. Aligning to the Overview tile values
+  // makes every primary-blue surface in the app one cohesive family.
+  const cardSurface = alpha(theme.palette.primary.main, 0.18);
+  const cardDefaultBorder = alpha(theme.palette.primary.main, 0.5);
+  const cardHoverBorder = alpha(theme.palette.primary.main, 0.75);
   const cardSelectedBorder = theme.palette.primary.main;
-  const sectionDivider = alpha(theme.palette.primary.main, 0.18);
+  const cardShadow = `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`;
+  const sectionDivider = alpha(theme.palette.primary.main, 0.28);
   const labelMuted = alpha(theme.palette.common.white, 0.65);
   const headingColor = theme.palette.common.white;
 
@@ -145,45 +209,92 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
         </Typography>
       </Stack>
 
-      {/* Hint banner */}
+      {/* Hint banner — collapsible. The clickable header row controls
+          the toggle (cursor:pointer + hover bg highlight); a discrete
+          IconButton on the right doubles as a visual chevron/close
+          affordance for users who don't realize the whole strip is
+          clickable. Same pattern as the OverviewTableBanner so the
+          two read as one component family. */}
       <Paper
         variant="outlined"
         sx={{
           bgcolor: cardSurface,
           borderColor: cardDefaultBorder,
           borderRadius: 2,
-          p: 2,
-          backgroundImage: 'none'
+          backgroundImage: 'none',
+          overflow: 'hidden',
+          boxShadow: cardShadow
         }}
       >
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}>
+        <Stack
+          direction="row"
+          spacing={1.5}
+          sx={{
+            alignItems: 'center',
+            px: 2,
+            py: 1.5,
+            cursor: 'pointer',
+            '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) }
+          }}
+          onClick={() => setHintOpen((prev) => !prev)}
+          role="button"
+          aria-expanded={hintOpen}
+          aria-label="Toggle which-model-to-pick hint"
+        >
           <Box
             sx={{
               color: alpha(theme.palette.primary.light, 0.95),
-              fontSize: '1.1rem',
-              mt: 0.35,
+              fontSize: '1.05rem',
               display: 'flex',
               alignItems: 'center'
             }}
           >
             <InfoCircleOutlined />
           </Box>
-          <Typography sx={{ color: alpha(theme.palette.common.white, 0.78), fontSize: '0.9rem', lineHeight: 1.6 }}>
-            <Box component="span" sx={{ fontWeight: 700, color: headingColor }}>
-              Which model should I pick?
-            </Box>{' '}
-            <br />
-            Use{' '}
-            <Box component="span" sx={{ fontWeight: 700, color: headingColor }}>
-              Deep Learning
-            </Box>{' '}
-            when your input data has many numeric features or non-linear interactions (e.g., spectral, weather, soil data). Use{' '}
-            <Box component="span" sx={{ fontWeight: 700, color: headingColor }}>
-              CatBoost
-            </Box>{' '}
-            when your inputs include field records or management notes. It's more interpretable and easier to audit.
+          <Typography
+            sx={{
+              flex: 1,
+              fontWeight: 700,
+              color: headingColor,
+              fontSize: '0.92rem',
+              letterSpacing: '0.01em'
+            }}
+          >
+            Which model should I pick?
           </Typography>
+          <IconButton
+            size="small"
+            aria-label={hintOpen ? 'Close hint' : 'Open hint'}
+            onClick={(event) => {
+              event.stopPropagation();
+              setHintOpen((prev) => !prev);
+            }}
+            sx={{
+              color: alpha(theme.palette.common.white, 0.7),
+              '&:hover': {
+                color: theme.palette.common.white,
+                bgcolor: alpha(theme.palette.primary.main, 0.18)
+              }
+            }}
+          >
+            {hintOpen ? <CloseOutlined style={{ fontSize: '0.85rem' }} /> : <DownOutlined style={{ fontSize: '0.85rem' }} />}
+          </IconButton>
         </Stack>
+        <Collapse in={hintOpen} unmountOnExit>
+          <Box sx={{ px: 2, pb: 2, pl: 5 }}>
+            <Typography sx={{ color: alpha(theme.palette.common.white, 0.85), fontSize: '0.9rem', lineHeight: 1.6 }}>
+              Use{' '}
+              <Box component="span" sx={{ fontWeight: 700, color: headingColor }}>
+                Deep Learning
+              </Box>{' '}
+              when your input data has many numeric features or non-linear interactions (e.g., spectral, weather, soil data). Use{' '}
+              <Box component="span" sx={{ fontWeight: 700, color: headingColor }}>
+                CatBoost
+              </Box>{' '}
+              when your inputs include field records or management notes. It's more interpretable and easier to audit.
+            </Typography>
+          </Box>
+        </Collapse>
       </Paper>
 
       {loadError ? <Alert severity="error">{loadError}</Alert> : null}
@@ -204,14 +315,21 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
 
       <Stack spacing={2}>
         {models.map((model) => {
-          const metrics = model.performance_metrics || {};
-          const r2 = typeof metrics.r2 === 'number' ? metrics.r2 : null;
           const isSelected = selectedModelId === model.model_version_id;
           const meta = getModelMeta(model.model_type);
           const interpretabilityColor = toneToColor(meta.interpretability.tone, theme);
-          const speedColor = toneToColor(meta.speed.tone, theme);
-          const accuracyPercent = r2 !== null ? Math.round(r2 * 100) : 0;
-          const accuracyLabel = r2 !== null ? r2.toFixed(2) : '—';
+          // Real API-sourced metrics replacing the previous broken R²
+          // and hardcoded Speed. RMSE comes from
+          // `performance_metrics.val_rmse`; freshness comes from
+          // `training_date`. Both helpers gracefully degrade to an
+          // `available: false` payload when the model doesn't expose
+          // the source field (the DL model returns `final_loss`
+          // instead of RMSE), in which case the corresponding metric
+          // bar renders an empty 0% fill with a "—" label.
+          const rmse = getValRmseDisplay(model);
+          const freshness = getFreshnessDisplay(model);
+          const rmseColor = toneToColor(rmse.tone, theme);
+          const freshnessColor = toneToColor(freshness.tone, theme);
 
           return (
             <Paper
@@ -226,9 +344,11 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                 borderColor: isSelected ? cardSelectedBorder : cardDefaultBorder,
                 borderWidth: isSelected ? 2 : 1,
                 backgroundImage: 'none',
-                transition: 'border-color 180ms ease',
+                boxShadow: cardShadow,
+                transition: 'border-color 180ms ease, box-shadow 180ms ease',
                 '&:hover': {
-                  borderColor: isSelected ? cardSelectedBorder : cardHoverBorder
+                  borderColor: isSelected ? cardSelectedBorder : cardHoverBorder,
+                  boxShadow: `0 6px 20px ${alpha(theme.palette.common.black, 0.4)}`
                 }
               }}
             >
@@ -238,7 +358,18 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                     checked={isSelected}
                     onChange={() => onSelect(model.model_version_id)}
                     onClick={(event) => event.stopPropagation()}
-                    sx={{ p: 0.5, mt: -0.35 }}
+                    // Theme the radio so it sits in the primary-blue
+                    // family rather than rendering as MUI's default
+                    // neutral gray. Idle state is faded primary.light;
+                    // checked state is solid primary.main, matching the
+                    // selected card's border color.
+                    sx={{
+                      p: 0.5,
+                      mt: -0.35,
+                      color: alpha(theme.palette.primary.light, 0.55),
+                      '&.Mui-checked': { color: theme.palette.primary.main },
+                      '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.12) }
+                    }}
                   />
                   <Stack spacing={0.85} sx={{ flex: 1 }}>
                     <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
@@ -273,11 +404,31 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                   <Grid container spacing={3}>
                     <Grid size={{ xs: 12, md: 4 }}>
                       <MetricBar
-                        label="Accuracy (R²)"
-                        percent={accuracyPercent}
-                        valueLabel={accuracyLabel}
-                        color={theme.palette.info.main}
+                        label="Validation RMSE"
+                        percent={rmse.percent}
+                        valueLabel={rmse.label}
+                        color={rmseColor}
                       />
+                      {/* Disclaimer when the model doesn't expose an
+                          RMSE (e.g., the Deep Learning model returns
+                          `final_loss` instead). Without this, the bar
+                          would render as a flat 0% which a casual
+                          reader could mistake for "this model is bad."
+                          The italic muted note makes it clear the
+                          metric is simply absent for this model. */}
+                      {!rmse.available ? (
+                        <Typography
+                          sx={{
+                            mt: 0.5,
+                            color: alpha(theme.palette.common.white, 0.5),
+                            fontSize: '0.72rem',
+                            fontStyle: 'italic',
+                            lineHeight: 1.4
+                          }}
+                        >
+                          Not reported for this model
+                        </Typography>
+                      ) : null}
                     </Grid>
                     <Grid size={{ xs: 12, md: 4 }}>
                       <MetricBar
@@ -288,7 +439,12 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                       />
                     </Grid>
                     <Grid size={{ xs: 12, md: 4 }}>
-                      <MetricBar label="Speed" percent={meta.speed.percent} valueLabel={meta.speed.label} color={speedColor} />
+                      <MetricBar
+                        label="Last Trained"
+                        percent={freshness.percent}
+                        valueLabel={freshness.label}
+                        color={freshnessColor}
+                      />
                     </Grid>
                   </Grid>
                 </Box>
@@ -323,7 +479,46 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                       <InfoField label="Model Version">ID: {model.model_version_id ?? '—'}</InfoField>
                     </Grid>
                     <Grid size={{ xs: 6, md: 3 }}>
-                      <InfoField label="Trained">{formatTrainingDate(model.training_date)}</InfoField>
+                      {/* "Trained" date moved up into the Last Trained
+                          metric bar — surfacing it again here would
+                          duplicate the same value. Replaced with
+                          production status (the real `is_production`
+                          flag), which is the next-most-actionable
+                          metadata when the user is picking a model. */}
+                      <InfoField label="Status">
+                        {model.is_production ? (
+                          <Chip
+                            label="PRODUCTION"
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(theme.palette.success.main, 0.18),
+                              color: theme.palette.success.light,
+                              border: `1px solid ${alpha(theme.palette.success.main, 0.5)}`,
+                              fontWeight: 700,
+                              letterSpacing: '0.08em',
+                              fontSize: '0.62rem',
+                              height: 22,
+                              borderRadius: 999,
+                              '& .MuiChip-label': { px: 1 }
+                            }}
+                          />
+                        ) : (
+                          <Chip
+                            label="Available"
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(theme.palette.primary.main, 0.12),
+                              color: alpha(theme.palette.common.white, 0.75),
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+                              fontWeight: 500,
+                              fontSize: '0.7rem',
+                              height: 22,
+                              borderRadius: 999,
+                              '& .MuiChip-label': { px: 1 }
+                            }}
+                          />
+                        )}
+                      </InfoField>
                     </Grid>
                     <Grid size={{ xs: 6, md: 3 }}>
                       <InfoField label="Crop Support">All crops available</InfoField>

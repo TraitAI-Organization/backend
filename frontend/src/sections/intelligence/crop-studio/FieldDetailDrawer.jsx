@@ -203,9 +203,22 @@ export default function FieldDetailDrawer({
     return () => controller.abort();
   }, [fieldSeasonId, open]);
 
-  const surface = `color-mix(in srgb, ${theme.palette.primary.main} 8%, ${theme.palette.background.paper})`;
-  const subtleBorder = alpha(theme.palette.primary.main, 0.22);
-  const sectionDivider = alpha(theme.palette.primary.main, 0.18);
+  // Surface tokens matched to the Overview tab's metric-tile family —
+  // bright primary-tinted bg, half-alpha primary border, soft drop
+  // shadow. Previously the drawer used a darker `color-mix(8% primary,
+  // paper)` surface that read as muted navy and didn't visually
+  // belong to the same product as the Overview cards behind it.
+  // Aligning here makes every primary-blue surface in the app one
+  // cohesive family — the user opens the drawer and lands in the same
+  // visual language they were already navigating.
+  const surface = alpha(theme.palette.primary.main, 0.18);
+  const subtleBorder = alpha(theme.palette.primary.main, 0.5);
+  const sectionDivider = alpha(theme.palette.primary.main, 0.28);
+  const sectionShadow = `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`;
+  // The drawer's outer Paper sits over the page bg; keep it darker so
+  // the bright section cards inside have something to "lift" off of.
+  // Same pattern as the page-bg → MetricTile relationship on Overview.
+  const drawerBg = theme.palette.background.default;
   const subtle = alpha(theme.palette.common.white, 0.55);
 
   const fieldNumber = data?.field?.field_number;
@@ -249,13 +262,19 @@ export default function FieldDetailDrawer({
       PaperProps={{
         sx: {
           width: { xs: '100%', sm: 540 },
-          bgcolor: theme.palette.background.default,
+          bgcolor: drawerBg,
           backgroundImage: 'none',
-          borderLeft: `1px solid ${subtleBorder}`
+          // Stronger primary-tinted left border so the drawer's edge
+          // visually echoes the borders on the bright section cards
+          // inside, tying the whole panel together.
+          borderLeft: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+          boxShadow: `-8px 0 28px ${alpha(theme.palette.common.black, 0.5)}`
         }
       }}
     >
-      {/* Header */}
+      {/* Header — sticky banner over the rest of the drawer, using the
+          same bright primary-tinted surface as the inner section cards
+          so the whole panel reads as one unified surface family. */}
       <Stack
         direction="row"
         sx={{
@@ -263,8 +282,9 @@ export default function FieldDetailDrawer({
           py: 1.75,
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: `1px solid ${sectionDivider}`,
-          bgcolor: surface
+          borderBottom: `1px solid ${subtleBorder}`,
+          bgcolor: surface,
+          backgroundImage: 'none'
         }}
       >
         <Stack spacing={0.25}>
@@ -321,22 +341,36 @@ export default function FieldDetailDrawer({
                   fontWeight: 600
                 }}
               />
+              {/* Variety chip — tinted success.light so it visually
+                  separates from the primary-blue Crop chip and the
+                  amber Season chip. The three hues let the user
+                  pattern-recognize the three metadata categories at a
+                  glance instead of reading the prefix label first.
+                  Choice of success palette: "variety" maps to the
+                  growing/agronomic axis of the record. The "Variety:"
+                  label still prefixes the value so this can't be
+                  mistaken for a yield-quality signal. */}
               <Chip
                 label={`Variety: ${varietyName}`}
                 sx={{
-                  bgcolor: 'transparent',
-                  color: alpha(theme.palette.common.white, 0.85),
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-                  borderRadius: 999
+                  bgcolor: alpha(theme.palette.success.main, 0.22),
+                  color: theme.palette.success.light,
+                  border: `1px solid ${alpha(theme.palette.success.main, 0.55)}`,
+                  borderRadius: 999,
+                  fontWeight: 600
                 }}
               />
+              {/* Season chip — warning palette (amber). Maps to the
+                  temporal/year axis. As with Variety, the explicit
+                  "Season:" prefix makes the meaning unambiguous. */}
               <Chip
                 label={`Season: ${seasonYear}`}
                 sx={{
-                  bgcolor: 'transparent',
-                  color: alpha(theme.palette.common.white, 0.85),
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-                  borderRadius: 999
+                  bgcolor: alpha(theme.palette.warning.main, 0.22),
+                  color: theme.palette.warning.light,
+                  border: `1px solid ${alpha(theme.palette.warning.main, 0.55)}`,
+                  borderRadius: 999,
+                  fontWeight: 600
                 }}
               />
             </Stack>
@@ -350,7 +384,8 @@ export default function FieldDetailDrawer({
                   border: `1px solid ${subtleBorder}`,
                   borderRadius: 2,
                   p: 2,
-                  backgroundImage: 'none'
+                  backgroundImage: 'none',
+                  boxShadow: sectionShadow
                 }}
               >
                 <Grid container spacing={2}>
@@ -383,7 +418,7 @@ export default function FieldDetailDrawer({
             {/* Yield + target */}
             <Stack spacing={1.25}>
               <SectionLabel>Yield</SectionLabel>
-              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2 }}>
+              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2, backgroundImage: 'none', boxShadow: sectionShadow }}>
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 4 }}>
                     <InfoField
@@ -426,7 +461,7 @@ export default function FieldDetailDrawer({
             {/* Nutrient inputs */}
             <Stack spacing={1.25}>
               <SectionLabel>Nutrient Inputs</SectionLabel>
-              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2 }}>
+              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2, backgroundImage: 'none', boxShadow: sectionShadow }}>
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 4 }}>
                     <InfoField
@@ -456,7 +491,7 @@ export default function FieldDetailDrawer({
             {/* Data quality */}
             <Stack spacing={1.25}>
               <SectionLabel>Data Quality</SectionLabel>
-              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2 }}>
+              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2, backgroundImage: 'none', boxShadow: sectionShadow }}>
                 <Stack spacing={1.25}>
                   <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
                     <InfoField
@@ -585,7 +620,7 @@ export default function FieldDetailDrawer({
                   </>
                 ) : null}
               </Stack>
-              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2 }}>
+              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2, backgroundImage: 'none', boxShadow: sectionShadow }}>
                 {predictions.length === 0 ? (
                   <Typography sx={{ color: subtle, fontSize: '0.85rem' }}>
                     No predictions stored for this field-season yet.
@@ -630,7 +665,7 @@ export default function FieldDetailDrawer({
             {/* Management timeline */}
             <Stack spacing={1.25}>
               <SectionLabel>Management Events ({events.length})</SectionLabel>
-              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2 }}>
+              <Box sx={{ bgcolor: surface, border: `1px solid ${subtleBorder}`, borderRadius: 2, p: 2, backgroundImage: 'none', boxShadow: sectionShadow }}>
                 {events.length === 0 ? (
                   <Typography sx={{ color: subtle, fontSize: '0.85rem' }}>
                     No management events recorded for this field-season.
