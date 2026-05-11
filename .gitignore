@@ -131,3 +131,9 @@ dist
 models/genmills_cbmodel_v2/model.cbm
 
 .claude/worktrees/
+
+# Firebase secrets — never commit service-account JSONs or local env files.
+.env.local
+frontend/.env.local
+firebase-service-account*.json
+*-firebase-adminsdk-*.json
