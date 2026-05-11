@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import CloseOutlined from '@ant-design/icons/CloseOutlined';
 import DownOutlined from '@ant-design/icons/DownOutlined';
 import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
+import RightOutlined from '@ant-design/icons/RightOutlined';
 import Collapse from '@mui/material/Collapse';
 
 import { alpha, useTheme } from '@mui/material/styles';
@@ -23,6 +24,7 @@ import Typography from '@mui/material/Typography';
 import MainCard from 'components/MainCard';
 import FieldMapPreview from 'sections/intelligence/crop-studio/FieldMapPreview';
 import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
+import { US_STATES } from 'sections/intelligence/crop-studio/usStatesPaths';
 import { formatCropName } from 'utils/cropName';
 import {
   getDaysToHarvest,
@@ -432,6 +434,65 @@ function SeasonsRow({ seasons }) {
   );
 }
 
+// Compact pill row of state abbreviations for the States tile. Mirrors
+// the SeasonsRow shape (small primary-tinted pills) so the bottom row of
+// metric tiles reads as a visually consistent family. Full names are
+// shortened to USPS 2-letter abbreviations via US_STATES so the row fits
+// comfortably in a 1/4-width tile even when 10+ states are present.
+function StatesRow({ states, tooltipSlotProps }) {
+  const theme = useTheme();
+  const abbrLookup = useMemo(() => {
+    const map = new Map();
+    for (const entry of US_STATES) {
+      if (entry?.name && entry?.abbr) map.set(entry.name.toLowerCase(), entry.abbr);
+    }
+    return map;
+  }, []);
+  if (!Array.isArray(states) || states.length === 0) return null;
+  return (
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        columnGap: 0.75,
+        rowGap: 1.25
+      }}
+    >
+      {states.map((name) => {
+        const abbr = abbrLookup.get(String(name).toLowerCase()) || String(name).slice(0, 2).toUpperCase();
+        return (
+          <Tooltip key={name} arrow placement="top" title={name} slotProps={tooltipSlotProps}>
+            <Box
+              sx={{
+                px: 1.25,
+                py: 0.6,
+                borderRadius: 1.5,
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                letterSpacing: '0.02em',
+                textAlign: 'center',
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+                bgcolor: 'transparent',
+                color: alpha(theme.palette.common.white, 0.78),
+                lineHeight: 1.3,
+                cursor: 'default',
+                transition: 'background 0.18s ease, border-color 0.18s ease, color 0.18s ease',
+                '&:hover': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.18),
+                  borderColor: alpha(theme.palette.primary.main, 0.7),
+                  color: theme.palette.common.white
+                }
+              }}
+            >
+              {abbr}
+            </Box>
+          </Tooltip>
+        );
+      })}
+    </Box>
+  );
+}
+
 // Coverage progress bar for the Fields tile. Shows what % of the
 // dataset's field-seasons have at least one model prediction attached.
 // Color of the fill follows the same coverage-tier palette as the
@@ -743,7 +804,7 @@ function MetricTile({ label, value, unit, helper, info, infoTooltipSlotProps, de
   );
 }
 
-export default function Overview() {
+export default function Overview({ onNavigateToPredict }) {
   const theme = useTheme();
   const [overview, setOverview] = useState({
     total_field_seasons: 0,
@@ -1502,6 +1563,42 @@ export default function Overview() {
                   Track crop performance, model coverage, and yield signals in one view. This dashboard blends observed field outcomes with
                   machine-learning predictions to help prioritize decisions quickly.
                 </Typography>
+                {/* Primary CTA — gives the hero a single, unambiguous action.
+                    Jumps to the Predict tab via the callback passed down from
+                    the page shell. Styled to match the page's primary-tinted
+                    pill family (state picker / model selection chip) so it
+                    reads as the same affordance vocabulary. */}
+                {onNavigateToPredict ? (
+                  <Box>
+                    <Button
+                      onClick={onNavigateToPredict}
+                      endIcon={<RightOutlined style={{ fontSize: '0.7rem' }} />}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        fontSize: '0.85rem',
+                        letterSpacing: '0.01em',
+                        py: 0.85,
+                        px: 2,
+                        borderRadius: 999,
+                        color: theme.palette.common.white,
+                        bgcolor: alpha(theme.palette.primary.main, 0.55),
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.7)}`,
+                        boxShadow: `0 2px 8px ${alpha(theme.palette.primary.main, 0.35)}`,
+                        transition:
+                          'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease',
+                        '&:hover': {
+                          bgcolor: theme.palette.primary.main,
+                          borderColor: theme.palette.primary.main,
+                          boxShadow: `0 4px 14px ${alpha(theme.palette.primary.main, 0.5)}`,
+                          transform: 'translateY(-1px)'
+                        }
+                      }}
+                    >
+                      Run a Prediction
+                    </Button>
+                  </Box>
+                ) : null}
               </Stack>
             </Grid>
             <Grid size={{ xs: 12, md: 5 }}>
@@ -1562,7 +1659,7 @@ export default function Overview() {
               }
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <MetricTile
               label="Fields"
               value={overview.total_fields.toLocaleString()}
@@ -1592,14 +1689,25 @@ export default function Overview() {
               detail={<CoverageBar pct={coveragePct} />}
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          {/* States tile — pairs with Fields to surface geographic
+              breadth: "X fields across Y states." Helper text under
+              the value reinforces the relational framing without
+              duplicating the field count from the Fields tile. */}
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <MetricTile
+              label="States"
+              value={String(dbStates.length)}
+              detail={<StatesRow states={dbStates} tooltipSlotProps={themedTooltipSlotProps} />}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <MetricTile
               label="Seasons"
               value={String(overview.seasons_available.length)}
               detail={<SeasonsRow seasons={overview.seasons_available} />}
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <MetricTile
               label="Crops"
               value={String(overview.crops_available.length)}

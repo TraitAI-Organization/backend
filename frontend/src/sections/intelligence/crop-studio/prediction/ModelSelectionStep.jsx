@@ -11,6 +11,7 @@ import IconButton from '@mui/material/IconButton';
 import Paper from '@mui/material/Paper';
 import Radio from '@mui/material/Radio';
 import Stack from '@mui/material/Stack';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 import CloseOutlined from '@ant-design/icons/CloseOutlined';
@@ -123,13 +124,55 @@ function getFreshnessDisplay(model) {
   };
 }
 
-function MetricBar({ label, percent, valueLabel, color }) {
+function MetricBar({ label, percent, valueLabel, color, info }) {
   const theme = useTheme();
   const safePercent = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0));
   return (
     <Stack spacing={0.85}>
       <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-        <Typography sx={{ color: alpha(theme.palette.common.white, 0.85), fontSize: '0.85rem', fontWeight: 500 }}>{label}</Typography>
+        <Stack direction="row" sx={{ alignItems: 'center', gap: 0.6 }}>
+          <Typography sx={{ color: alpha(theme.palette.common.white, 0.85), fontSize: '0.85rem', fontWeight: 500 }}>{label}</Typography>
+          {info ? (
+            <Tooltip
+              arrow
+              placement="top"
+              title={info}
+              slotProps={{
+                tooltip: {
+                  sx: {
+                    bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                    color: theme.palette.common.white,
+                    border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                    boxShadow: `0 6px 16px ${alpha(theme.palette.common.black, 0.45)}`,
+                    p: 1.1,
+                    maxWidth: 280,
+                    borderRadius: 1,
+                    fontSize: '0.75rem',
+                    lineHeight: 1.45
+                  }
+                },
+                arrow: { sx: { color: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})` } }
+              }}
+            >
+              <Box
+                component="span"
+                tabIndex={0}
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  cursor: 'help',
+                  color: alpha(theme.palette.common.white, 0.55),
+                  fontSize: '0.78rem',
+                  lineHeight: 1,
+                  transition: 'color 120ms ease',
+                  '&:hover, &:focus-visible': { color: theme.palette.primary.light, outline: 'none' }
+                }}
+              >
+                <InfoCircleOutlined />
+              </Box>
+            </Tooltip>
+          ) : null}
+        </Stack>
         <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.85rem', fontWeight: 500 }}>{valueLabel}</Typography>
       </Stack>
       <Box
@@ -150,6 +193,18 @@ function MetricBar({ label, percent, valueLabel, color }) {
           }}
         />
       </Box>
+    </Stack>
+  );
+}
+
+function MetricValue({ label, valueLabel, color }) {
+  const theme = useTheme();
+  return (
+    <Stack spacing={0.85}>
+      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+        <Typography sx={{ color: alpha(theme.palette.common.white, 0.85), fontSize: '0.85rem', fontWeight: 500 }}>{label}</Typography>
+        <Typography sx={{ color: color || alpha(theme.palette.common.white, 0.85), fontSize: '0.85rem', fontWeight: 600 }}>{valueLabel}</Typography>
+      </Stack>
     </Stack>
   );
 }
@@ -408,6 +463,7 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                         percent={rmse.percent}
                         valueLabel={rmse.label}
                         color={rmseColor}
+                        info="Root-mean-square error on the model's validation set, in bushels/acre. It's the average distance between the model's predicted yield and the actual yield on data it didn't see during training — so lower is better. The bar fills more as RMSE approaches 0 (perfect), and empties as it approaches 30 bu/ac (poor)."
                       />
                       {/* Disclaimer when the model doesn't expose an
                           RMSE (e.g., the Deep Learning model returns
@@ -436,12 +492,12 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                         percent={meta.interpretability.percent}
                         valueLabel={meta.interpretability.label}
                         color={interpretabilityColor}
+                        info="How easily a prediction can be traced back to the inputs that drove it. High means the model exposes per-feature importances and per-prediction reasoning (good for understanding why a yield came out the way it did). Low means the model is more of a black box — accurate, but harder to explain."
                       />
                     </Grid>
                     <Grid size={{ xs: 12, md: 4 }}>
-                      <MetricBar
+                      <MetricValue
                         label="Last Trained"
-                        percent={freshness.percent}
                         valueLabel={freshness.label}
                         color={freshnessColor}
                       />

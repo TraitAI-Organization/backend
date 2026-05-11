@@ -29,8 +29,10 @@ export default function CropStudioDefault() {
     setTabValue(analyticsTabIndex);
   };
 
+  const predictTabIndex = 1;
+
   const tabs = [
-    { label: 'Overview', component: <Overview /> },
+    { label: 'Overview', component: <Overview onNavigateToPredict={() => setTabValue(predictTabIndex)} /> },
     // { label: 'Map View', component: <MapView /> },
     { label: 'Predict', component: <PredictionWizard onOpenPredictionsTable={handleOpenPredictionsTable} /> },
     { label: 'Analytics', component: <Analytics preselectedPredictionRunId={preselectedPredictionRunId} /> }
