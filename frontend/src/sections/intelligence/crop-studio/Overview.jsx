@@ -385,7 +385,6 @@ function SeasonsRow({ seasons }) {
   const theme = useTheme();
   if (!Array.isArray(seasons) || seasons.length === 0) return null;
   const sorted = [...seasons].sort((a, b) => Number(a) - Number(b));
-  const latest = Math.max(...seasons.map(Number).filter(Number.isFinite));
   return (
     <Box
       sx={{
@@ -394,42 +393,31 @@ function SeasonsRow({ seasons }) {
         // 2). Wider/narrower datasets still parse cleanly because each
         // pill is a fixed cell and rows wrap predictably.
         gridTemplateColumns: 'repeat(4, 1fr)',
-        // Asymmetric gaps — tighter horizontal so the row of years
-        // reads as a unit, more generous vertical so the second row
-        // (current year + nearest neighbor) has clear breathing room
-        // and doesn't visually crowd the first row.
         columnGap: 0.75,
         rowGap: 1.25
       }}
     >
-      {sorted.map((year) => {
-        const isLatest = Number(year) === latest;
-        return (
-          <Box
-            key={year}
-            sx={{
-              // Larger pill geometry — chunkier vertical padding and a
-              // slightly larger font than the previous inline-row
-              // version so each year reads as a deliberate unit rather
-              // than a tag.
-              px: 1.25,
-              py: 0.6,
-              borderRadius: 1.5,
-              fontSize: '0.85rem',
-              fontWeight: 700,
-              fontVariantNumeric: 'tabular-nums',
-              letterSpacing: '0.02em',
-              textAlign: 'center',
-              border: `1px solid ${isLatest ? theme.palette.primary.main : alpha(theme.palette.primary.main, 0.35)}`,
-              bgcolor: isLatest ? alpha(theme.palette.primary.main, 0.35) : 'transparent',
-              color: isLatest ? theme.palette.common.white : alpha(theme.palette.common.white, 0.78),
-              lineHeight: 1.3
-            }}
-          >
-            {year}
-          </Box>
-        );
-      })}
+      {sorted.map((year) => (
+        <Box
+          key={year}
+          sx={{
+            px: 1.25,
+            py: 0.6,
+            borderRadius: 1.5,
+            fontSize: '0.85rem',
+            fontWeight: 700,
+            fontVariantNumeric: 'tabular-nums',
+            letterSpacing: '0.02em',
+            textAlign: 'center',
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+            bgcolor: 'transparent',
+            color: alpha(theme.palette.common.white, 0.78),
+            lineHeight: 1.3
+          }}
+        >
+          {year}
+        </Box>
+      ))}
     </Box>
   );
 }
