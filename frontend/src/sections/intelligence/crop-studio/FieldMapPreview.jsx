@@ -240,7 +240,7 @@ export default function FieldMapPreview({
             const tone = data ? getYieldTone(data.avgYield, yieldRange, theme) : theme.palette.primary.light;
             const [cx, cy] = state.centroid;
             const isHovered = hover.name === state.name;
-            const r = isHovered ? 5.5 : 4.5;
+            const r = isHovered ? 6 : 5;
             return (
               <g
                 key={`pin-${state.abbr}`}
@@ -250,7 +250,11 @@ export default function FieldMapPreview({
                 onMouseMove={(e) => handlePointerMove(e, state.name)}
                 onMouseLeave={handlePointerLeave}
               >
-                <circle r={r} fill={tone} stroke={alpha(theme.palette.common.white, 0.9)} strokeWidth={isHovered ? 1.6 : 1} />
+                {/* Dark halo — silhouettes the dot against the
+                    primary-tinted state fill so medium-yield (primary.light)
+                    pins don't disappear into the background. */}
+                <circle r={r + 1.6} fill={alpha(theme.palette.common.black, 0.55)} />
+                <circle r={r} fill={tone} stroke={theme.palette.common.white} strokeWidth={isHovered ? 2 : 1.5} />
               </g>
             );
           })}
@@ -267,7 +271,7 @@ export default function FieldMapPreview({
                 const data = stateAggregates[state.name];
                 const tone = data ? getYieldTone(data.avgYield, yieldRange, theme) : theme.palette.primary.light;
                 const [cx, cy] = state.centroid;
-                const baseR = 4.5;
+                const baseR = 6.6;
                 return (
                   <circle
                     key={`pulse-${state.abbr}`}
