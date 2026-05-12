@@ -507,9 +507,9 @@ export default function FieldTable({
         }
 
         const payload = await response.json();
-        const counties = Array.from(
-          new Set((Array.isArray(payload) ? payload : []).map((item) => item?.county).filter(Boolean))
-        ).sort((a, b) => a.localeCompare(b));
+        const counties = Array.from(new Set((Array.isArray(payload) ? payload : []).map((item) => item?.county).filter(Boolean))).sort(
+          (a, b) => a.localeCompare(b)
+        );
         setCountyOptions(counties);
       } catch (error) {
         if (error.name !== 'AbortError') {
@@ -557,9 +557,7 @@ export default function FieldTable({
   useEffect(() => {
     if (availableModels.length === 0) return;
     const isCurrentValid =
-      selectedModelId !== null &&
-      selectedModelId !== undefined &&
-      availableModels.some((m) => m.model_version_id === selectedModelId);
+      selectedModelId !== null && selectedModelId !== undefined && availableModels.some((m) => m.model_version_id === selectedModelId);
     if (isCurrentValid) return;
     const production = availableModels.find((m) => m.is_production);
     const fallback = production || availableModels[0];
@@ -624,16 +622,16 @@ export default function FieldTable({
 
       const header = columns.map((column) => column.label).join(',');
       const body = exportRows
-      .map((row) =>
-        columns
-          .map((column) => {
-            const rawValue = row[column.id];
-            const cell = rawValue === null || rawValue === undefined ? '' : String(rawValue);
-            return `"${cell.replace(/"/g, '""')}"`;
-          })
-          .join(',')
-      )
-      .join('\n');
+        .map((row) =>
+          columns
+            .map((column) => {
+              const rawValue = row[column.id];
+              const cell = rawValue === null || rawValue === undefined ? '' : String(rawValue);
+              return `"${cell.replace(/"/g, '""')}"`;
+            })
+            .join(',')
+        )
+        .join('\n');
 
       const csv = `${header}\n${body}`;
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -705,95 +703,91 @@ export default function FieldTable({
       {banner === null ? null : banner !== undefined ? (
         banner
       ) : (
-      // Why-predict explainer card — matches the Deep-Learning-pill palette
-      // used by the rest of the Overview cards (saturated primary surface +
-      // half-alpha primary border + soft drop shadow) so it reads as a
-      // first-class card rather than an inline hint. Collapsed by default.
-      <Paper
-        variant="outlined"
-        sx={{
-          bgcolor: alpha(theme.palette.primary.main, 0.18),
-          borderColor: alpha(theme.palette.primary.main, 0.5),
-          borderRadius: 2,
-          backgroundImage: 'none',
-          overflow: 'hidden',
-          boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
-        }}
-      >
-        <Stack
-          direction="row"
-          spacing={1.5}
+        // Why-predict explainer card — matches the Deep-Learning-pill palette
+        // used by the rest of the Overview cards (saturated primary surface +
+        // half-alpha primary border + soft drop shadow) so it reads as a
+        // first-class card rather than an inline hint. Collapsed by default.
+        <Paper
+          variant="outlined"
           sx={{
-            alignItems: 'center',
-            px: 2.25,
-            py: 1.5,
-            cursor: 'pointer',
-            '&:hover': {
-              bgcolor: alpha(theme.palette.primary.main, 0.08)
-            }
+            bgcolor: alpha(theme.palette.primary.main, 0.18),
+            borderColor: alpha(theme.palette.primary.main, 0.5),
+            borderRadius: 2,
+            backgroundImage: 'none',
+            overflow: 'hidden',
+            boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
           }}
-          onClick={() => setBannerOpen((prev) => !prev)}
-          role="button"
-          aria-expanded={bannerOpen}
-          aria-label="Toggle predicted yield explanation"
         >
-          <Box
+          <Stack
+            direction="row"
+            spacing={1.5}
             sx={{
-              color: alpha(theme.palette.primary.light, 0.95),
-              fontSize: '1.05rem',
-              display: 'flex',
-              alignItems: 'center'
-            }}
-          >
-            <InfoCircleOutlined />
-          </Box>
-          <Typography
-            sx={{
-              flex: 1,
-              fontWeight: 700,
-              color: theme.palette.common.white,
-              fontSize: '0.92rem',
-              letterSpacing: '0.01em'
-            }}
-          >
-            Why is predicting yields on harvests important?
-          </Typography>
-          <IconButton
-            size="small"
-            aria-label={bannerOpen ? 'Close explanation' : 'Open explanation'}
-            onClick={(event) => {
-              event.stopPropagation();
-              setBannerOpen((prev) => !prev);
-            }}
-            sx={{
-              color: alpha(theme.palette.common.white, 0.7),
+              alignItems: 'center',
+              px: 2.25,
+              py: 1.5,
+              cursor: 'pointer',
               '&:hover': {
-                color: theme.palette.common.white,
-                bgcolor: alpha(theme.palette.primary.main, 0.18)
+                bgcolor: alpha(theme.palette.primary.main, 0.08)
               }
             }}
+            onClick={() => setBannerOpen((prev) => !prev)}
+            role="button"
+            aria-expanded={bannerOpen}
+            aria-label="Toggle predicted yield explanation"
           >
-            {bannerOpen ? (
-              <CloseOutlined style={{ fontSize: '0.85rem' }} />
-            ) : (
-              <DownOutlined style={{ fontSize: '0.85rem' }} />
-            )}
-          </IconButton>
-        </Stack>
-        <Collapse in={bannerOpen} unmountOnExit>
-          <Box sx={{ px: 2.25, pb: 2, pl: 5.25 }}>
-            <Typography sx={{ color: alpha(theme.palette.common.white, 0.78), fontSize: '0.88rem', lineHeight: 1.6 }}>
-              Comparing{' '}
-              <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
-                predicted vs. observed
-              </Box>{' '}
-              shows how accurate the model is on real outcomes. It surfaces fields where predictions diverge from reality, which usually
-              signals unusual conditions, data quality issues, or model blind spots, and it builds trust in the forecast for in-progress
-              fields that haven't been harvested yet.
+            <Box
+              sx={{
+                color: alpha(theme.palette.primary.light, 0.95),
+                fontSize: '1.05rem',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              <InfoCircleOutlined />
+            </Box>
+            <Typography
+              sx={{
+                flex: 1,
+                fontWeight: 700,
+                color: theme.palette.common.white,
+                fontSize: '0.92rem',
+                letterSpacing: '0.01em'
+              }}
+            >
+              Why is predicting harvest yields important?
             </Typography>
-          </Box>
-        </Collapse>
-      </Paper>
+            <IconButton
+              size="small"
+              aria-label={bannerOpen ? 'Close explanation' : 'Open explanation'}
+              onClick={(event) => {
+                event.stopPropagation();
+                setBannerOpen((prev) => !prev);
+              }}
+              sx={{
+                color: alpha(theme.palette.common.white, 0.7),
+                '&:hover': {
+                  color: theme.palette.common.white,
+                  bgcolor: alpha(theme.palette.primary.main, 0.18)
+                }
+              }}
+            >
+              {bannerOpen ? <CloseOutlined style={{ fontSize: '0.85rem' }} /> : <DownOutlined style={{ fontSize: '0.85rem' }} />}
+            </IconButton>
+          </Stack>
+          <Collapse in={bannerOpen} unmountOnExit>
+            <Box sx={{ px: 2.25, pb: 2, pl: 5.25 }}>
+              <Typography sx={{ color: alpha(theme.palette.common.white, 0.78), fontSize: '0.88rem', lineHeight: 1.6 }}>
+                Comparing{' '}
+                <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
+                  predicted vs. observed
+                </Box>{' '}
+                shows how accurate the model is on real outcomes. It surfaces fields where predictions diverge from reality, which usually
+                signals unusual conditions, data quality issues, or model blind spots, and it builds trust in the forecast for in-progress
+                fields that haven't been harvested yet.
+              </Typography>
+            </Box>
+          </Collapse>
+        </Paper>
       )}
 
       <Paper
@@ -876,135 +870,135 @@ export default function FieldTable({
           }}
         >
           <Stack direction="row" sx={{ width: '100%', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-        <TextField
-          select
-          size="small"
-          value={filters.crop}
-          onChange={(event) => handleFilterChange('crop', event.target.value)}
-          disabled={isFilterOptionsLoading}
-          sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 180 }, flex: '1 1 180px' }]}
-          SelectProps={{
-            displayEmpty: true,
-            renderValue: (selected) => (selected ? formatCropName(selected) : 'All crops'),
-            MenuProps: filterMenuProps
-          }}
-        >
-          <MenuItem value="">All crops</MenuItem>
-          {cropOptions.map((crop) => (
-            <MenuItem key={crop} value={crop}>
-              {formatCropName(crop)}
-            </MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          select
-          size="small"
-          value={filters.variety}
-          onChange={(event) => handleFilterChange('variety', event.target.value)}
-          disabled={!filters.crop || isVarietyLoading}
-          sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 180 }, flex: '1 1 180px' }]}
-          SelectProps={{
-            displayEmpty: true,
-            renderValue: (selected) => selected || 'All varieties',
-            MenuProps: filterMenuProps
-          }}
-        >
-          <MenuItem value="">All varieties</MenuItem>
-          {varietyOptions.map((variety) => (
-            <MenuItem key={variety} value={variety}>
-              {variety}
-            </MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          select
-          size="small"
-          value={filters.season}
-          onChange={(event) => handleFilterChange('season', event.target.value)}
-          disabled={isFilterOptionsLoading}
-          sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 140 }, flex: '1 1 140px' }]}
-          SelectProps={{
-            displayEmpty: true,
-            renderValue: (selected) => (selected ? String(selected) : 'All seasons'),
-            MenuProps: filterMenuProps
-          }}
-        >
-          <MenuItem value="">All seasons</MenuItem>
-          {seasonOptions.map((season) => (
-            <MenuItem key={season} value={String(season)}>
-              {season}
-            </MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          select
-          size="small"
-          value={filters.state}
-          onChange={(event) => handleFilterChange('state', event.target.value)}
-          disabled={isFilterOptionsLoading}
-          sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 160 }, flex: '1 1 160px' }]}
-          SelectProps={{
-            displayEmpty: true,
-            renderValue: (selected) => selected || 'All states',
-            MenuProps: filterMenuProps
-          }}
-        >
-          <MenuItem value="">All states</MenuItem>
-          {stateOptions.map((state) => (
-            <MenuItem key={state} value={state}>
-              {state}
-            </MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          select
-          size="small"
-          value={filters.county}
-          onChange={(event) => handleFilterChange('county', event.target.value)}
-          disabled={!filters.state || isCountyLoading}
-          sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 160 }, flex: '1 1 160px' }]}
-          SelectProps={{
-            displayEmpty: true,
-            renderValue: (selected) => selected || 'All counties',
-            MenuProps: filterMenuProps
-          }}
-        >
-          <MenuItem value="">All counties</MenuItem>
-          {countyOptions.map((county) => (
-            <MenuItem key={county} value={county}>
-              {county}
-            </MenuItem>
-          ))}
-        </TextField>
-        <Button
-          variant="outlined"
-          onClick={clearAllFilters}
-          disabled={!hasActiveFilters || isLoading}
-          sx={{
-            borderColor: accentBlue,
-            color: theme.palette.primary.light,
-            bgcolor: alpha(theme.palette.primary.main, 0.08),
-            minWidth: 120,
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-            ml: { lg: 'auto' },
-            // Disabled state stays in the primary-blue family (instead of
-            // MUI's neutral gray) so the toolbar reads as cohesive when
-            // there's nothing to clear.
-            '&.Mui-disabled': {
-              bgcolor: alpha(theme.palette.primary.main, 0.04),
-              color: alpha(theme.palette.primary.light, 0.4),
-              borderColor: alpha(theme.palette.primary.main, 0.18)
-            },
-            '&:hover': {
-              borderColor: theme.palette.primary.main,
-              bgcolor: alpha(theme.palette.primary.main, 0.2),
-              boxShadow: `0 0 0 1px ${alpha(theme.palette.primary.main, 0.45)}`
-            }
-          }}
-        >
-          Clear Filters
-        </Button>
+            <TextField
+              select
+              size="small"
+              value={filters.crop}
+              onChange={(event) => handleFilterChange('crop', event.target.value)}
+              disabled={isFilterOptionsLoading}
+              sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 180 }, flex: '1 1 180px' }]}
+              SelectProps={{
+                displayEmpty: true,
+                renderValue: (selected) => (selected ? formatCropName(selected) : 'All crops'),
+                MenuProps: filterMenuProps
+              }}
+            >
+              <MenuItem value="">All crops</MenuItem>
+              {cropOptions.map((crop) => (
+                <MenuItem key={crop} value={crop}>
+                  {formatCropName(crop)}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              value={filters.variety}
+              onChange={(event) => handleFilterChange('variety', event.target.value)}
+              disabled={!filters.crop || isVarietyLoading}
+              sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 180 }, flex: '1 1 180px' }]}
+              SelectProps={{
+                displayEmpty: true,
+                renderValue: (selected) => selected || 'All varieties',
+                MenuProps: filterMenuProps
+              }}
+            >
+              <MenuItem value="">All varieties</MenuItem>
+              {varietyOptions.map((variety) => (
+                <MenuItem key={variety} value={variety}>
+                  {variety}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              value={filters.season}
+              onChange={(event) => handleFilterChange('season', event.target.value)}
+              disabled={isFilterOptionsLoading}
+              sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 140 }, flex: '1 1 140px' }]}
+              SelectProps={{
+                displayEmpty: true,
+                renderValue: (selected) => (selected ? String(selected) : 'All seasons'),
+                MenuProps: filterMenuProps
+              }}
+            >
+              <MenuItem value="">All seasons</MenuItem>
+              {seasonOptions.map((season) => (
+                <MenuItem key={season} value={String(season)}>
+                  {season}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              value={filters.state}
+              onChange={(event) => handleFilterChange('state', event.target.value)}
+              disabled={isFilterOptionsLoading}
+              sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 160 }, flex: '1 1 160px' }]}
+              SelectProps={{
+                displayEmpty: true,
+                renderValue: (selected) => selected || 'All states',
+                MenuProps: filterMenuProps
+              }}
+            >
+              <MenuItem value="">All states</MenuItem>
+              {stateOptions.map((state) => (
+                <MenuItem key={state} value={state}>
+                  {state}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              value={filters.county}
+              onChange={(event) => handleFilterChange('county', event.target.value)}
+              disabled={!filters.state || isCountyLoading}
+              sx={[filterFieldSx, { minWidth: { xs: '100%', sm: 160 }, flex: '1 1 160px' }]}
+              SelectProps={{
+                displayEmpty: true,
+                renderValue: (selected) => selected || 'All counties',
+                MenuProps: filterMenuProps
+              }}
+            >
+              <MenuItem value="">All counties</MenuItem>
+              {countyOptions.map((county) => (
+                <MenuItem key={county} value={county}>
+                  {county}
+                </MenuItem>
+              ))}
+            </TextField>
+            <Button
+              variant="outlined"
+              onClick={clearAllFilters}
+              disabled={!hasActiveFilters || isLoading}
+              sx={{
+                borderColor: accentBlue,
+                color: theme.palette.primary.light,
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+                minWidth: 120,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                ml: { lg: 'auto' },
+                // Disabled state stays in the primary-blue family (instead of
+                // MUI's neutral gray) so the toolbar reads as cohesive when
+                // there's nothing to clear.
+                '&.Mui-disabled': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.04),
+                  color: alpha(theme.palette.primary.light, 0.4),
+                  borderColor: alpha(theme.palette.primary.main, 0.18)
+                },
+                '&:hover': {
+                  borderColor: theme.palette.primary.main,
+                  bgcolor: alpha(theme.palette.primary.main, 0.2),
+                  boxShadow: `0 0 0 1px ${alpha(theme.palette.primary.main, 0.45)}`
+                }
+              }}
+            >
+              Clear Filters
+            </Button>
           </Stack>
         </Box>
 
@@ -1109,8 +1103,7 @@ export default function FieldTable({
                 // chevron — when chevron is hidden the row click is
                 // suppressed too, since clickable-without-affordance is
                 // a discoverability footgun.
-                const isClickable =
-                  showChevron && row.fieldSeasonId !== null && row.fieldSeasonId !== undefined;
+                const isClickable = showChevron && row.fieldSeasonId !== null && row.fieldSeasonId !== undefined;
                 return (
                   <TableRow
                     key={row.rowId}
@@ -1166,7 +1159,9 @@ export default function FieldTable({
                           </Typography>
                         </Stack>
                       ) : (
-                        <Typography component="span" sx={{ color: subtleText }}>—</Typography>
+                        <Typography component="span" sx={{ color: subtleText }}>
+                          —
+                        </Typography>
                       )}
                     </TableCell>
                     {showPredictedYieldColumn ? (
@@ -1187,7 +1182,9 @@ export default function FieldTable({
                             <YieldDeltaChip predicted={row.predictedYield} observed={row.observedYield} />
                           </Stack>
                         ) : (
-                          <Typography component="span" sx={{ color: subtleText }}>—</Typography>
+                          <Typography component="span" sx={{ color: subtleText }}>
+                            —
+                          </Typography>
                         )}
                       </TableCell>
                     ) : null}
@@ -1356,7 +1353,6 @@ export default function FieldTable({
         rowsPerPageOptions={[25, 50, 100, 250, 500]}
         sx={{ mt: -0.75 }}
       />
-
 
       <FieldDetailDrawer
         fieldSeasonId={selectedFieldSeasonId}

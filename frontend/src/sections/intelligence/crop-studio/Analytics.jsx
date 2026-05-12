@@ -219,9 +219,7 @@ function buildPredictionRunsCsv(rows, modelTypesByVersionId, stateStats) {
       }
     }
     const regionalDelta =
-      Number.isFinite(regional) && regional > 0 && Number.isFinite(predicted)
-        ? ((predicted - regional) / regional) * 100
-        : null;
+      Number.isFinite(regional) && regional > 0 && Number.isFinite(predicted) ? ((predicted - regional) / regional) * 100 : null;
 
     const modelType = modelTypesByVersionId[row.modelVersionId] || row.modelVersionTag || '';
 
@@ -248,9 +246,7 @@ function buildPredictionRunsCsv(rows, modelTypesByVersionId, stateStats) {
       Number.isFinite(lower) ? lower.toFixed(4) : '',
       Number.isFinite(upper) ? upper.toFixed(4) : '',
       Number.isFinite(width) ? width.toFixed(4) : '',
-      Number.isFinite(row.confidenceLevel) && row.confidenceLevel > 0
-        ? (row.confidenceLevel * 100).toFixed(0)
-        : '',
+      Number.isFinite(row.confidenceLevel) && row.confidenceLevel > 0 ? (row.confidenceLevel * 100).toFixed(0) : '',
       Number.isFinite(regional) ? regional.toFixed(4) : '',
       regionalSource,
       Number.isFinite(regionalDelta) ? regionalDelta.toFixed(2) : '',
@@ -448,10 +444,26 @@ function MetricCard({ label, value, unit, helper, helperColor, range, comparison
     comparisonBlock = (
       <Box sx={{ pt: 0.75 }}>
         <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline', mb: 0.5 }}>
-          <Typography sx={{ color: alpha(theme.palette.common.white, 0.5), fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          <Typography
+            sx={{
+              color: alpha(theme.palette.common.white, 0.5),
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase'
+            }}
+          >
             Regional
           </Typography>
-          <Typography sx={{ color: alpha(theme.palette.common.white, 0.5), fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          <Typography
+            sx={{
+              color: alpha(theme.palette.common.white, 0.5),
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase'
+            }}
+          >
             Predicted
           </Typography>
         </Stack>
@@ -634,17 +646,11 @@ function MetricCard({ label, value, unit, helper, helperColor, range, comparison
           ) : null}
         </Stack>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'baseline', flexWrap: 'wrap', rowGap: 0.25 }}>
-          <Typography
-            component="span"
-            sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '1.5rem', lineHeight: 1.15 }}
-          >
+          <Typography component="span" sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '1.5rem', lineHeight: 1.15 }}>
             {value}
           </Typography>
           {unit ? (
-            <Typography
-              component="span"
-              sx={{ color: alpha(theme.palette.common.white, 0.55), fontWeight: 500, fontSize: '0.85rem' }}
-            >
+            <Typography component="span" sx={{ color: alpha(theme.palette.common.white, 0.55), fontWeight: 500, fontSize: '0.85rem' }}>
               {unit}
             </Typography>
           ) : null}
@@ -764,23 +770,14 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
             "Analyze Prediction" CTA. */}
         <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
           <Typography sx={{ color: alpha(theme.palette.primary.light, 0.85), fontSize: '0.75rem', fontWeight: 600 }}>
-            {fieldPredictionsTotal.toLocaleString()} field predictions ·{' '}
-            {predictionRunsTotal.toLocaleString()} runs
+            {fieldPredictionsTotal.toLocaleString()} field predictions · {predictionRunsTotal.toLocaleString()} runs
           </Typography>
           {lastRunRelative ? (
             <>
-              <Box
-                component="span"
-                aria-hidden
-                sx={{ color: alpha(theme.palette.common.white, 0.3), fontSize: '0.75rem' }}
-              >
+              <Box component="span" aria-hidden sx={{ color: alpha(theme.palette.common.white, 0.3), fontSize: '0.75rem' }}>
                 ·
               </Box>
-              <Tooltip
-                title={lastRunAt ? `Last run: ${new Date(lastRunAt).toLocaleString()}` : ''}
-                arrow
-                placement="top"
-              >
+              <Tooltip title={lastRunAt ? `Last run: ${new Date(lastRunAt).toLocaleString()}` : ''} arrow placement="top">
                 <Typography
                   component="span"
                   sx={{
@@ -812,8 +809,7 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
                 color: alpha(theme.palette.primary.light, 0.95),
                 bgcolor: 'transparent',
                 border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-                transition:
-                  'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease',
+                transition: 'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease',
                 '&:hover': {
                   color: theme.palette.common.white,
                   bgcolor: alpha(theme.palette.primary.main, 0.18),
@@ -822,7 +818,7 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
                 }
               }}
             >
-              View runs history
+              View run history
             </Button>
           ) : null}
         </Stack>
@@ -895,10 +891,7 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
                 px: { xs: 0.5, sm: 1.5 },
                 borderRight: {
                   xs: 'none',
-                  sm:
-                    idx < stats4.length - 1
-                      ? `1px solid ${alpha(theme.palette.primary.light, 0.18)}`
-                      : 'none'
+                  sm: idx < stats4.length - 1 ? `1px solid ${alpha(theme.palette.primary.light, 0.18)}` : 'none'
                 }
               }}
             >
@@ -954,10 +947,7 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
                       }
                     >
                       <Box sx={{ display: 'inline-flex', cursor: 'help' }}>
-                        <Sparkline
-                          data={avgYieldTrend}
-                          color={alpha(theme.palette.primary.light, 0.9)}
-                        />
+                        <Sparkline data={avgYieldTrend} color={alpha(theme.palette.primary.light, 0.9)} />
                       </Box>
                     </Tooltip>
                   ) : null}
@@ -1012,11 +1002,12 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
     },
     // Numeric-scale axis labels (whichever side is currently the value axis)
     // — dimmer + tabular numerals so the scale stays subordinate to the bars.
-    '& .MuiChartsAxis-bottom .MuiChartsAxis-tickLabel[data-is-value-axis="true"], & .MuiChartsAxis-left .MuiChartsAxis-tickLabel[data-is-value-axis="true"]': {
-      fill: `${alpha(theme.palette.common.white, 0.55)} !important`,
-      fontSize: '0.72rem !important',
-      fontVariantNumeric: 'tabular-nums'
-    },
+    '& .MuiChartsAxis-bottom .MuiChartsAxis-tickLabel[data-is-value-axis="true"], & .MuiChartsAxis-left .MuiChartsAxis-tickLabel[data-is-value-axis="true"]':
+      {
+        fill: `${alpha(theme.palette.common.white, 0.55)} !important`,
+        fontSize: '0.72rem !important',
+        fontVariantNumeric: 'tabular-nums'
+      },
     // Both grid orientations — barely-visible dashed primary alpha so the
     // eye can align bar lengths without the chart feeling busy.
     '& .MuiChartsGrid-horizontalLine, & .MuiChartsGrid-verticalLine': {
@@ -1250,9 +1241,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   // at its tiny 84×24 footprint.
   const predictionTimeline = useMemo(() => {
     if (!Array.isArray(predictionRuns) || predictionRuns.length === 0) return null;
-    const valid = predictionRuns.filter(
-      (r) => r?.createdAt && Number.isFinite(Number(r?.predictedYield))
-    );
+    const valid = predictionRuns.filter((r) => r?.createdAt && Number.isFinite(Number(r?.predictedYield)));
     if (valid.length === 0) return null;
     const sorted = [...valid].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
     const lastRunAt = sorted[sorted.length - 1].createdAt;
@@ -1340,1110 +1329,1150 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
 
             {loadError ? <Alert severity="error">{loadError}</Alert> : null}
 
-        <Paper
-          id="saved-predictions-table"
-          variant="outlined"
-          sx={{
-            // Match the Deep-Learning-pill / metric-tile palette so the
-            // Saved Predictions card reads as part of the same "primary"
-            // family of surfaces as the Overview cards and the Field
-            // Performance Records table card.
-            bgcolor: alpha(theme.palette.primary.main, 0.18),
-            borderColor: alpha(theme.palette.primary.main, 0.5),
-            borderRadius: 2,
-            overflow: 'hidden',
-            // `scrollMarginTop` gives the smooth-scroll from "View runs
-            // history" some breathing room so the card's header isn't
-            // jammed against the top of the viewport when the link lands.
-            scrollMarginTop: 24,
-            boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
-          }}
-        >
-          <Stack
-            direction="row"
-            sx={{
-              px: 2.5,
-              py: 1.75,
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`
-            }}
-          >
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: theme.palette.text.primary, letterSpacing: '0.01em' }}>
-              Saved Predictions
-            </Typography>
-            <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-              <Typography variant="body2" sx={{ color: alpha(theme.palette.primary.light, 0.85), fontWeight: 500 }}>
-                {predictionRuns.length} prediction{predictionRuns.length === 1 ? '' : 's'}
-              </Typography>
-              <Tooltip
-                title={predictionRuns.length > 0 ? 'Download CSV of all rows (with drawer details)' : 'No predictions to download'}
-                arrow
-                placement="top"
-                slotProps={{
-                  tooltip: {
-                    sx: {
-                      // Match the table-header / metric-card surface for visual cohesion.
-                      bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 14%, ${theme.palette.background.paper})`,
-                      color: theme.palette.common.white,
-                      border: `1px solid ${alpha(theme.palette.primary.main, 0.45)}`,
-                      borderRadius: 1,
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      letterSpacing: '0.02em',
-                      px: 1.25,
-                      py: 0.65,
-                      boxShadow: `0 6px 18px ${alpha(theme.palette.common.black, 0.45)}`
-                    }
-                  },
-                  arrow: {
-                    sx: {
-                      color: `color-mix(in srgb, ${theme.palette.primary.main} 14%, ${theme.palette.background.paper})`,
-                      '&::before': {
-                        border: `1px solid ${alpha(theme.palette.primary.main, 0.45)}`
-                      }
-                    }
-                  }
-                }}
-              >
-                <IconButton
-                  size="small"
-                  aria-label="Download saved predictions as CSV"
-                  disabled={predictionRuns.length === 0}
-                  onClick={() => {
-                    if (predictionRuns.length === 0) return;
-                    const cells = buildPredictionRunsCsv(predictionRuns, modelTypesByVersionId, stateStats);
-                    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-                    downloadCsv(cells, `traitharvest-predictions-${stamp}.csv`);
-                  }}
-                  sx={{
-                    color: alpha(theme.palette.primary.light, 0.9),
-                    bgcolor: alpha(theme.palette.primary.main, 0.1),
-                    border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
-                    borderRadius: 1.5,
-                    p: 0.75,
-                    transition: 'background 0.2s ease, border-color 0.2s ease, color 0.2s ease',
-                    '&:hover': {
-                      bgcolor: alpha(theme.palette.primary.main, 0.2),
-                      borderColor: theme.palette.primary.main,
-                      color: theme.palette.primary.light
-                    },
-                    '&.Mui-disabled': {
-                      color: alpha(theme.palette.common.white, 0.25),
-                      borderColor: alpha(theme.palette.primary.main, 0.15),
-                      bgcolor: alpha(theme.palette.primary.main, 0.05)
-                    }
-                  }}
-                >
-                  <DownloadOutlined style={{ fontSize: '0.95rem' }} />
-                </IconButton>
-              </Tooltip>
-            </Stack>
-          </Stack>
-
-          {isLoading ? <LinearProgress /> : null}
-
-          <TableContainer
-            sx={{
-              maxHeight: 360,
-              ...tableScrollbarSx
-            }}
-          >
-            <Table
-              stickyHeader
-              size="small"
-              sx={{
-                minWidth: 1700,
-                '& .MuiTableCell-root': { textAlign: 'center !important' }
-              }}
-            >
-              <TableHead>
-                <TableRow
-                  sx={{
-                    '& .MuiTableCell-root': {
-                      // Equivalent to alpha(primary.main, 0.08) but fully opaque, so
-                      // rows can't bleed through the sticky header while scrolling.
-                      bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 8%, ${theme.palette.background.paper})`,
-                      borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
-                      color: alpha(theme.palette.primary.light, 0.85),
-                      fontSize: '0.7rem',
-                      fontWeight: 700,
-                      letterSpacing: '0.06em',
-                      textTransform: 'uppercase',
-                      whiteSpace: 'nowrap',
-                      py: 1.25
-                    }
-                  }}
-                >
-                  <TableCell sx={{ width: 56 }}>Select</TableCell>
-                  <TableCell align="right" sx={{ width: 90, px: 1 }}>
-                    Pred #
-                  </TableCell>
-                  <TableCell>Date</TableCell>
-                  <TableCell>Model</TableCell>
-                  <TableCell>Crop</TableCell>
-                  <TableCell>Variety</TableCell>
-                  <TableCell>Season</TableCell>
-                  <TableCell>State</TableCell>
-                  <TableCell>County</TableCell>
-                  <TableCell align="right">Predicted Yield</TableCell>
-                  <TableCell align="right">Acres</TableCell>
-                  <TableCell align="right">N</TableCell>
-                  <TableCell align="right">P</TableCell>
-                  <TableCell align="right">K</TableCell>
-                  <TableCell align="right">Water (mm)</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {!isLoading && predictionRuns.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={15}>
-                      <Stack spacing={0.5} sx={{ py: 1 }}>
-                        <Typography variant="body2">No saved predictions found.</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Run a prediction from the Predict tab to get started.
-                        </Typography>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-
-                {predictionRuns.map((row) => {
-                  const isSelected = row.predictionRunId === selectedPredictionRunId;
-                  const modelType = modelTypesByVersionId[row.modelVersionId] || row.modelVersionTag || '';
-                  const modelChip = modelType ? getModelChipPalette(modelType, theme) : null;
-                  const yieldOutlier = isYieldOutlier(row.predictedYield);
-                  const yieldColor = yieldOutlier ? theme.palette.error.main : theme.palette.success.main;
-                  const mutedAccent = alpha(theme.palette.primary.light, 0.85);
-                  return (
-                    <TableRow
-                      key={row.predictionRunId}
-                      hover
-                      selected={isSelected}
-                      onClick={() => setSelectedPredictionRunId(row.predictionRunId)}
-                      sx={{
-                        cursor: 'pointer',
-                        '& .MuiTableCell-root': {
-                          borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.08)}`
-                        },
-                        '&:hover': {
-                          bgcolor: alpha(theme.palette.primary.main, 0.08)
-                        },
-                        '&.Mui-selected, &.Mui-selected:hover': {
-                          bgcolor: alpha(theme.palette.primary.main, 0.14)
-                        }
-                      }}
-                    >
-                      <TableCell padding="checkbox">
-                        <Radio
-                          size="small"
-                          checked={isSelected}
-                          onChange={() => setSelectedPredictionRunId(row.predictionRunId)}
-                        />
-                      </TableCell>
-                      <TableCell align="right" sx={{ width: 90, px: 1, color: mutedAccent }}>
-                        {row.predictionRunId ?? '—'}
-                      </TableCell>
-                      <TableCell sx={{ color: theme.palette.text.secondary }}>{formatDateTime(row.createdAt)}</TableCell>
-                      <TableCell>
-                        {modelType && modelChip ? (
-                          <Chip
-                            size="small"
-                            label={modelType}
-                            sx={{
-                              fontWeight: 600,
-                              fontSize: '0.72rem',
-                              color: modelChip.fg,
-                              bgcolor: modelChip.bg,
-                              border: `1px solid ${modelChip.border}`,
-                              borderRadius: 999,
-                              height: 22
-                            }}
-                          />
-                        ) : (
-                          '—'
-                        )}
-                      </TableCell>
-                      <TableCell>{row.crop ? formatCropName(row.crop) : '—'}</TableCell>
-                      <TableCell>{row.variety || '—'}</TableCell>
-                      <TableCell sx={{ color: mutedAccent }}>{row.season ?? '—'}</TableCell>
-                      <TableCell>{row.state || '—'}</TableCell>
-                      <TableCell sx={{ color: mutedAccent }}>{row.county || '—'}</TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', justifyContent: 'center' }}>
-                          <Typography component="span" sx={{ color: yieldColor, fontWeight: 700, fontSize: '0.9rem' }}>
-                            {formatNumber(row.predictedYield)}
-                          </Typography>
-                          <Typography component="span" sx={{ color: theme.palette.text.secondary, fontSize: '0.78rem' }}>
-                            bu/ac
-                          </Typography>
-                          {yieldOutlier ? (
-                            <Chip
-                              size="small"
-                              label="Out"
-                              sx={{
-                                height: 18,
-                                fontSize: '0.62rem',
-                                fontWeight: 700,
-                                color: theme.palette.error.light,
-                                bgcolor: alpha(theme.palette.error.main, 0.18),
-                                border: `1px solid ${alpha(theme.palette.error.main, 0.5)}`,
-                                borderRadius: 999,
-                                '& .MuiChip-label': { px: 0.75 }
-                              }}
-                            />
-                          ) : null}
-                        </Stack>
-                      </TableCell>
-                      <TableCell align="right">{formatNumber(row.acres)}</TableCell>
-                      <TableCell align="right">{formatNumber(row.totalN)}</TableCell>
-                      <TableCell align="right">{formatNumber(row.totalP)}</TableCell>
-                      <TableCell align="right">{formatNumber(row.totalK)}</TableCell>
-                      <TableCell align="right">{formatNumber(row.waterApplied)}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-
-          <Stack
-            direction="row"
-            sx={{
-              px: 2.5,
-              py: 1.75,
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              borderTop: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`
-            }}
-          >
-            <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-              {selectedPrediction ? `Prediction #${selectedPrediction.predictionRunId} selected` : 'No prediction selected'}
-            </Typography>
-            <Button
-              disabled={!selectedPrediction || isLoading}
-              onClick={handleAnalyzePrediction}
-              endIcon={
-                <Box component="span" aria-hidden sx={{ fontSize: '0.95rem', lineHeight: 1 }}>
-                  →
-                </Box>
-              }
-              sx={{
-                textTransform: 'none',
-                fontWeight: 700,
-                fontSize: '0.85rem',
-                letterSpacing: '0.01em',
-                px: 2,
-                py: 0.65,
-                borderRadius: 999,
-                color: alpha(theme.palette.primary.light, 0.95),
-                bgcolor: alpha(theme.palette.primary.main, 0.18),
-                border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
-                transition: 'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease',
-                '&:hover': {
-                  color: theme.palette.common.white,
-                  bgcolor: alpha(theme.palette.primary.main, 0.32),
-                  borderColor: theme.palette.primary.main,
-                  boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.18)}`
-                },
-                '&.Mui-disabled': {
-                  color: alpha(theme.palette.common.white, 0.4),
-                  bgcolor: alpha(theme.palette.primary.main, 0.08),
-                  borderColor: alpha(theme.palette.primary.main, 0.2)
-                }
-              }}
-            >
-              Analyze Prediction
-            </Button>
-          </Stack>
-        </Paper>
-
-        {!analyzedPrediction ? (
-          <Alert
-            severity="info"
-            variant="outlined"
-            sx={{
-              backgroundColor: alpha(theme.palette.primary.main, 0.12),
-              borderColor: alpha(theme.palette.primary.main, 0.45),
-              color: alpha(theme.palette.common.white, 0.85),
-              borderRadius: 2,
-              '& .MuiAlert-icon': {
-                color: alpha(theme.palette.primary.light, 0.95)
-              },
-              '& .MuiAlert-message': {
-                color: alpha(theme.palette.common.white, 0.85),
-                fontWeight: 500
-              },
-              '& .MuiAlert-message strong': {
-                color: theme.palette.primary.light,
-                fontWeight: 700
-              }
-            }}
-          >
-            Select one prediction from the table above and click <strong>Analyze Prediction</strong> to view analytics for the selected
-            prediction.
-          </Alert>
-        ) : (
-          // Analyzed view now lives in a right-anchored Drawer instead of
-          // expanding inline below the table. Two reasons: (1) the
-          // analysis content has grown — chip row + 4 metric cards + 2
-          // chart cards + Top Features + Inputs Applied — and pushing the
-          // table off-screen each time a prediction was analyzed broke the
-          // user's "browse → drill in → back to browse" rhythm; (2) the
-          // Drawer keeps the macro+browse layers visible behind the
-          // micro view, so the page reads as a layered focus rather than
-          // one long scroll. The Drawer's `open` is bound to the truthy
-          // analyzedPrediction; closing the Drawer just clears the state.
-          <Drawer
-            anchor="right"
-            open
-            onClose={() => setAnalyzedPrediction(null)}
-            PaperProps={{
-              sx: {
-                width: { xs: '100%', md: 720, lg: 820 },
-                bgcolor: theme.palette.background.paper,
-                borderLeft: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
-                backgroundImage: 'none',
-                display: 'flex',
-                flexDirection: 'column'
-              }
-            }}
-          >
-            {/* Drawer header — eyebrow + "Prediction #N" title on the
-                left, X close button on the right. Sticky-feeling because
-                the body below it scrolls. */}
-            <Stack
-              direction="row"
-              sx={{
-                px: 3,
-                py: 2,
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
-                bgcolor: alpha(theme.palette.primary.main, 0.12),
-                flexShrink: 0
-              }}
-            >
-              <Stack spacing={0.25}>
-                <Typography
-                  sx={{
-                    color: alpha(theme.palette.primary.light, 0.85),
-                    fontWeight: 700,
-                    fontSize: '0.7rem',
-                    letterSpacing: '0.12em',
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  Prediction Analysis
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
-                  Prediction #{analyzedPrediction.predictionRunId}
-                </Typography>
-              </Stack>
-              <IconButton
-                onClick={() => setAnalyzedPrediction(null)}
-                sx={{
-                  color: alpha(theme.palette.common.white, 0.7),
-                  '&:hover': {
-                    color: theme.palette.common.white,
-                    bgcolor: alpha(theme.palette.primary.main, 0.18)
-                  }
-                }}
-                aria-label="Close prediction analysis"
-              >
-                <CloseOutlined />
-              </IconButton>
-            </Stack>
-
-            {/* Scrollable body — `flex: 1` lets it consume remaining
-                drawer height; `overflowY: auto` confines the scroll so
-                the header stays pinned while the analysis content
-                scrolls underneath. */}
-            <Box sx={{ p: 3, overflowY: 'auto', flex: 1 }}>
-          <Stack spacing={2.5}>
-            {(() => {
-              // Resolve the friendly model name from the looked-up model_type, falling
-              // back to whatever the response payload or version tag carries.
-              const modelTypeRaw =
-                modelTypesByVersionId[analyzedPrediction.modelVersionId] ||
-                analyzedPrediction.responsePayload?.model_type ||
-                analyzedPrediction.modelVersionTag ||
-                '';
-              const modelDisplay = getModelDisplayName(modelTypeRaw);
-              const outlinedChipSx = {
-                bgcolor: 'transparent',
-                color: alpha(theme.palette.common.white, 0.85),
-                border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-                borderRadius: 999,
-                fontWeight: 500,
-                '& .MuiChip-label': { px: 1.5 }
-              };
-              return (
-                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
-                  <Chip
-                    label={`Prediction #${analyzedPrediction.predictionRunId}`}
-                    sx={{
-                      bgcolor: theme.palette.primary.main,
-                      color: theme.palette.common.white,
-                      fontWeight: 700,
-                      borderRadius: 999,
-                      '& .MuiChip-label': { px: 1.75 }
-                    }}
-                  />
-                  <Chip label={`Model: ${modelDisplay}`} sx={outlinedChipSx} />
-                  <Chip label={`Crop: ${analyzedPrediction.crop ? formatCropName(analyzedPrediction.crop) : 'Unknown'}`} sx={outlinedChipSx} />
-                  <Chip label={`Season: ${analyzedPrediction.season ?? 'Unknown'}`} sx={outlinedChipSx} />
-                </Stack>
-              );
-            })()}
-
-            {(() => {
-              const lower = analyzedPrediction.confidenceLower;
-              const upper = analyzedPrediction.confidenceUpper;
-              const predicted = analyzedPrediction.predictedYield;
-              // Prefer the prediction's own regional_comparison (county-level
-              // when available, computed at predict time). Fall back to the
-              // state-level avg from /fields/states/stats/ — same source the
-              // Overview tab's FieldMap uses — so the user almost never sees
-              // an empty baseline when the state is known.
-              let regional = analyzedPrediction.regionalAvgYield;
-              let regionalSource = regional != null ? 'county' : null;
-              if (!Number.isFinite(regional) || regional <= 0) {
-                const stateName = analyzedPrediction.state;
-                const stateRow = stateName ? stateStats[stateName] : null;
-                const stateAvg = stateRow != null ? Number(stateRow.avg_yield) : null;
-                if (Number.isFinite(stateAvg) && stateAvg > 0) {
-                  regional = stateAvg;
-                  regionalSource = 'state';
-                }
-              }
-              const hasInterval = Number.isFinite(lower) && Number.isFinite(upper) && upper > lower;
-              const hasRegional = Number.isFinite(regional) && regional > 0 && Number.isFinite(predicted);
-              // Backend-reported coverage fraction (0.95 for Gaussian DL,
-              // 0.90 for CatBoost q=0.05/q=0.95 ensembles, etc). Falls back
-              // to a generic label for older rows missing the field.
-              const confidenceLevel = analyzedPrediction.confidenceLevel;
-              const confidenceLabel =
-                Number.isFinite(confidenceLevel) && confidenceLevel > 0
-                  ? `${Math.round(confidenceLevel * 100)}% confidence interval`
-                  : "Model's confidence interval";
-
-              let regionalHelper = null;
-              let regionalHelperColor = null;
-              if (hasRegional) {
-                const pct = ((predicted - regional) / regional) * 100;
-                const sign = pct >= 0 ? '+' : '';
-                const direction = pct >= 0 ? 'above' : 'below';
-                regionalHelper = `${sign}${Math.round(pct)}% ${direction} regional avg`;
-                regionalHelperColor = pct >= 0 ? theme.palette.success.main : theme.palette.error.main;
-              }
-
-              const locationParts = [];
-              if (analyzedPrediction.state) locationParts.push(analyzedPrediction.state);
-              if (analyzedPrediction.county) locationParts.push(analyzedPrediction.county);
-              if (analyzedPrediction.season != null && analyzedPrediction.season !== '') {
-                locationParts.push(String(analyzedPrediction.season));
-              }
-
-              const regionalSampleSize = (() => {
-                const r = analyzedPrediction.responsePayload?.regional_comparison;
-                const n = r && Number(r.sample_size);
-                if (regionalSource === 'county' && Number.isFinite(n) && n > 0) return n;
-                const stateRow = analyzedPrediction.state ? stateStats[analyzedPrediction.state] : null;
-                const stateN = stateRow != null ? Number(stateRow.field_count ?? stateRow.count) : null;
-                if (regionalSource === 'state' && Number.isFinite(stateN) && stateN > 0) return stateN;
-                return null;
-              })();
-
-              return (
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <MetricCard
-                      label="Predicted Yield"
-                      value={formatNumber(predicted)}
-                      unit="bu/ac"
-                      // Helper text reflects the model's actual coverage
-                      // (confidence_level, e.g. 0.90 for a CatBoost
-                      // q=0.05/q=0.95 ensemble or 0.95 for a Gaussian DL
-                      // uncertainty head). Older predictions without the
-                      // field fall back to the generic label.
-                      helper={`${confidenceLabel} (bu/ac)`}
-                      range={hasInterval ? { min: lower, max: upper, value: predicted } : null}
-                      info={
-                        <Box sx={{ p: 0.25 }}>
-                          <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
-                            Predicted yield
-                          </Typography>
-                          <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
-                            The model's point estimate (typically its median quantile or mean output) in bushels per acre,
-                            for the inputs you submitted.
-                          </Typography>
-                          <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
-                            The horizontal bar plots where the prediction falls inside the model's confidence interval.
-                            The bounds come live from the model — quantile predictions for tree ensembles,
-                            or mean ± 1.96·σ for DL models with an uncertainty head.
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <MetricCard
-                      label="Confidence Width"
-                      value={hasInterval ? formatNumber(upper - lower) : '—'}
-                      unit={hasInterval ? 'bu/ac' : null}
-                      // Same range-bar visualization as Predicted Yield but
-                      // with no marker — the bar IS the width here, with
-                      // its endpoints labeled so the user can read both
-                      // bounds visually rather than scanning the helper text.
-                      range={hasInterval ? { min: lower, max: upper } : null}
-                      helper={hasInterval ? `Range: ${formatNumber(lower)} — ${formatNumber(upper)}` : null}
-                      info={
-                        <Box sx={{ p: 0.25 }}>
-                          <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
-                            Confidence width
-                          </Typography>
-                          <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
-                            Upper bound minus lower bound (bu/ac). A <Box component="span" sx={{ fontWeight: 700 }}>narrower</Box>{' '}
-                            width means the model is more confident about this specific input.
-                          </Typography>
-                          <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
-                            Use this to compare runs: two predictions can have the same yield but very different uncertainty.
-                            Wider intervals usually point to inputs that are unusual relative to the training data.
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <MetricCard
-                      label={`Regional Average${analyzedPrediction.state ? ` · ${analyzedPrediction.state}` : ''}`}
-                      value={hasRegional ? formatNumber(regional) : '—'}
-                      unit={hasRegional ? 'bu/ac' : null}
-                      // Compare block (mini bar + delta + arrow) renders when
-                      // both numbers are present. The free-text helper
-                      // remains as a fallback for the no-regional-data case.
-                      comparison={hasRegional ? { predicted, regional } : null}
-                      helper={!hasRegional ? 'Regional baseline unavailable' : null}
-                      helperColor={regionalHelperColor}
-                      info={
-                        <Box sx={{ p: 0.25 }}>
-                          <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
-                            Regional average yield
-                          </Typography>
-                          <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
-                            Average observed yield from your historical field records in this region. We try the prediction's{' '}
-                            <Box component="span" sx={{ fontWeight: 700 }}>county</Box> first (computed at predict time),
-                            then fall back to the <Box component="span" sx={{ fontWeight: 700 }}>state</Box> aggregate
-                            (the same source the Overview tab's FieldMap uses).
-                          </Typography>
-                          <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
-                            The mini-bar shows where the prediction sits relative to this baseline. A green marker to the right
-                            means the model expects this input to outperform the regional average; a yellow marker to the left
-                            means it expects to underperform.
-                          </Typography>
-                          {regionalSource ? (
-                            <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
-                              Source: <Box component="span" sx={{ fontWeight: 700 }}>{regionalSource === 'county' ? 'county-level' : 'state-level'}</Box>{' '}
-                              {regionalSampleSize ? `· n = ${regionalSampleSize.toLocaleString()} field-seasons` : null}
-                            </Typography>
-                          ) : null}
-                        </Box>
-                      }
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <MetricCard
-                      label="Created At"
-                      value={formatDateTime(analyzedPrediction.createdAt)}
-                      helper={locationParts.length > 0 ? locationParts.join(' • ') : null}
-                    />
-                  </Grid>
-                </Grid>
-              );
-            })()}
-
-            {(() => {
-              const totalN = analyzedPrediction.totalN;
-              const totalP = analyzedPrediction.totalP;
-              const totalK = analyzedPrediction.totalK;
-              const hasNutrients =
-                (Number.isFinite(totalN) && totalN > 0) ||
-                (Number.isFinite(totalP) && totalP > 0) ||
-                (Number.isFinite(totalK) && totalK > 0);
-              // Re-derive the yield-context numbers locally — they're scoped
-              // to the metrics-row IIFE above and aren't visible here.
-              const lower = analyzedPrediction.confidenceLower;
-              const upper = analyzedPrediction.confidenceUpper;
-              const predicted = analyzedPrediction.predictedYield;
-              let regional = analyzedPrediction.regionalAvgYield;
-              if (!Number.isFinite(regional) || regional <= 0) {
-                const stateName = analyzedPrediction.state;
-                const stateRow = stateName ? stateStats[stateName] : null;
-                const stateAvg = stateRow != null ? Number(stateRow.avg_yield) : null;
-                if (Number.isFinite(stateAvg) && stateAvg > 0) regional = stateAvg;
-              }
-              const hasInterval = Number.isFinite(lower) && Number.isFinite(upper) && upper > lower;
-              const hasRegional = Number.isFinite(regional) && regional > 0;
-
-              // Fixed inner content height for both chart cards — accommodates the
-              // BarChart's SVG plus any legend/axis padding so the chart and
-              // the empty state always render at the same total height. Taller
-              // than before so the bars get the breathing room they need at
-              // the drawer's width.
-              const chartContentHeight = 380;
-              // Match the SVG height to the wrapping Box's content area so the
-              // BarChart fills the card vertically with no dead space below.
-              // The wrapping Box uses px: 0, py: 0 (no vertical padding), so
-              // the SVG height equals the Box's full height.
-              const chartSvgHeight = chartContentHeight;
-              const chartCardSx = {
-                bgcolor: alpha(theme.palette.primary.main, 0.14),
-                border: `1px solid ${alpha(theme.palette.primary.main, 0.45)}`,
-                borderRadius: 2,
-                backgroundImage: 'none',
-                boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`,
-                // Stretch the card to fill its Grid item so siblings equalize
-                // even if one card's intrinsic content is taller than the other.
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                '& .MuiCardHeader-root': {
-                  bgcolor: alpha(theme.palette.primary.main, 0.12),
-                  borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-                  px: 2.5,
-                  py: 1.5
-                },
-                '& .MuiCardHeader-title': {
-                  color: theme.palette.common.white,
-                  fontWeight: 700,
-                  letterSpacing: '0.01em',
-                  fontSize: '0.95rem'
-                }
-              };
-
-              return (
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12 }}>
-                    <MainCard title="Yield Context" content={false} sx={chartCardSx}>
-                      {/* Edge-to-edge horizontal padding so the SVG fills
-                          the card. Internal margins are tuned so the Y-axis
-                          title fits at left and tick labels at bottom — no
-                          extra slack. */}
-                      <Box sx={{ px: 0, py: 0, height: chartContentHeight, boxSizing: 'border-box' }}>
-                        <BarChart
-                          height={chartSvgHeight}
-                          hideLegend
-                          sx={chartBarSx}
-                          margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
-                          grid={{ horizontal: true }}
-                          xAxis={[
-                            {
-                              scaleType: 'band',
-                              data: YIELD_CATEGORIES,
-                              colorMap: { type: 'ordinal', values: YIELD_CATEGORIES, colors: yieldBarColors },
-                              categoryGapRatio: 0.35,
-                              barGapRatio: 0.1
-                            }
-                          ]}
-                          yAxis={[
-                            {
-                              valueFormatter: (v) => formatNumber(v, 1),
-                              label: 'Yield bu/ac',
-                              width: 64
-                            }
-                          ]}
-                          series={[
-                            {
-                              data: yieldContextSeries,
-                              valueFormatter: (v) => `${formatNumber(v, 2)} bu/ac`
-                            }
-                          ]}
-                          borderRadius={10}
-                        />
-                      </Box>
-                    </MainCard>
-                  </Grid>
-                  <Grid size={{ xs: 12 }}>
-                    <MainCard title="Nutrient Inputs" content={false} sx={chartCardSx}>
-                      {hasNutrients ? (
-                        <Box sx={{ px: 0, py: 0, height: chartContentHeight, boxSizing: 'border-box' }}>
-                          <BarChart
-                            height={chartSvgHeight}
-                            hideLegend
-                            sx={chartBarSx}
-                            margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
-                            grid={{ horizontal: true }}
-                            xAxis={[
-                              {
-                                scaleType: 'band',
-                                data: NUTRIENT_CATEGORIES,
-                                colorMap: { type: 'ordinal', values: NUTRIENT_CATEGORIES, colors: nutrientBarColors },
-                                categoryGapRatio: 0.35,
-                                barGapRatio: 0.1
-                              }
-                            ]}
-                            yAxis={[
-                              {
-                                valueFormatter: (v) => formatNumber(v, 1),
-                                label: 'Input Amount',
-                                width: 64
-                              }
-                            ]}
-                            series={[
-                              {
-                                data: nutrientSeries,
-                                valueFormatter: (v) => formatNumber(v, 2)
-                              }
-                            ]}
-                            borderRadius={10}
-                          />
-                        </Box>
-                      ) : (
-                        // Same outer Box dimensions as the chart branch so the
-                        // empty state matches the BarChart's effective height.
-                        // The inner Stack now fills the Box (height: 100%)
-                        // instead of having its own fixed 280px height.
-                        <Box sx={{ p: 2, height: chartContentHeight, boxSizing: 'border-box' }}>
-                          <Stack
-                            spacing={1.5}
-                            sx={{
-                              height: '100%',
-                              alignItems: 'center',
-                              justifyContent: 'center'
-                            }}
-                          >
-                            <Box
-                              sx={{
-                                color: alpha(theme.palette.primary.light, 0.5),
-                                fontSize: '2.4rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                              }}
-                            >
-                              <AppstoreOutlined />
-                            </Box>
-                            <Typography
-                              sx={{
-                                color: alpha(theme.palette.common.white, 0.55),
-                                textAlign: 'center',
-                                fontSize: '0.9rem',
-                                lineHeight: 1.5,
-                                maxWidth: 240
-                              }}
-                            >
-                              No nutrient inputs recorded for this prediction
-                            </Typography>
-                          </Stack>
-                        </Box>
-                      )}
-                    </MainCard>
-                  </Grid>
-                </Grid>
-              );
-            })()}
-
             <Paper
+              id="saved-predictions-table"
               variant="outlined"
               sx={{
-                p: { xs: 2, md: 2.5 },
+                // Match the Deep-Learning-pill / metric-tile palette so the
+                // Saved Predictions card reads as part of the same "primary"
+                // family of surfaces as the Overview cards and the Field
+                // Performance Records table card.
+                bgcolor: alpha(theme.palette.primary.main, 0.18),
+                borderColor: alpha(theme.palette.primary.main, 0.5),
                 borderRadius: 2,
-                bgcolor: alpha(theme.palette.primary.main, 0.14),
-                borderColor: alpha(theme.palette.primary.main, 0.45),
+                overflow: 'hidden',
+                // `scrollMarginTop` gives the smooth-scroll from "View runs
+                // history" some breathing room so the card's header isn't
+                // jammed against the top of the viewport when the link lands.
+                scrollMarginTop: 24,
                 boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
               }}
             >
-              <Stack spacing={2}>
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-                  <Box
-                    sx={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 1.5,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      bgcolor: alpha(theme.palette.primary.main, 0.25),
-                      border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
-                      color: theme.palette.primary.light,
-                      fontSize: '1.1rem'
-                    }}
-                  >
-                    <ThunderboltOutlined />
-                  </Box>
-                  <Stack spacing={0.1} sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '0.95rem', letterSpacing: '0.02em' }}>
-                      Top Contributing Features
-                    </Typography>
-                    <Typography sx={{ color: alpha(theme.palette.common.white, 0.6), fontSize: '0.76rem', fontWeight: 500 }}>
-                      Ranked by SHAP impact{analyzedPrediction.topFeatures.length > 0 ? ` · ${analyzedPrediction.topFeatures.length} feature${analyzedPrediction.topFeatures.length === 1 ? '' : 's'}` : ''}
-                    </Typography>
-                  </Stack>
+              <Stack
+                direction="row"
+                sx={{
+                  px: 2.5,
+                  py: 1.75,
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`
+                }}
+              >
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: theme.palette.text.primary, letterSpacing: '0.01em' }}>
+                  Saved Predictions
+                </Typography>
+                <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
+                  <Typography variant="body2" sx={{ color: alpha(theme.palette.primary.light, 0.85), fontWeight: 500 }}>
+                    {predictionRuns.length} prediction{predictionRuns.length === 1 ? '' : 's'}
+                  </Typography>
                   <Tooltip
+                    title={predictionRuns.length > 0 ? 'Download CSV of all rows (with drawer details)' : 'No predictions to download'}
                     arrow
-                    placement="left"
-                    title={
-                      <Box sx={{ p: 0.25 }}>
-                        <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
-                          About direction & impact
-                        </Typography>
-                        <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.75 }}>
-                          <Box component="span" sx={{ color: theme.palette.success.light, fontWeight: 700 }}>Positive</Box>{' '}
-                          features pushed this prediction <Box component="span" sx={{ fontWeight: 700 }}>up</Box> from the
-                          model's baseline — they made the predicted yield higher than the model's average expectation.
-                        </Typography>
-                        <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.75 }}>
-                          <Box component="span" sx={{ color: theme.palette.warning.light, fontWeight: 700 }}>Negative</Box>{' '}
-                          features pulled it <Box component="span" sx={{ fontWeight: 700 }}>down</Box> — they made the prediction
-                          lower than the baseline.
-                        </Typography>
-                        <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
-                          <Box component="span" sx={{ fontWeight: 700 }}>Impact</Box> is the share of total |SHAP| value
-                          this feature owns. The bar visualizes that share so longer bars carry more of the explanation.
-                        </Typography>
-                      </Box>
-                    }
+                    placement="top"
                     slotProps={{
                       tooltip: {
                         sx: {
-                          bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                          // Match the table-header / metric-card surface for visual cohesion.
+                          bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 14%, ${theme.palette.background.paper})`,
                           color: theme.palette.common.white,
-                          border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
-                          fontSize: '0.74rem',
-                          fontWeight: 500,
-                          maxWidth: 320,
-                          px: 1.5,
-                          py: 1.1,
-                          borderRadius: 1.25,
-                          boxShadow: `0 6px 16px ${alpha(theme.palette.common.black, 0.45)}`
+                          border: `1px solid ${alpha(theme.palette.primary.main, 0.45)}`,
+                          borderRadius: 1,
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          letterSpacing: '0.02em',
+                          px: 1.25,
+                          py: 0.65,
+                          boxShadow: `0 6px 18px ${alpha(theme.palette.common.black, 0.45)}`
                         }
                       },
                       arrow: {
                         sx: {
-                          color: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                          color: `color-mix(in srgb, ${theme.palette.primary.main} 14%, ${theme.palette.background.paper})`,
                           '&::before': {
-                            backgroundColor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
-                            border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`
+                            border: `1px solid ${alpha(theme.palette.primary.main, 0.45)}`
                           }
                         }
                       }
                     }}
                   >
-                    <Box
-                      component="span"
-                      tabIndex={0}
-                      aria-label="About direction and impact"
+                    <IconButton
+                      size="small"
+                      aria-label="Download saved predictions as CSV"
+                      disabled={predictionRuns.length === 0}
+                      onClick={() => {
+                        if (predictionRuns.length === 0) return;
+                        const cells = buildPredictionRunsCsv(predictionRuns, modelTypesByVersionId, stateStats);
+                        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                        downloadCsv(cells, `traitharvest-predictions-${stamp}.csv`);
+                      }}
                       sx={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'help',
-                        color: alpha(theme.palette.primary.light, 0.7),
-                        fontSize: '0.95rem',
-                        flexShrink: 0,
-                        '&:hover, &:focus-visible': { color: theme.palette.primary.light, outline: 'none' }
+                        color: alpha(theme.palette.primary.light, 0.9),
+                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+                        borderRadius: 1.5,
+                        p: 0.75,
+                        transition: 'background 0.2s ease, border-color 0.2s ease, color 0.2s ease',
+                        '&:hover': {
+                          bgcolor: alpha(theme.palette.primary.main, 0.2),
+                          borderColor: theme.palette.primary.main,
+                          color: theme.palette.primary.light
+                        },
+                        '&.Mui-disabled': {
+                          color: alpha(theme.palette.common.white, 0.25),
+                          borderColor: alpha(theme.palette.primary.main, 0.15),
+                          bgcolor: alpha(theme.palette.primary.main, 0.05)
+                        }
                       }}
                     >
-                      <InfoCircleOutlined />
-                    </Box>
+                      <DownloadOutlined style={{ fontSize: '0.95rem' }} />
+                    </IconButton>
                   </Tooltip>
                 </Stack>
+              </Stack>
 
-                {/* Compact legend strip clarifying positive/negative tone
-                    inline so the meaning is visible without hover. */}
-                {analyzedPrediction.topFeatures.length > 0 ? (
-                  <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
-                    <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
-                      <Box sx={{ color: theme.palette.success.light, display: 'flex', fontSize: '0.85rem' }}>
-                        <RiseOutlined />
-                      </Box>
-                      <Typography sx={{ color: alpha(theme.palette.common.white, 0.75), fontSize: '0.72rem', fontWeight: 600 }}>
-                        Positive = pushed yield up
-                      </Typography>
-                    </Stack>
-                    <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
-                      <Box sx={{ color: theme.palette.warning.light, display: 'flex', fontSize: '0.85rem' }}>
-                        <FallOutlined />
-                      </Box>
-                      <Typography sx={{ color: alpha(theme.palette.common.white, 0.75), fontSize: '0.72rem', fontWeight: 600 }}>
-                        Negative = pulled yield down
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                ) : null}
+              {isLoading ? <LinearProgress /> : null}
 
-                <TableContainer sx={{ border: 1, borderColor: accentBlue, borderRadius: 1.25, ...tableScrollbarSx }}>
-                  <Table size="small" sx={{ minWidth: 760 }}>
-                    <TableHead>
-                      <TableRow
-                        sx={{
-                          '& .MuiTableCell-root': {
-                            bgcolor: headerBlue,
-                            borderBottomColor: accentBlue,
-                            borderBottomWidth: 2,
-                            color: alpha(theme.palette.common.white, 0.85),
-                            whiteSpace: 'nowrap',
-                            fontWeight: 700,
-                            fontSize: '0.72rem',
-                            letterSpacing: '0.08em',
-                            textTransform: 'uppercase'
-                          }
-                        }}
-                      >
-                        <TableCell>Feature</TableCell>
-                        <TableCell>Value</TableCell>
-                        <TableCell>Direction</TableCell>
-                        <TableCell align="right">Impact</TableCell>
-                        <TableCell sx={{ minWidth: 180 }}>Contribution</TableCell>
+              <TableContainer
+                sx={{
+                  maxHeight: 360,
+                  ...tableScrollbarSx
+                }}
+              >
+                <Table
+                  stickyHeader
+                  size="small"
+                  sx={{
+                    minWidth: 1700,
+                    '& .MuiTableCell-root': { textAlign: 'center !important' }
+                  }}
+                >
+                  <TableHead>
+                    <TableRow
+                      sx={{
+                        '& .MuiTableCell-root': {
+                          // Equivalent to alpha(primary.main, 0.08) but fully opaque, so
+                          // rows can't bleed through the sticky header while scrolling.
+                          bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 8%, ${theme.palette.background.paper})`,
+                          borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.22)}`,
+                          color: alpha(theme.palette.primary.light, 0.85),
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                          whiteSpace: 'nowrap',
+                          py: 1.25
+                        }
+                      }}
+                    >
+                      <TableCell sx={{ width: 56 }}>Select</TableCell>
+                      <TableCell align="right" sx={{ width: 90, px: 1 }}>
+                        Pred #
+                      </TableCell>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Model</TableCell>
+                      <TableCell>Crop</TableCell>
+                      <TableCell>Variety</TableCell>
+                      <TableCell>Season</TableCell>
+                      <TableCell>State</TableCell>
+                      <TableCell>County</TableCell>
+                      <TableCell align="right">Predicted Yield</TableCell>
+                      <TableCell align="right">Acres</TableCell>
+                      <TableCell align="right">N</TableCell>
+                      <TableCell align="right">P</TableCell>
+                      <TableCell align="right">K</TableCell>
+                      <TableCell align="right">Water (mm)</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {!isLoading && predictionRuns.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={15}>
+                          <Stack spacing={0.5} sx={{ py: 1 }}>
+                            <Typography variant="body2">No saved predictions found.</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Run a prediction from the Predict tab to get started.
+                            </Typography>
+                          </Stack>
+                        </TableCell>
                       </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {analyzedPrediction.topFeatures.length > 0 ? (
-                        analyzedPrediction.topFeatures.map((feature, index) => {
-                          const importance = Math.max(toNumberOrNull(feature?.importance) || 0, 0);
-                          const barPct = Math.min(importance * 100, 100);
-                          const directionKey = String(feature?.direction || '').toLowerCase();
-                          const isPositive = directionKey === 'positive';
-                          const isNegative = directionKey === 'negative';
-                          const dirTone = isPositive ? theme.palette.success.light : isNegative ? theme.palette.warning.light : alpha(theme.palette.common.white, 0.55);
-                          const DirIcon = isNegative ? FallOutlined : RiseOutlined;
-                          const dirLabel = isPositive ? 'Positive' : isNegative ? 'Negative' : 'Unknown';
-                          return (
-                            <TableRow key={`${feature.feature}-${index}`} hover sx={{ bgcolor: rowSurface }}>
-                              <TableCell sx={{ color: theme.palette.common.white, fontWeight: 600 }}>
-                                {formatFeatureName(feature?.feature)}
-                              </TableCell>
-                              <TableCell sx={{ color: alpha(theme.palette.common.white, 0.85), fontVariantNumeric: 'tabular-nums' }}>
-                                {String(feature?.value ?? '—')}
-                              </TableCell>
-                              <TableCell>
-                                <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
-                                  <Box sx={{ color: dirTone, display: 'flex', fontSize: '0.95rem' }}>
-                                    {(isPositive || isNegative) ? <DirIcon /> : null}
-                                  </Box>
-                                  <Typography sx={{ color: dirTone, fontSize: '0.78rem', fontWeight: 700 }}>
-                                    {dirLabel}
-                                  </Typography>
-                                </Stack>
-                              </TableCell>
-                              <TableCell align="right" sx={{ color: theme.palette.common.white, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                                {formatNumber(importance * 100, 2)}%
-                              </TableCell>
-                              <TableCell sx={{ minWidth: 180 }}>
-                                <Box
+                    ) : null}
+
+                    {predictionRuns.map((row) => {
+                      const isSelected = row.predictionRunId === selectedPredictionRunId;
+                      const modelType = modelTypesByVersionId[row.modelVersionId] || row.modelVersionTag || '';
+                      const modelChip = modelType ? getModelChipPalette(modelType, theme) : null;
+                      const yieldOutlier = isYieldOutlier(row.predictedYield);
+                      const yieldColor = yieldOutlier ? theme.palette.error.main : theme.palette.success.main;
+                      const mutedAccent = alpha(theme.palette.primary.light, 0.85);
+                      return (
+                        <TableRow
+                          key={row.predictionRunId}
+                          hover
+                          selected={isSelected}
+                          onClick={() => setSelectedPredictionRunId(row.predictionRunId)}
+                          sx={{
+                            cursor: 'pointer',
+                            '& .MuiTableCell-root': {
+                              borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.08)}`
+                            },
+                            '&:hover': {
+                              bgcolor: alpha(theme.palette.primary.main, 0.08)
+                            },
+                            '&.Mui-selected, &.Mui-selected:hover': {
+                              bgcolor: alpha(theme.palette.primary.main, 0.14)
+                            }
+                          }}
+                        >
+                          <TableCell padding="checkbox">
+                            <Radio size="small" checked={isSelected} onChange={() => setSelectedPredictionRunId(row.predictionRunId)} />
+                          </TableCell>
+                          <TableCell align="right" sx={{ width: 90, px: 1, color: mutedAccent }}>
+                            {row.predictionRunId ?? '—'}
+                          </TableCell>
+                          <TableCell sx={{ color: theme.palette.text.secondary }}>{formatDateTime(row.createdAt)}</TableCell>
+                          <TableCell>
+                            {modelType && modelChip ? (
+                              <Chip
+                                size="small"
+                                label={modelType}
+                                sx={{
+                                  fontWeight: 600,
+                                  fontSize: '0.72rem',
+                                  color: modelChip.fg,
+                                  bgcolor: modelChip.bg,
+                                  border: `1px solid ${modelChip.border}`,
+                                  borderRadius: 999,
+                                  height: 22
+                                }}
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </TableCell>
+                          <TableCell>{row.crop ? formatCropName(row.crop) : '—'}</TableCell>
+                          <TableCell>{row.variety || '—'}</TableCell>
+                          <TableCell sx={{ color: mutedAccent }}>{row.season ?? '—'}</TableCell>
+                          <TableCell>{row.state || '—'}</TableCell>
+                          <TableCell sx={{ color: mutedAccent }}>{row.county || '—'}</TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', justifyContent: 'center' }}>
+                              <Typography component="span" sx={{ color: yieldColor, fontWeight: 700, fontSize: '0.9rem' }}>
+                                {formatNumber(row.predictedYield)}
+                              </Typography>
+                              <Typography component="span" sx={{ color: theme.palette.text.secondary, fontSize: '0.78rem' }}>
+                                bu/ac
+                              </Typography>
+                              {yieldOutlier ? (
+                                <Chip
+                                  size="small"
+                                  label="Out"
                                   sx={{
-                                    height: 8,
+                                    height: 18,
+                                    fontSize: '0.62rem',
+                                    fontWeight: 700,
+                                    color: theme.palette.error.light,
+                                    bgcolor: alpha(theme.palette.error.main, 0.18),
+                                    border: `1px solid ${alpha(theme.palette.error.main, 0.5)}`,
                                     borderRadius: 999,
-                                    bgcolor: alpha(theme.palette.common.black, 0.3),
-                                    overflow: 'hidden'
+                                    '& .MuiChip-label': { px: 0.75 }
                                   }}
-                                >
-                                  <Box
-                                    sx={{
-                                      width: `${barPct}%`,
-                                      height: '100%',
-                                      background: isNegative
-                                        ? `linear-gradient(90deg, ${alpha(theme.palette.warning.light, 0.85)} 0%, ${theme.palette.warning.main} 100%)`
-                                        : `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.75)} 0%, ${theme.palette.primary.light} 100%)`,
-                                      transition: 'width 0.5s ease'
-                                    }}
+                                />
+                              ) : null}
+                            </Stack>
+                          </TableCell>
+                          <TableCell align="right">{formatNumber(row.acres)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.totalN)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.totalP)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.totalK)}</TableCell>
+                          <TableCell align="right">{formatNumber(row.waterApplied)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Stack
+                direction="row"
+                sx={{
+                  px: 2.5,
+                  py: 1.75,
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderTop: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`
+                }}
+              >
+                <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
+                  {selectedPrediction ? `Prediction #${selectedPrediction.predictionRunId} selected` : 'No prediction selected'}
+                </Typography>
+                <Button
+                  disabled={!selectedPrediction || isLoading}
+                  onClick={handleAnalyzePrediction}
+                  endIcon={
+                    <Box component="span" aria-hidden sx={{ fontSize: '0.95rem', lineHeight: 1 }}>
+                      →
+                    </Box>
+                  }
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    letterSpacing: '0.01em',
+                    px: 2,
+                    py: 0.65,
+                    borderRadius: 999,
+                    color: alpha(theme.palette.primary.light, 0.95),
+                    bgcolor: alpha(theme.palette.primary.main, 0.18),
+                    border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+                    transition: 'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease',
+                    '&:hover': {
+                      color: theme.palette.common.white,
+                      bgcolor: alpha(theme.palette.primary.main, 0.32),
+                      borderColor: theme.palette.primary.main,
+                      boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.18)}`
+                    },
+                    '&.Mui-disabled': {
+                      color: alpha(theme.palette.common.white, 0.4),
+                      bgcolor: alpha(theme.palette.primary.main, 0.08),
+                      borderColor: alpha(theme.palette.primary.main, 0.2)
+                    }
+                  }}
+                >
+                  Analyze Prediction
+                </Button>
+              </Stack>
+            </Paper>
+
+            {!analyzedPrediction ? (
+              <Alert
+                severity="info"
+                variant="outlined"
+                sx={{
+                  backgroundColor: alpha(theme.palette.primary.main, 0.12),
+                  borderColor: alpha(theme.palette.primary.main, 0.45),
+                  color: alpha(theme.palette.common.white, 0.85),
+                  borderRadius: 2,
+                  '& .MuiAlert-icon': {
+                    color: alpha(theme.palette.primary.light, 0.95)
+                  },
+                  '& .MuiAlert-message': {
+                    color: alpha(theme.palette.common.white, 0.85),
+                    fontWeight: 500
+                  },
+                  '& .MuiAlert-message strong': {
+                    color: theme.palette.primary.light,
+                    fontWeight: 700
+                  }
+                }}
+              >
+                Select one prediction from the table above and click <strong>Analyze Prediction</strong> to view analytics for the selected
+                prediction.
+              </Alert>
+            ) : (
+              // Analyzed view now lives in a right-anchored Drawer instead of
+              // expanding inline below the table. Two reasons: (1) the
+              // analysis content has grown — chip row + 4 metric cards + 2
+              // chart cards + Top Features + Inputs Applied — and pushing the
+              // table off-screen each time a prediction was analyzed broke the
+              // user's "browse → drill in → back to browse" rhythm; (2) the
+              // Drawer keeps the macro+browse layers visible behind the
+              // micro view, so the page reads as a layered focus rather than
+              // one long scroll. The Drawer's `open` is bound to the truthy
+              // analyzedPrediction; closing the Drawer just clears the state.
+              <Drawer
+                anchor="right"
+                open
+                onClose={() => setAnalyzedPrediction(null)}
+                PaperProps={{
+                  sx: {
+                    width: { xs: '100%', md: 720, lg: 820 },
+                    bgcolor: theme.palette.background.paper,
+                    borderLeft: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                    backgroundImage: 'none',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }
+                }}
+              >
+                {/* Drawer header — eyebrow + "Prediction #N" title on the
+                left, X close button on the right. Sticky-feeling because
+                the body below it scrolls. */}
+                <Stack
+                  direction="row"
+                  sx={{
+                    px: 3,
+                    py: 2,
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
+                    bgcolor: alpha(theme.palette.primary.main, 0.12),
+                    flexShrink: 0
+                  }}
+                >
+                  <Stack spacing={0.25}>
+                    <Typography
+                      sx={{
+                        color: alpha(theme.palette.primary.light, 0.85),
+                        fontWeight: 700,
+                        fontSize: '0.7rem',
+                        letterSpacing: '0.12em',
+                        textTransform: 'uppercase'
+                      }}
+                    >
+                      Prediction Analysis
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
+                      Prediction #{analyzedPrediction.predictionRunId}
+                    </Typography>
+                  </Stack>
+                  <IconButton
+                    onClick={() => setAnalyzedPrediction(null)}
+                    sx={{
+                      color: alpha(theme.palette.common.white, 0.7),
+                      '&:hover': {
+                        color: theme.palette.common.white,
+                        bgcolor: alpha(theme.palette.primary.main, 0.18)
+                      }
+                    }}
+                    aria-label="Close prediction analysis"
+                  >
+                    <CloseOutlined />
+                  </IconButton>
+                </Stack>
+
+                {/* Scrollable body — `flex: 1` lets it consume remaining
+                drawer height; `overflowY: auto` confines the scroll so
+                the header stays pinned while the analysis content
+                scrolls underneath. */}
+                <Box sx={{ p: 3, overflowY: 'auto', flex: 1 }}>
+                  <Stack spacing={2.5}>
+                    {(() => {
+                      // Resolve the friendly model name from the looked-up model_type, falling
+                      // back to whatever the response payload or version tag carries.
+                      const modelTypeRaw =
+                        modelTypesByVersionId[analyzedPrediction.modelVersionId] ||
+                        analyzedPrediction.responsePayload?.model_type ||
+                        analyzedPrediction.modelVersionTag ||
+                        '';
+                      const modelDisplay = getModelDisplayName(modelTypeRaw);
+                      const outlinedChipSx = {
+                        bgcolor: 'transparent',
+                        color: alpha(theme.palette.common.white, 0.85),
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+                        borderRadius: 999,
+                        fontWeight: 500,
+                        '& .MuiChip-label': { px: 1.5 }
+                      };
+                      return (
+                        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+                          <Chip
+                            label={`Prediction #${analyzedPrediction.predictionRunId}`}
+                            sx={{
+                              bgcolor: theme.palette.primary.main,
+                              color: theme.palette.common.white,
+                              fontWeight: 700,
+                              borderRadius: 999,
+                              '& .MuiChip-label': { px: 1.75 }
+                            }}
+                          />
+                          <Chip label={`Model: ${modelDisplay}`} sx={outlinedChipSx} />
+                          <Chip
+                            label={`Crop: ${analyzedPrediction.crop ? formatCropName(analyzedPrediction.crop) : 'Unknown'}`}
+                            sx={outlinedChipSx}
+                          />
+                          <Chip label={`Season: ${analyzedPrediction.season ?? 'Unknown'}`} sx={outlinedChipSx} />
+                        </Stack>
+                      );
+                    })()}
+
+                    {(() => {
+                      const lower = analyzedPrediction.confidenceLower;
+                      const upper = analyzedPrediction.confidenceUpper;
+                      const predicted = analyzedPrediction.predictedYield;
+                      // Prefer the prediction's own regional_comparison (county-level
+                      // when available, computed at predict time). Fall back to the
+                      // state-level avg from /fields/states/stats/ — same source the
+                      // Overview tab's FieldMap uses — so the user almost never sees
+                      // an empty baseline when the state is known.
+                      let regional = analyzedPrediction.regionalAvgYield;
+                      let regionalSource = regional != null ? 'county' : null;
+                      if (!Number.isFinite(regional) || regional <= 0) {
+                        const stateName = analyzedPrediction.state;
+                        const stateRow = stateName ? stateStats[stateName] : null;
+                        const stateAvg = stateRow != null ? Number(stateRow.avg_yield) : null;
+                        if (Number.isFinite(stateAvg) && stateAvg > 0) {
+                          regional = stateAvg;
+                          regionalSource = 'state';
+                        }
+                      }
+                      const hasInterval = Number.isFinite(lower) && Number.isFinite(upper) && upper > lower;
+                      const hasRegional = Number.isFinite(regional) && regional > 0 && Number.isFinite(predicted);
+                      // Backend-reported coverage fraction (0.95 for Gaussian DL,
+                      // 0.90 for CatBoost q=0.05/q=0.95 ensembles, etc). Falls back
+                      // to a generic label for older rows missing the field.
+                      const confidenceLevel = analyzedPrediction.confidenceLevel;
+                      const confidenceLabel =
+                        Number.isFinite(confidenceLevel) && confidenceLevel > 0
+                          ? `${Math.round(confidenceLevel * 100)}% confidence interval`
+                          : "Model's confidence interval";
+
+                      let regionalHelper = null;
+                      let regionalHelperColor = null;
+                      if (hasRegional) {
+                        const pct = ((predicted - regional) / regional) * 100;
+                        const sign = pct >= 0 ? '+' : '';
+                        const direction = pct >= 0 ? 'above' : 'below';
+                        regionalHelper = `${sign}${Math.round(pct)}% ${direction} regional avg`;
+                        regionalHelperColor = pct >= 0 ? theme.palette.success.main : theme.palette.error.main;
+                      }
+
+                      const locationParts = [];
+                      if (analyzedPrediction.state) locationParts.push(analyzedPrediction.state);
+                      if (analyzedPrediction.county) locationParts.push(analyzedPrediction.county);
+                      if (analyzedPrediction.season != null && analyzedPrediction.season !== '') {
+                        locationParts.push(String(analyzedPrediction.season));
+                      }
+
+                      const regionalSampleSize = (() => {
+                        const r = analyzedPrediction.responsePayload?.regional_comparison;
+                        const n = r && Number(r.sample_size);
+                        if (regionalSource === 'county' && Number.isFinite(n) && n > 0) return n;
+                        const stateRow = analyzedPrediction.state ? stateStats[analyzedPrediction.state] : null;
+                        const stateN = stateRow != null ? Number(stateRow.field_count ?? stateRow.count) : null;
+                        if (regionalSource === 'state' && Number.isFinite(stateN) && stateN > 0) return stateN;
+                        return null;
+                      })();
+
+                      return (
+                        <Grid container spacing={2}>
+                          <Grid size={{ xs: 12, md: 6 }}>
+                            <MetricCard
+                              label="Predicted Yield"
+                              value={formatNumber(predicted)}
+                              unit="bu/ac"
+                              // Helper text reflects the model's actual coverage
+                              // (confidence_level, e.g. 0.90 for a CatBoost
+                              // q=0.05/q=0.95 ensemble or 0.95 for a Gaussian DL
+                              // uncertainty head). Older predictions without the
+                              // field fall back to the generic label.
+                              helper={`${confidenceLabel} (bu/ac)`}
+                              range={hasInterval ? { min: lower, max: upper, value: predicted } : null}
+                              info={
+                                <Box sx={{ p: 0.25 }}>
+                                  <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
+                                    Predicted yield
+                                  </Typography>
+                                  <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
+                                    The model's point estimate (typically its median quantile or mean output) in bushels per acre, for the
+                                    inputs you submitted.
+                                  </Typography>
+                                  <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
+                                    The horizontal bar plots where the prediction falls inside the model's confidence interval. The bounds
+                                    come live from the model — quantile predictions for tree ensembles, or mean ± 1.96·σ for DL models with
+                                    an uncertainty head.
+                                  </Typography>
+                                </Box>
+                              }
+                            />
+                          </Grid>
+                          <Grid size={{ xs: 12, md: 6 }}>
+                            <MetricCard
+                              label="Confidence Width"
+                              value={hasInterval ? formatNumber(upper - lower) : '—'}
+                              unit={hasInterval ? 'bu/ac' : null}
+                              // Same range-bar visualization as Predicted Yield but
+                              // with no marker — the bar IS the width here, with
+                              // its endpoints labeled so the user can read both
+                              // bounds visually rather than scanning the helper text.
+                              range={hasInterval ? { min: lower, max: upper } : null}
+                              helper={hasInterval ? `Range: ${formatNumber(lower)} — ${formatNumber(upper)}` : null}
+                              info={
+                                <Box sx={{ p: 0.25 }}>
+                                  <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
+                                    Confidence width
+                                  </Typography>
+                                  <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
+                                    Upper bound minus lower bound (bu/ac). A{' '}
+                                    <Box component="span" sx={{ fontWeight: 700 }}>
+                                      narrower
+                                    </Box>{' '}
+                                    width means the model is more confident about this specific input.
+                                  </Typography>
+                                  <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
+                                    Use this to compare runs: two predictions can have the same yield but very different uncertainty. Wider
+                                    intervals usually point to inputs that are unusual relative to the training data.
+                                  </Typography>
+                                </Box>
+                              }
+                            />
+                          </Grid>
+                          <Grid size={{ xs: 12, md: 6 }}>
+                            <MetricCard
+                              label={`Regional Average${analyzedPrediction.state ? ` · ${analyzedPrediction.state}` : ''}`}
+                              value={hasRegional ? formatNumber(regional) : '—'}
+                              unit={hasRegional ? 'bu/ac' : null}
+                              // Compare block (mini bar + delta + arrow) renders when
+                              // both numbers are present. The free-text helper
+                              // remains as a fallback for the no-regional-data case.
+                              comparison={hasRegional ? { predicted, regional } : null}
+                              helper={!hasRegional ? 'Regional baseline unavailable' : null}
+                              helperColor={regionalHelperColor}
+                              info={
+                                <Box sx={{ p: 0.25 }}>
+                                  <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
+                                    Regional average yield
+                                  </Typography>
+                                  <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
+                                    Average observed yield from your historical field records in this region. We try the prediction's{' '}
+                                    <Box component="span" sx={{ fontWeight: 700 }}>
+                                      county
+                                    </Box>{' '}
+                                    first (computed at predict time), then fall back to the{' '}
+                                    <Box component="span" sx={{ fontWeight: 700 }}>
+                                      state
+                                    </Box>{' '}
+                                    aggregate (the same source the Overview tab's FieldMap uses).
+                                  </Typography>
+                                  <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.5 }}>
+                                    The mini-bar shows where the prediction sits relative to this baseline. A green marker to the right
+                                    means the model expects this input to outperform the regional average; a yellow marker to the left means
+                                    it expects to underperform.
+                                  </Typography>
+                                  {regionalSource ? (
+                                    <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
+                                      Source:{' '}
+                                      <Box component="span" sx={{ fontWeight: 700 }}>
+                                        {regionalSource === 'county' ? 'county-level' : 'state-level'}
+                                      </Box>{' '}
+                                      {regionalSampleSize ? `· n = ${regionalSampleSize.toLocaleString()} field-seasons` : null}
+                                    </Typography>
+                                  ) : null}
+                                </Box>
+                              }
+                            />
+                          </Grid>
+                          <Grid size={{ xs: 12, md: 6 }}>
+                            <MetricCard
+                              label="Created At"
+                              value={formatDateTime(analyzedPrediction.createdAt)}
+                              helper={locationParts.length > 0 ? locationParts.join(' • ') : null}
+                            />
+                          </Grid>
+                        </Grid>
+                      );
+                    })()}
+
+                    {(() => {
+                      const totalN = analyzedPrediction.totalN;
+                      const totalP = analyzedPrediction.totalP;
+                      const totalK = analyzedPrediction.totalK;
+                      const hasNutrients =
+                        (Number.isFinite(totalN) && totalN > 0) ||
+                        (Number.isFinite(totalP) && totalP > 0) ||
+                        (Number.isFinite(totalK) && totalK > 0);
+                      // Re-derive the yield-context numbers locally — they're scoped
+                      // to the metrics-row IIFE above and aren't visible here.
+                      const lower = analyzedPrediction.confidenceLower;
+                      const upper = analyzedPrediction.confidenceUpper;
+                      const predicted = analyzedPrediction.predictedYield;
+                      let regional = analyzedPrediction.regionalAvgYield;
+                      if (!Number.isFinite(regional) || regional <= 0) {
+                        const stateName = analyzedPrediction.state;
+                        const stateRow = stateName ? stateStats[stateName] : null;
+                        const stateAvg = stateRow != null ? Number(stateRow.avg_yield) : null;
+                        if (Number.isFinite(stateAvg) && stateAvg > 0) regional = stateAvg;
+                      }
+                      const hasInterval = Number.isFinite(lower) && Number.isFinite(upper) && upper > lower;
+                      const hasRegional = Number.isFinite(regional) && regional > 0;
+
+                      // Fixed inner content height for both chart cards — accommodates the
+                      // BarChart's SVG plus any legend/axis padding so the chart and
+                      // the empty state always render at the same total height. Taller
+                      // than before so the bars get the breathing room they need at
+                      // the drawer's width.
+                      const chartContentHeight = 380;
+                      // Match the SVG height to the wrapping Box's content area so the
+                      // BarChart fills the card vertically with no dead space below.
+                      // The wrapping Box uses px: 0, py: 0 (no vertical padding), so
+                      // the SVG height equals the Box's full height.
+                      const chartSvgHeight = chartContentHeight;
+                      const chartCardSx = {
+                        bgcolor: alpha(theme.palette.primary.main, 0.14),
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.45)}`,
+                        borderRadius: 2,
+                        backgroundImage: 'none',
+                        boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`,
+                        // Stretch the card to fill its Grid item so siblings equalize
+                        // even if one card's intrinsic content is taller than the other.
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        '& .MuiCardHeader-root': {
+                          bgcolor: alpha(theme.palette.primary.main, 0.12),
+                          borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                          px: 2.5,
+                          py: 1.5
+                        },
+                        '& .MuiCardHeader-title': {
+                          color: theme.palette.common.white,
+                          fontWeight: 700,
+                          letterSpacing: '0.01em',
+                          fontSize: '0.95rem'
+                        }
+                      };
+
+                      return (
+                        <Grid container spacing={2}>
+                          <Grid size={{ xs: 12 }}>
+                            <MainCard title="Yield Context" content={false} sx={chartCardSx}>
+                              {/* Edge-to-edge horizontal padding so the SVG fills
+                          the card. Internal margins are tuned so the Y-axis
+                          title fits at left and tick labels at bottom — no
+                          extra slack. */}
+                              <Box sx={{ px: 0, py: 0, height: chartContentHeight, boxSizing: 'border-box' }}>
+                                <BarChart
+                                  height={chartSvgHeight}
+                                  hideLegend
+                                  sx={chartBarSx}
+                                  margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
+                                  grid={{ horizontal: true }}
+                                  xAxis={[
+                                    {
+                                      scaleType: 'band',
+                                      data: YIELD_CATEGORIES,
+                                      colorMap: { type: 'ordinal', values: YIELD_CATEGORIES, colors: yieldBarColors },
+                                      categoryGapRatio: 0.35,
+                                      barGapRatio: 0.1
+                                    }
+                                  ]}
+                                  yAxis={[
+                                    {
+                                      valueFormatter: (v) => formatNumber(v, 1),
+                                      label: 'Yield bu/ac',
+                                      width: 64
+                                    }
+                                  ]}
+                                  series={[
+                                    {
+                                      data: yieldContextSeries,
+                                      valueFormatter: (v) => `${formatNumber(v, 2)} bu/ac`
+                                    }
+                                  ]}
+                                  borderRadius={10}
+                                />
+                              </Box>
+                            </MainCard>
+                          </Grid>
+                          <Grid size={{ xs: 12 }}>
+                            <MainCard title="Nutrient Inputs" content={false} sx={chartCardSx}>
+                              {hasNutrients ? (
+                                <Box sx={{ px: 0, py: 0, height: chartContentHeight, boxSizing: 'border-box' }}>
+                                  <BarChart
+                                    height={chartSvgHeight}
+                                    hideLegend
+                                    sx={chartBarSx}
+                                    margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
+                                    grid={{ horizontal: true }}
+                                    xAxis={[
+                                      {
+                                        scaleType: 'band',
+                                        data: NUTRIENT_CATEGORIES,
+                                        colorMap: { type: 'ordinal', values: NUTRIENT_CATEGORIES, colors: nutrientBarColors },
+                                        categoryGapRatio: 0.35,
+                                        barGapRatio: 0.1
+                                      }
+                                    ]}
+                                    yAxis={[
+                                      {
+                                        valueFormatter: (v) => formatNumber(v, 1),
+                                        label: 'Input Amount',
+                                        width: 64
+                                      }
+                                    ]}
+                                    series={[
+                                      {
+                                        data: nutrientSeries,
+                                        valueFormatter: (v) => formatNumber(v, 2)
+                                      }
+                                    ]}
+                                    borderRadius={10}
                                   />
                                 </Box>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      ) : (
-                        <TableRow sx={{ bgcolor: rowSurface }}>
-                          <TableCell colSpan={5}>
-                            <Typography variant="body2" sx={{ color: alpha(theme.palette.common.white, 0.7), fontWeight: 500, py: 1 }}>
-                              Explainability data was not returned for this prediction.
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Stack>
-            </Paper>
+                              ) : (
+                                // Same outer Box dimensions as the chart branch so the
+                                // empty state matches the BarChart's effective height.
+                                // The inner Stack now fills the Box (height: 100%)
+                                // instead of having its own fixed 280px height.
+                                <Box sx={{ p: 2, height: chartContentHeight, boxSizing: 'border-box' }}>
+                                  <Stack
+                                    spacing={1.5}
+                                    sx={{
+                                      height: '100%',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
+                                    }}
+                                  >
+                                    <Box
+                                      sx={{
+                                        color: alpha(theme.palette.primary.light, 0.5),
+                                        fontSize: '2.4rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                      }}
+                                    >
+                                      <AppstoreOutlined />
+                                    </Box>
+                                    <Typography
+                                      sx={{
+                                        color: alpha(theme.palette.common.white, 0.55),
+                                        textAlign: 'center',
+                                        fontSize: '0.9rem',
+                                        lineHeight: 1.5,
+                                        maxWidth: 240
+                                      }}
+                                    >
+                                      No nutrient inputs recorded for this prediction
+                                    </Typography>
+                                  </Stack>
+                                </Box>
+                              )}
+                            </MainCard>
+                          </Grid>
+                        </Grid>
+                      );
+                    })()}
 
-            <Paper
-              variant="outlined"
-              sx={{
-                p: { xs: 2, md: 2.5 },
-                borderRadius: 2,
-                bgcolor: alpha(theme.palette.primary.main, 0.14),
-                borderColor: alpha(theme.palette.primary.main, 0.45),
-                boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
-              }}
-            >
-              <Stack spacing={2}>
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-                  <Box
-                    sx={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 1.5,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      bgcolor: alpha(theme.palette.primary.main, 0.25),
-                      border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
-                      color: theme.palette.primary.light,
-                      fontSize: '1.1rem'
-                    }}
-                  >
-                    <InfoCircleOutlined />
-                  </Box>
-                  <Stack spacing={0.1}>
-                    <Typography sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '0.95rem', letterSpacing: '0.02em' }}>
-                      Inputs Applied To Model
-                    </Typography>
-                    <Typography sx={{ color: alpha(theme.palette.common.white, 0.6), fontSize: '0.76rem', fontWeight: 500 }}>
-                      The exact request payload that produced this prediction
-                    </Typography>
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: { xs: 2, md: 2.5 },
+                        borderRadius: 2,
+                        bgcolor: alpha(theme.palette.primary.main, 0.14),
+                        borderColor: alpha(theme.palette.primary.main, 0.45),
+                        boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
+                      }}
+                    >
+                      <Stack spacing={2}>
+                        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                          <Box
+                            sx={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 1.5,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              bgcolor: alpha(theme.palette.primary.main, 0.25),
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+                              color: theme.palette.primary.light,
+                              fontSize: '1.1rem'
+                            }}
+                          >
+                            <ThunderboltOutlined />
+                          </Box>
+                          <Stack spacing={0.1} sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography
+                              sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '0.95rem', letterSpacing: '0.02em' }}
+                            >
+                              Top Contributing Features
+                            </Typography>
+                            <Typography sx={{ color: alpha(theme.palette.common.white, 0.6), fontSize: '0.76rem', fontWeight: 500 }}>
+                              Ranked by SHAP impact
+                              {analyzedPrediction.topFeatures.length > 0
+                                ? ` · ${analyzedPrediction.topFeatures.length} feature${analyzedPrediction.topFeatures.length === 1 ? '' : 's'}`
+                                : ''}
+                            </Typography>
+                          </Stack>
+                          <Tooltip
+                            arrow
+                            placement="left"
+                            title={
+                              <Box sx={{ p: 0.25 }}>
+                                <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.5, color: 'inherit' }}>
+                                  About direction & impact
+                                </Typography>
+                                <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.75 }}>
+                                  <Box component="span" sx={{ color: theme.palette.success.light, fontWeight: 700 }}>
+                                    Positive
+                                  </Box>{' '}
+                                  features pushed this prediction{' '}
+                                  <Box component="span" sx={{ fontWeight: 700 }}>
+                                    up
+                                  </Box>{' '}
+                                  from the model's baseline — they made the predicted yield higher than the model's average expectation.
+                                </Typography>
+                                <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'inherit', mb: 0.75 }}>
+                                  <Box component="span" sx={{ color: theme.palette.warning.light, fontWeight: 700 }}>
+                                    Negative
+                                  </Box>{' '}
+                                  features pulled it{' '}
+                                  <Box component="span" sx={{ fontWeight: 700 }}>
+                                    down
+                                  </Box>{' '}
+                                  — they made the prediction lower than the baseline.
+                                </Typography>
+                                <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit', opacity: 0.85 }}>
+                                  <Box component="span" sx={{ fontWeight: 700 }}>
+                                    Impact
+                                  </Box>{' '}
+                                  is the share of total |SHAP| value this feature owns. The bar visualizes that share so longer bars carry
+                                  more of the explanation.
+                                </Typography>
+                              </Box>
+                            }
+                            slotProps={{
+                              tooltip: {
+                                sx: {
+                                  bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                                  color: theme.palette.common.white,
+                                  border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                                  fontSize: '0.74rem',
+                                  fontWeight: 500,
+                                  maxWidth: 320,
+                                  px: 1.5,
+                                  py: 1.1,
+                                  borderRadius: 1.25,
+                                  boxShadow: `0 6px 16px ${alpha(theme.palette.common.black, 0.45)}`
+                                }
+                              },
+                              arrow: {
+                                sx: {
+                                  color: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                                  '&::before': {
+                                    backgroundColor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                                    border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`
+                                  }
+                                }
+                              }
+                            }}
+                          >
+                            <Box
+                              component="span"
+                              tabIndex={0}
+                              aria-label="About direction and impact"
+                              sx={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'help',
+                                color: alpha(theme.palette.primary.light, 0.7),
+                                fontSize: '0.95rem',
+                                flexShrink: 0,
+                                '&:hover, &:focus-visible': { color: theme.palette.primary.light, outline: 'none' }
+                              }}
+                            >
+                              <InfoCircleOutlined />
+                            </Box>
+                          </Tooltip>
+                        </Stack>
+
+                        {/* Compact legend strip clarifying positive/negative tone
+                    inline so the meaning is visible without hover. */}
+                        {analyzedPrediction.topFeatures.length > 0 ? (
+                          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+                            <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
+                              <Box sx={{ color: theme.palette.success.light, display: 'flex', fontSize: '0.85rem' }}>
+                                <RiseOutlined />
+                              </Box>
+                              <Typography sx={{ color: alpha(theme.palette.common.white, 0.75), fontSize: '0.72rem', fontWeight: 600 }}>
+                                Positive = pushed yield up
+                              </Typography>
+                            </Stack>
+                            <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
+                              <Box sx={{ color: theme.palette.warning.light, display: 'flex', fontSize: '0.85rem' }}>
+                                <FallOutlined />
+                              </Box>
+                              <Typography sx={{ color: alpha(theme.palette.common.white, 0.75), fontSize: '0.72rem', fontWeight: 600 }}>
+                                Negative = pulled yield down
+                              </Typography>
+                            </Stack>
+                          </Stack>
+                        ) : null}
+
+                        <TableContainer sx={{ border: 1, borderColor: accentBlue, borderRadius: 1.25, ...tableScrollbarSx }}>
+                          <Table size="small" sx={{ minWidth: 760 }}>
+                            <TableHead>
+                              <TableRow
+                                sx={{
+                                  '& .MuiTableCell-root': {
+                                    bgcolor: headerBlue,
+                                    borderBottomColor: accentBlue,
+                                    borderBottomWidth: 2,
+                                    color: alpha(theme.palette.common.white, 0.85),
+                                    whiteSpace: 'nowrap',
+                                    fontWeight: 700,
+                                    fontSize: '0.72rem',
+                                    letterSpacing: '0.08em',
+                                    textTransform: 'uppercase'
+                                  }
+                                }}
+                              >
+                                <TableCell>Feature</TableCell>
+                                <TableCell>Value</TableCell>
+                                <TableCell>Direction</TableCell>
+                                <TableCell align="right">Impact</TableCell>
+                                <TableCell sx={{ minWidth: 180 }}>Contribution</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {analyzedPrediction.topFeatures.length > 0 ? (
+                                analyzedPrediction.topFeatures.map((feature, index) => {
+                                  const importance = Math.max(toNumberOrNull(feature?.importance) || 0, 0);
+                                  const barPct = Math.min(importance * 100, 100);
+                                  const directionKey = String(feature?.direction || '').toLowerCase();
+                                  const isPositive = directionKey === 'positive';
+                                  const isNegative = directionKey === 'negative';
+                                  const dirTone = isPositive
+                                    ? theme.palette.success.light
+                                    : isNegative
+                                      ? theme.palette.warning.light
+                                      : alpha(theme.palette.common.white, 0.55);
+                                  const DirIcon = isNegative ? FallOutlined : RiseOutlined;
+                                  const dirLabel = isPositive ? 'Positive' : isNegative ? 'Negative' : 'Unknown';
+                                  return (
+                                    <TableRow key={`${feature.feature}-${index}`} hover sx={{ bgcolor: rowSurface }}>
+                                      <TableCell sx={{ color: theme.palette.common.white, fontWeight: 600 }}>
+                                        {formatFeatureName(feature?.feature)}
+                                      </TableCell>
+                                      <TableCell
+                                        sx={{ color: alpha(theme.palette.common.white, 0.85), fontVariantNumeric: 'tabular-nums' }}
+                                      >
+                                        {String(feature?.value ?? '—')}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center' }}>
+                                          <Box sx={{ color: dirTone, display: 'flex', fontSize: '0.95rem' }}>
+                                            {isPositive || isNegative ? <DirIcon /> : null}
+                                          </Box>
+                                          <Typography sx={{ color: dirTone, fontSize: '0.78rem', fontWeight: 700 }}>{dirLabel}</Typography>
+                                        </Stack>
+                                      </TableCell>
+                                      <TableCell
+                                        align="right"
+                                        sx={{ color: theme.palette.common.white, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+                                      >
+                                        {formatNumber(importance * 100, 2)}%
+                                      </TableCell>
+                                      <TableCell sx={{ minWidth: 180 }}>
+                                        <Box
+                                          sx={{
+                                            height: 8,
+                                            borderRadius: 999,
+                                            bgcolor: alpha(theme.palette.common.black, 0.3),
+                                            overflow: 'hidden'
+                                          }}
+                                        >
+                                          <Box
+                                            sx={{
+                                              width: `${barPct}%`,
+                                              height: '100%',
+                                              background: isNegative
+                                                ? `linear-gradient(90deg, ${alpha(theme.palette.warning.light, 0.85)} 0%, ${theme.palette.warning.main} 100%)`
+                                                : `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.75)} 0%, ${theme.palette.primary.light} 100%)`,
+                                              transition: 'width 0.5s ease'
+                                            }}
+                                          />
+                                        </Box>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })
+                              ) : (
+                                <TableRow sx={{ bgcolor: rowSurface }}>
+                                  <TableCell colSpan={5}>
+                                    <Typography
+                                      variant="body2"
+                                      sx={{ color: alpha(theme.palette.common.white, 0.7), fontWeight: 500, py: 1 }}
+                                    >
+                                      Explainability data was not returned for this prediction.
+                                    </Typography>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Stack>
+                    </Paper>
+
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: { xs: 2, md: 2.5 },
+                        borderRadius: 2,
+                        bgcolor: alpha(theme.palette.primary.main, 0.14),
+                        borderColor: alpha(theme.palette.primary.main, 0.45),
+                        boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
+                      }}
+                    >
+                      <Stack spacing={2}>
+                        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                          <Box
+                            sx={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 1.5,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              bgcolor: alpha(theme.palette.primary.main, 0.25),
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+                              color: theme.palette.primary.light,
+                              fontSize: '1.1rem'
+                            }}
+                          >
+                            <InfoCircleOutlined />
+                          </Box>
+                          <Stack spacing={0.1}>
+                            <Typography
+                              sx={{ color: theme.palette.common.white, fontWeight: 700, fontSize: '0.95rem', letterSpacing: '0.02em' }}
+                            >
+                              Inputs Applied To Model
+                            </Typography>
+                            <Typography sx={{ color: alpha(theme.palette.common.white, 0.6), fontSize: '0.76rem', fontWeight: 500 }}>
+                              The exact request payload that produced this prediction
+                            </Typography>
+                          </Stack>
+                        </Stack>
+                        <Grid container spacing={1.5}>
+                          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+                            <MetricCard label="Crop" value={analyzedPrediction.crop ? formatCropName(analyzedPrediction.crop) : '—'} />
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+                            <MetricCard label="Variety" value={analyzedPrediction.variety || '—'} />
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+                            <MetricCard label="Season" value={analyzedPrediction.season ?? '—'} />
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+                            <MetricCard label="Acres" value={formatNumber(analyzedPrediction.acres)} />
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+                            <MetricCard label="N (lb/ac)" value={formatNumber(analyzedPrediction.totalN)} />
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+                            <MetricCard label="P (lb/ac)" value={formatNumber(analyzedPrediction.totalP)} />
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+                            <MetricCard label="K (lb/ac)" value={formatNumber(analyzedPrediction.totalK)} />
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+                            <MetricCard label="Water Applied (mm)" value={formatNumber(analyzedPrediction.waterApplied)} />
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+                            <MetricCard label="State" value={analyzedPrediction.state || '—'} />
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+                            <MetricCard label="County" value={analyzedPrediction.county || '—'} />
+                          </Grid>
+                        </Grid>
+                      </Stack>
+                    </Paper>
                   </Stack>
-                </Stack>
-                <Grid container spacing={1.5}>
-                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                    <MetricCard label="Crop" value={analyzedPrediction.crop ? formatCropName(analyzedPrediction.crop) : '—'} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                    <MetricCard label="Variety" value={analyzedPrediction.variety || '—'} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                    <MetricCard label="Season" value={analyzedPrediction.season ?? '—'} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                    <MetricCard label="Acres" value={formatNumber(analyzedPrediction.acres)} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                    <MetricCard label="N (lb/ac)" value={formatNumber(analyzedPrediction.totalN)} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                    <MetricCard label="P (lb/ac)" value={formatNumber(analyzedPrediction.totalP)} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                    <MetricCard label="K (lb/ac)" value={formatNumber(analyzedPrediction.totalK)} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                    <MetricCard label="Water Applied (mm)" value={formatNumber(analyzedPrediction.waterApplied)} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                    <MetricCard label="State" value={analyzedPrediction.state || '—'} />
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                    <MetricCard label="County" value={analyzedPrediction.county || '—'} />
-                  </Grid>
-                </Grid>
-              </Stack>
-            </Paper>
-          </Stack>
-            </Box>
-          </Drawer>
-        )}
+                </Box>
+              </Drawer>
+            )}
           </>
         ) : (
           /* ===================== VIEW B — MODEL & DATA =====================
