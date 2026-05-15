@@ -1,3 +1,10 @@
+# docs
+docs/
+
+# training scripts
+training_files/
+
+
 # Logs
 logs
 *.log
