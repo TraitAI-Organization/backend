@@ -14,9 +14,18 @@ Usage:
     python -m scripts.backfill_all_models --models 1,3,5
     python -m scripts.backfill_all_models --refresh            # delete existing rows then backfill
     python -m scripts.backfill_all_models --refresh --models 2 # refresh just model_version_id=2
+
+    # NEW: feed the model the full 86-feature schema by looking up matching
+    # event rows in the original training CSV and averaging the per-event
+    # predictions. Without this flag the script uses the lean 10-column DB
+    # row, which leaves 75+ features defaulted to 0/Missing and causes
+    # predictions to collapse toward the training-set mean.
+    python -m scripts.backfill_all_models --refresh \
+        --use-csv-lookup /app/data/Wheat/NSP_field_product_combined_WHEAT-only.csv
 """
 import argparse
 import logging
+import statistics
 import sys
 
 from sqlalchemy.orm import Session
@@ -24,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.database import models
 from app.database.session import SessionLocal
 from app.ml.predictor import PredictionService
+from app.services.csv_feature_lookup import CsvFeatureLookup
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -55,9 +65,22 @@ def _delete_existing_predictions(db: Session, model_version, dry_run: bool) -> i
     return count
 
 
-def _backfill_one_model(db: Session, predictor: PredictionService, model_version, batch_size: int, dry_run: bool) -> int:
+def _backfill_one_model(
+    db: Session,
+    predictor: PredictionService,
+    model_version,
+    batch_size: int,
+    dry_run: bool,
+    csv_lookup: "CsvFeatureLookup | None" = None,
+) -> tuple[int, int, int]:
     """Predict + persist for every field-season that doesn't yet have a row
-    for this specific model. Returns the count of predictions written."""
+    for this specific model.
+
+    Returns (predictions_written, enriched_field_seasons, unmatched_field_seasons).
+    enriched_field_seasons counts field-seasons that got the full 86-feature
+    treatment via csv_lookup; unmatched counts field-seasons that fell back
+    to the lean-input path (or were skipped if --strict-csv).
+    """
     # Field-seasons that already have a prediction from THIS model — skip them.
     subq = (
         db.query(models.ModelPrediction.field_season_id)
@@ -69,6 +92,7 @@ def _backfill_one_model(db: Session, predictor: PredictionService, model_version
         db.query(
             models.FieldSeason.field_season_id,
             models.FieldSeason.field_id,
+            models.Field.field_number,  # natural join key with the CSV (DB-internal field_id is autoincrement and unrelated)
             models.Field.acres,
             models.Field.lat,
             models.Field.long,
@@ -99,10 +123,12 @@ def _backfill_one_model(db: Session, predictor: PredictionService, model_version
     print(f"  • {total:,} field-seasons missing predictions for {model_version.version_tag}.")
 
     if total == 0 or dry_run:
-        return 0
+        return 0, 0, 0
 
     last_field_season_id = 0
     processed = 0
+    enriched = 0
+    unmatched = 0
 
     while True:
         batch = (
@@ -117,29 +143,68 @@ def _backfill_one_model(db: Session, predictor: PredictionService, model_version
 
         for row in batch:
             try:
-                input_data = {
-                    'field_number': row.field_id,
-                    'acres': float(row.acres) if row.acres else 0,
-                    'lat': float(row.lat) if row.lat else None,
-                    'long': float(row.long) if row.long else None,
-                    'county': row.county,
-                    'state': row.state,
-                    'crop': row.crop_name_en,
-                    'variety': row.variety_name_en,
-                    'season': row.season_year,
-                    'totalN_per_ac': float(row.totalN_per_ac) if row.totalN_per_ac else 0,
-                    'totalP_per_ac': float(row.totalP_per_ac) if row.totalP_per_ac else 0,
-                    'totalK_per_ac': float(row.totalK_per_ac) if row.totalK_per_ac else 0,
-                }
+                # When --use-csv-lookup is on, predict on the MERGED
+                # field-season-level row (matching the granularity the model
+                # was trained on — one row per (field, crop, season, variety)
+                # combo, with event-level rows aggregated via first-non-empty).
+                # Per-event averaging was the wrong approach: the model was
+                # trained on cleaned, field-season-level rows where event-level
+                # columns were all empty, so feeding it individual event rows
+                # lands inputs in an out-of-training-distribution region of
+                # feature space and predictions collapse.
+                averaged_result = None
+                if csv_lookup is not None:
+                    merged = csv_lookup.get_field_season_row(
+                        field_number=row.field_number,
+                        crop_name=row.crop_name_en,
+                        season_year=row.season_year,
+                        variety_name=row.variety_name_en,
+                    )
+                    if merged is not None:
+                        # Single inference per field-season. Output dict mirrors
+                        # the predictor's normal response shape so the downstream
+                        # ModelPrediction insert below doesn't change.
+                        res = predictor.predict(dict(merged), model_version)
+                        averaged_result = {
+                            "predicted_yield": float(res["predicted_yield"]),
+                            "confidence_lower": res.get("confidence_lower"),
+                            "confidence_upper": res.get("confidence_upper"),
+                            "events_used": 1,  # informational only
+                        }
+                        enriched += 1
+                    else:
+                        unmatched += 1
+                        # Fall through to the lean-input path below.
 
-                result = predictor.predict(input_data, model_version)
+                if averaged_result is None:
+                    input_data = {
+                        'field_number': row.field_number or row.field_id,
+                        'acres': float(row.acres) if row.acres else 0,
+                        'lat': float(row.lat) if row.lat else None,
+                        'long': float(row.long) if row.long else None,
+                        'county': row.county,
+                        'state': row.state,
+                        'crop': row.crop_name_en,
+                        'variety': row.variety_name_en,
+                        'season': row.season_year,
+                        'totalN_per_ac': float(row.totalN_per_ac) if row.totalN_per_ac else 0,
+                        'totalP_per_ac': float(row.totalP_per_ac) if row.totalP_per_ac else 0,
+                        'totalK_per_ac': float(row.totalK_per_ac) if row.totalK_per_ac else 0,
+                    }
+                    result = predictor.predict(input_data, model_version)
+                    averaged_result = {
+                        "predicted_yield": float(result["predicted_yield"]),
+                        "confidence_lower": result.get("confidence_lower"),
+                        "confidence_upper": result.get("confidence_upper"),
+                        "events_used": 0,
+                    }
 
                 pred = models.ModelPrediction(
                     field_season_id=row.field_season_id,
                     model_version_id=model_version.model_version_id,
-                    predicted_yield=result['predicted_yield'],
-                    confidence_lower=result['confidence_lower'],
-                    confidence_upper=result['confidence_upper'],
+                    predicted_yield=averaged_result["predicted_yield"],
+                    confidence_lower=averaged_result["confidence_lower"],
+                    confidence_upper=averaged_result["confidence_upper"],
                     regional_avg_yield=None,
                     regional_std_yield=None,
                 )
@@ -156,9 +221,12 @@ def _backfill_one_model(db: Session, predictor: PredictionService, model_version
         db.commit()
         last_field_season_id = batch[-1].field_season_id
         progress_pct = (processed / total * 100.0) if total else 100.0
-        print(f"    progress: {processed:,} / {total:,} ({progress_pct:.1f}%)")
+        suffix = ""
+        if csv_lookup is not None:
+            suffix = f"  [enriched={enriched:,} unmatched_fallback={unmatched:,}]"
+        print(f"    progress: {processed:,} / {total:,} ({progress_pct:.1f}%){suffix}")
 
-    return processed
+    return processed, enriched, unmatched
 
 
 def main():
@@ -178,6 +246,18 @@ def main():
         default=None,
         help='Comma-separated model_version_ids to limit the run (e.g. "1,3"). Overrides --include-inactive.'
     )
+    parser.add_argument(
+        '--use-csv-lookup',
+        type=str,
+        default=None,
+        metavar='PATH',
+        help='Path to the original event-level training CSV. When supplied, the script '
+             'looks up every matching event row for each field-season, predicts each '
+             'event individually, and writes the AVERAGED prediction. This restores the '
+             'full 86-feature schema the models were trained on; without it, ~75 features '
+             'are defaulted to 0/Missing and predictions collapse toward the training '
+             'mean. Field-seasons with no CSV match fall back to the lean-input path.',
+    )
 
     args = parser.parse_args()
     model_ids = None
@@ -187,6 +267,20 @@ def main():
         except ValueError:
             print("--models must be a comma-separated list of integer IDs.")
             return 2
+
+    # Load the CSV lookup once (it's expensive: ~42k rows of pandas parsing).
+    # Re-using it across every model and every field-season keeps the run cheap.
+    csv_lookup = None
+    if args.use_csv_lookup:
+        try:
+            csv_lookup = CsvFeatureLookup(args.use_csv_lookup)
+            print(
+                f"CSV lookup loaded: {csv_lookup.event_row_count:,} event rows across "
+                f"{csv_lookup.field_season_count:,} field-seasons.\n"
+            )
+        except Exception as e:
+            print(f"Could not load CSV lookup from {args.use_csv_lookup}: {e}")
+            return 1
 
     db: Session = SessionLocal()
     try:
@@ -206,11 +300,15 @@ def main():
             flags.append("DRY RUN")
         if args.refresh:
             flags.append("REFRESH")
+        if csv_lookup is not None:
+            flags.append("CSV LOOKUP")
         flag_suffix = f" [{' / '.join(flags)}]" if flags else ""
         print(f"Batch size: {args.batch_size}{flag_suffix}")
         print()
 
         grand_total = 0
+        grand_enriched = 0
+        grand_unmatched = 0
         grand_deleted = 0
         failed_models: list[str] = []
         for mv in targets:
@@ -221,9 +319,17 @@ def main():
                     grand_deleted += deleted
                     action = "would delete" if args.dry_run else "deleted"
                     print(f"  • {action} {deleted:,} existing prediction(s) for {mv.version_tag}.")
-                written = _backfill_one_model(db, predictor, mv, args.batch_size, args.dry_run)
+                written, enriched, unmatched = _backfill_one_model(
+                    db, predictor, mv, args.batch_size, args.dry_run,
+                    csv_lookup=csv_lookup,
+                )
                 grand_total += written
-                print(f"  ✓ {written:,} prediction(s) written for {mv.version_tag}.\n")
+                grand_enriched += enriched
+                grand_unmatched += unmatched
+                summary = f"  ✓ {written:,} prediction(s) written for {mv.version_tag}."
+                if csv_lookup is not None:
+                    summary += f" (enriched: {enriched:,}, lean-fallback: {unmatched:,})"
+                print(summary + "\n")
             except Exception as e:
                 # Roll back this model's transaction so the next model starts clean.
                 try:

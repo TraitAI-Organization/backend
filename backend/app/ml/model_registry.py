@@ -494,6 +494,29 @@ class ModelRegistry:
             except Exception as e:
                 logger.warning(f"Failed to read target_scaler.json for {version_tag}: {e}")
 
+        # Load numeric feature scaler if shipped. Required when the training
+        # pipeline ran `StandardScaler.fit_transform` on the numeric columns —
+        # without applying the same transform at inference, the model sees
+        # raw values where it was trained on standardized ones, and predictions
+        # collapse toward a narrow band around the model's "default" output.
+        # The scaler exposes `feature_names_in_` so we know which columns it
+        # was fitted on; we only transform those at inference time. Failing
+        # to load is non-fatal (logged warning) so models that didn't use
+        # a scaler at training time keep working unchanged.
+        numeric_scaler = None
+        numeric_scaler_path = os.path.join(version_dir, "numeric_scaler.pkl")
+        if os.path.exists(numeric_scaler_path):
+            try:
+                import joblib  # local import: keeps load cheap for models that don't ship a scaler
+                numeric_scaler = joblib.load(numeric_scaler_path)
+                feature_names = getattr(numeric_scaler, "feature_names_in_", None)
+                logger.info(
+                    "Loaded numeric_scaler for %s (covers %d numeric features)",
+                    version_tag, len(feature_names) if feature_names is not None else -1,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to load numeric_scaler.pkl for {version_tag}: {e}")
+
         metadata = {
             'feature_list': feature_list,
             'preprocessing': preprocessing,
@@ -503,6 +526,7 @@ class ModelRegistry:
             'declared_model_types': sorted(declared_types),
             'cat_mappings': cat_mappings,
             'target_scaler': target_scaler,
+            'numeric_scaler': numeric_scaler,
         }
 
         logger.info(f"Model {version_tag} loaded successfully.")

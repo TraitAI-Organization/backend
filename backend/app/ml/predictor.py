@@ -160,6 +160,52 @@ class PredictionService:
                 missing_code = mapping.get("Missing", 0)
                 X[col] = X[col].map(lambda v: mapping.get(v, missing_code)).astype('int64')
 
+        # Apply numeric feature scaling. The engineer's training script ran
+        # `StandardScaler.fit_transform` on every numeric column before training,
+        # so the model's learned decision boundaries / network weights operate
+        # in the standardized space. Without applying the same transform here,
+        # raw inputs land in a completely different region of the feature
+        # space and predictions collapse toward a narrow band.
+        #
+        # IMPORTANT: skip this step for models whose wrapper already scales
+        # inputs internally. TorchTabularModelWrapper applies the scaler inside
+        # _prepare_inputs() before the forward pass; if we ALSO scale here, the
+        # DL model receives doubly-standardized inputs and its output blows up
+        # (we observed predictions > 10,000 bu/ac with merged inputs that work
+        # correctly for CatBoost). CatBoost has no such internal scaler, so it
+        # still needs the transform applied here.
+        wrapper_handles_scaling = self._model.__class__.__name__ == "TorchTabularModelWrapper"
+        numeric_scaler = self._metadata.get('numeric_scaler') if self._metadata else None
+        if numeric_scaler is not None and not wrapper_handles_scaling:
+            scaler_cols = getattr(numeric_scaler, "feature_names_in_", None)
+            if scaler_cols is not None:
+                # Only transform columns the scaler was fitted on AND that are
+                # in our current X. This is robust against schema drift between
+                # training and the active feature list.
+                cols_to_scale = [c for c in scaler_cols if c in X.columns]
+                if cols_to_scale:
+                    try:
+                        # Build a sub-DataFrame in the EXACT column order the
+                        # scaler expects; sklearn's StandardScaler.transform
+                        # is positional, not name-based.
+                        scaler_input = X[list(scaler_cols)].copy()
+                        # Defensive: anything that's not in X but the scaler
+                        # expected gets 0 (matches training-time fillna(0)).
+                        for c in scaler_cols:
+                            if c not in X.columns:
+                                scaler_input[c] = 0.0
+                        scaled = numeric_scaler.transform(scaler_input)
+                        # Write scaled values back to X for the columns the
+                        # scaler covered.
+                        for i, c in enumerate(scaler_cols):
+                            if c in X.columns:
+                                X[c] = scaled[:, i]
+                    except Exception as e:
+                        logger.warning(
+                            "numeric_scaler.transform failed; falling back to raw "
+                            "values (predictions will likely collapse): %s", e
+                        )
+
         # 5. Predict (point estimate + optional input-dependent uncertainty)
         predicted_yield = float(self._model.predict(X)[0])
 
