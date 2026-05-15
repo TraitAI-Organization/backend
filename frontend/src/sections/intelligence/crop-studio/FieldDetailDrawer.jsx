@@ -227,8 +227,13 @@ export default function FieldDetailDrawer({
   const seasonYear = data?.season?.season_year ?? '—';
   const observed = data?.yield_bu_ac;
   const target = data?.yield_target;
-  const observedNum = Number(observed);
-  const targetNum = Number(target);
+  // `Number(null) === 0`, so a naive `Number(target)` turned a NULL target
+  // value into "0.0 bu/ac" in the UI. Guard against null/undefined/'' before
+  // coercing so the drawer renders "—" for genuinely missing values.
+  const hasObserved = observed !== null && observed !== undefined && observed !== '';
+  const hasTarget = target !== null && target !== undefined && target !== '';
+  const observedNum = hasObserved ? Number(observed) : NaN;
+  const targetNum = hasTarget ? Number(target) : NaN;
   const yieldGap =
     Number.isFinite(observedNum) && Number.isFinite(targetNum) && targetNum > 0
       ? ((observedNum - targetNum) / targetNum) * 100

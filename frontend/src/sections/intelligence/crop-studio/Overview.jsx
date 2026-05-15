@@ -25,11 +25,15 @@ import MainCard from 'components/MainCard';
 import FieldMapPreview from 'sections/intelligence/crop-studio/FieldMapPreview';
 import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
 import { US_STATES } from 'sections/intelligence/crop-studio/usStatesPaths';
+import { useGetMenuMaster } from 'api/menu';
 import { formatCropName } from 'utils/cropName';
 import {
+  deriveDaysToHarvestFromNass,
+  deriveSeasonProgressFromNass,
   getDaysToHarvest,
   getSeasonProgress,
   getWheatStage,
+  STAGE_INFO_BY_KEY,
   STATE_HARVEST_DATES,
   STATE_PLANT_DATES
 } from 'sections/intelligence/crop-studio/wheatSeasonHelpers';
@@ -388,13 +392,19 @@ function SeasonsRow({ seasons }) {
   return (
     <Box
       sx={{
-        display: 'grid',
-        // Fixed 4-column grid: 6 seasons fall into a 2-row layout (4 +
-        // 2). Wider/narrower datasets still parse cleanly because each
-        // pill is a fixed cell and rows wrap predictably.
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        columnGap: 0.75,
-        rowGap: 1.25
+        // Flex-wrap with `flex-start` so pills flow one after the other
+        // with a fixed `gap` between every pair. This keeps the second
+        // row's pills packed against each other when the tile collapses
+        // (e.g. 4 pills in row 1, 2 in row 2 sitting side-by-side) —
+        // `space-between` would otherwise push the trailing-row pills
+        // out to opposite edges, leaving an awkward gap in the middle.
+        // Each pill keeps its natural compact width so values stay
+        // consistent in size.
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'flex-start',
+        gap: 0.75,
+        rowGap: 1
       }}
     >
       {sorted.map((year) => (
@@ -412,7 +422,8 @@ function SeasonsRow({ seasons }) {
             border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
             bgcolor: 'transparent',
             color: alpha(theme.palette.common.white, 0.78),
-            lineHeight: 1.3
+            lineHeight: 1.3,
+            flex: '0 0 auto'
           }}
         >
           {year}
@@ -440,10 +451,19 @@ function StatesRow({ states, tooltipSlotProps }) {
   return (
     <Box
       sx={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        columnGap: 0.75,
-        rowGap: 1.25
+        // Flex-wrap with `flex-start` so pills flow one after the other
+        // with a fixed `gap` between every pair. This keeps the second
+        // row's pills packed against each other when the tile collapses
+        // (e.g. 4 abbreviations in row 1, 2 in row 2 sitting side-by-side)
+        // — `space-between` would otherwise push the trailing-row pills
+        // out to opposite edges, leaving an awkward gap in the middle.
+        // Each pill keeps its natural compact width so abbreviations
+        // stay consistent in size.
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'flex-start',
+        gap: 0.75,
+        rowGap: 1
       }}
     >
       {states.map((name) => {
@@ -464,6 +484,7 @@ function StatesRow({ states, tooltipSlotProps }) {
                 color: alpha(theme.palette.common.white, 0.78),
                 lineHeight: 1.3,
                 cursor: 'default',
+                flex: '0 0 auto',
                 transition: 'background 0.18s ease, border-color 0.18s ease, color 0.18s ease',
                 '&:hover': {
                   bgcolor: alpha(theme.palette.primary.main, 0.18),
@@ -1053,11 +1074,59 @@ export default function Overview({ onNavigateToPredict }) {
   const [infoAnchor, setInfoAnchor] = useState(null);
   const [stateMenuAnchor, setStateMenuAnchor] = useState(null);
 
-  // Wheat-stage info for the banner. Recomputed on every render so the
-  // stage/days reflect "now" — cheap, no useMemo needed.
-  const stageInfo = getWheatStage();
-  const daysToHarvest = getDaysToHarvest(new Date(), featuredState);
-  const seasonProgress = getSeasonProgress(new Date(), featuredState);
+  // Drawer-open state from the dashboard layout. When the side drawer is
+  // expanded the banner has noticeably less horizontal room, so we hide
+  // the inline stage detail to keep the row on a single line. The (i)
+  // icon (and clickable stage label) stay visible in both states so the
+  // popover is always reachable.
+  const { menuMaster } = useGetMenuMaster();
+  const isDrawerOpen = Boolean(menuMaster?.isDashboardDrawerOpened);
+
+  // Live NASS Crop Progress snapshot for the current featured state. The
+  // backend /api/v1/season-status endpoint wraps USDA's Quick Stats feed
+  // with weekly caching; it returns `data: null` when NASS isn't
+  // reachable (no API key, dormancy gap, pre-survey) and we fall back to
+  // the calendar helpers.
+  const [nassPayload, setNassPayload] = useState(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadSeasonStatus = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/season-status?state=${encodeURIComponent(featuredState)}`,
+          { signal: controller.signal }
+        );
+        if (!response.ok) {
+          setNassPayload(null);
+          return;
+        }
+        const payload = await response.json();
+        setNassPayload(payload || null);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          // Silent: calendar fallback is fine.
+          setNassPayload(null);
+        }
+      }
+    };
+    loadSeasonStatus();
+    return () => controller.abort();
+  }, [featuredState]);
+
+  // Wheat-stage info for the banner. Prefer the live NASS stage key when
+  // available; otherwise fall back to the calendar lookup. Recomputed on
+  // every render so the stage/days reflect "now" — cheap, no useMemo
+  // needed.
+  const nassSnapshot = nassPayload?.data || null;
+  const stageInfo =
+    (nassSnapshot?.stage && STAGE_INFO_BY_KEY[nassSnapshot.stage]) || getWheatStage();
+  const daysToHarvest =
+    deriveDaysToHarvestFromNass(nassSnapshot) ??
+    getDaysToHarvest(new Date(), featuredState);
+  const seasonProgress =
+    deriveSeasonProgressFromNass(nassSnapshot, new Date()) ??
+    getSeasonProgress(new Date(), featuredState);
+  const isLiveFromNass = Boolean(nassSnapshot?.stage);
 
   // Human-friendly plant + harvest dates for the season-progress tooltip,
   // so the user can see exactly what window the percentage covers.
@@ -1201,35 +1270,48 @@ export default function Overview({ onNavigateToPredict }) {
                 >
                   Currently
                 </Typography>
+                {/* Stage label doubles as a popover trigger so the
+                    "About this stage / data source" popover is reachable
+                    even when the (i) icon is tucked away on narrow
+                    viewports. */}
                 <Typography
+                  onClick={(e) => setInfoAnchor(e.currentTarget)}
                   sx={{
                     color: theme.palette.common.white,
                     fontSize: '0.85rem',
                     fontWeight: 700,
-                    letterSpacing: '0.01em'
+                    letterSpacing: '0.01em',
+                    cursor: 'pointer',
+                    '&:hover': { textDecoration: 'underline' }
                   }}
                 >
                   {stageInfo.label}
                 </Typography>
+                {/* Inline stage detail (e.g. "· Spike emerged · yield
+                    potential set"). Visible when the dashboard drawer is
+                    collapsed; hidden when it's expanded since the banner
+                    row then has to share a much narrower band with the
+                    days-to-harvest cluster on the right. The same detail
+                    is surfaced verbatim at the top of the (i) popover,
+                    so nothing is lost in the drawer-open state. */}
                 <Typography
                   sx={{
                     color: alpha(theme.palette.common.white, 0.55),
                     fontSize: '0.78rem',
                     fontWeight: 500,
-                    // Hidden until lg so the banner never has to wrap a
-                    // long stage detail (e.g. "Hard dough · ready to
-                    // combine") onto a second line when the drawer is open.
-                    display: { xs: 'none', lg: 'inline' },
+                    display: isDrawerOpen ? 'none' : 'inline',
                     whiteSpace: 'nowrap'
                   }}
                 >
                   · {stageInfo.detail}
                 </Typography>
-                {/* Info button — click pops a small Popover with a longer
-                    explanation of the current stage and a "Learn more" link
-                    to a reputable agronomy reference. We use Popover (not
-                    Tooltip) so the link inside is actually clickable. */}
-                <Tooltip title="More about this stage" arrow slotProps={themedTooltipSlotProps}>
+                {/* Info button — click pops a small Popover with the full
+                    stage detail, description, and live-data source link.
+                    Always visible (no breakpoint), so the user can always
+                    reach the data-source citation regardless of drawer
+                    state. We use Popover (not Tooltip) so the link inside
+                    is actually clickable. */}
+                <Tooltip title="About this stage and data source" arrow slotProps={themedTooltipSlotProps}>
                   <IconButton
                     size="small"
                     onClick={(e) => setInfoAnchor(e.currentTarget)}
@@ -1262,9 +1344,51 @@ export default function Overview({ onNavigateToPredict }) {
                   sx={{ alignItems: 'center', color: alpha(theme.palette.common.white, 0.78), fontSize: '0.8rem' }}
                 >
                   <Typography component="span" sx={{ fontSize: 'inherit', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                    <Box component="span" sx={{ color: theme.palette.primary.light, fontWeight: 700 }}>
-                      {daysToHarvest}
-                    </Box>{' '}
+                    <Tooltip
+                      arrow
+                      slotProps={themedTooltipSlotProps}
+                      title={
+                        <Box sx={{ p: 0.25 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', mb: 0.25, color: 'inherit' }}>
+                            Days to harvest
+                          </Typography>
+                          {isLiveFromNass &&
+                          typeof nassSnapshot?.progress?.harvested_pct === 'number' &&
+                          nassSnapshot.progress.harvested_pct > 0 ? (
+                            <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit' }}>
+                              Derived from USDA NASS — {Math.round(nassSnapshot.progress.harvested_pct)}% of {featuredState}{' '}
+                              winter wheat acres are reported harvested as of week ending{' '}
+                              {nassSnapshot.progress.harvested_week_ending || nassSnapshot.as_of}. Estimate
+                              scales the remaining acres against a typical ~3-week harvest window.
+                            </Typography>
+                          ) : isLiveFromNass &&
+                            typeof nassSnapshot?.progress?.headed_pct === 'number' &&
+                            nassSnapshot.progress.headed_pct > 0 ? (
+                            <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit' }}>
+                              Derived from USDA NASS — {featuredState} winter wheat is{' '}
+                              {Math.round(nassSnapshot.progress.headed_pct)}% headed as of week ending{' '}
+                              {nassSnapshot.progress.headed_week_ending || nassSnapshot.as_of}. Harvest typically begins
+                              ~35 days after full heading and the figure scales with how complete heading is.
+                            </Typography>
+                          ) : (
+                            <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.45, color: 'inherit' }}>
+                              Estimated from the typical {featuredState} harvest date ({seasonWindow.harvestLabel}).
+                              No live USDA NASS Crop Progress reading is available right now — this is a
+                              calendar-only fallback.
+                            </Typography>
+                          )}
+                          {isLiveFromNass && nassSnapshot?.as_of ? (
+                            <Typography sx={{ fontSize: '0.68rem', mt: 0.5, opacity: 0.8, color: 'inherit', fontStyle: 'italic' }}>
+                              Live · USDA NASS Crop Progress, week ending {nassSnapshot.as_of}
+                            </Typography>
+                          ) : null}
+                        </Box>
+                      }
+                    >
+                      <Box component="span" sx={{ color: theme.palette.primary.light, fontWeight: 700, cursor: 'help' }}>
+                        {daysToHarvest}
+                      </Box>
+                    </Tooltip>{' '}
                     days to harvest in
                   </Typography>
                   {/* State picker — replaces the static "Kansas" with a
@@ -1326,6 +1450,11 @@ export default function Overview({ onNavigateToPredict }) {
                       <Typography sx={{ fontSize: '0.7rem', mt: 0.5, opacity: 0.85, color: 'inherit' }}>
                         Plant ≈ {seasonWindow.plantLabel} · Harvest ≈ {seasonWindow.harvestLabel}
                       </Typography>
+                      {isLiveFromNass && nassSnapshot?.as_of ? (
+                        <Typography sx={{ fontSize: '0.68rem', mt: 0.5, opacity: 0.8, color: 'inherit', fontStyle: 'italic' }}>
+                          Live · USDA NASS Crop Progress, week ending {nassSnapshot.as_of}
+                        </Typography>
+                      ) : null}
                     </Box>
                   }
                 >
@@ -1421,11 +1550,21 @@ export default function Overview({ onNavigateToPredict }) {
               >
                 {stageInfo.description}
               </Typography>
-              {stageInfo.link ? (
-                <Box sx={{ mt: 1.25 }}>
+              {/* When the banner is showing live NASS data, lead with the
+                  USDA source so the user can audit where the percentage
+                  came from. The stage-agronomy reference (UNL CropWatch)
+                  becomes the secondary link. When we're on calendar
+                  fallback, only the agronomy reference shows — there's
+                  no NASS reading to cite. */}
+              <Stack spacing={0.75} sx={{ mt: 1.25 }}>
+                {isLiveFromNass ? (
                   <Box
                     component="a"
-                    href={stageInfo.link}
+                    href={`https://quickstats.nass.usda.gov/results/?commodity_desc=WHEAT&class_desc=WINTER&statisticcat_desc=PROGRESS${
+                      nassSnapshot?.state_alpha && nassSnapshot.state_alpha !== 'US'
+                        ? `&state_alpha=${nassSnapshot.state_alpha}`
+                        : ''
+                    }&year=${nassSnapshot?.year || new Date().getFullYear()}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     sx={{
@@ -1443,10 +1582,46 @@ export default function Overview({ onNavigateToPredict }) {
                       }
                     }}
                   >
-                    Learn more →
+                    Live data: USDA NASS Crop Progress →
                   </Box>
-                </Box>
-              ) : null}
+                ) : null}
+                {isLiveFromNass && nassSnapshot?.as_of ? (
+                  <Typography sx={{ fontSize: '0.7rem', color: alpha(theme.palette.common.white, 0.65), fontStyle: 'italic' }}>
+                    Week ending {nassSnapshot.as_of}
+                    {typeof nassSnapshot?.progress?.headed_pct === 'number'
+                      ? ` · ${nassSnapshot.state_alpha}: ${Math.round(nassSnapshot.progress.headed_pct)}% headed`
+                      : typeof nassSnapshot?.progress?.harvested_pct === 'number'
+                        ? ` · ${nassSnapshot.state_alpha}: ${Math.round(nassSnapshot.progress.harvested_pct)}% harvested`
+                        : ''}
+                  </Typography>
+                ) : null}
+                {stageInfo.link ? (
+                  <Box
+                    component="a"
+                    href={stageInfo.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                      color: isLiveFromNass
+                        ? alpha(theme.palette.primary.light, 0.75)
+                        : theme.palette.primary.light,
+                      fontSize: '0.78rem',
+                      fontWeight: isLiveFromNass ? 500 : 700,
+                      textDecoration: 'none',
+                      letterSpacing: '0.02em',
+                      '&:hover': {
+                        color: theme.palette.common.white,
+                        textDecoration: 'underline'
+                      }
+                    }}
+                  >
+                    {isLiveFromNass ? 'About this stage →' : 'Learn more →'}
+                  </Box>
+                ) : null}
+              </Stack>
             </Box>
           </Popover>
 

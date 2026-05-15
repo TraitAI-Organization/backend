@@ -1,8 +1,10 @@
 """
 Prediction endpoints - ML model inference
 """
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+import math
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 from typing import Dict, Any, List, Optional
 import logging
 
@@ -491,6 +493,262 @@ async def list_prediction_runs(
         model_version_id=model_version_id,
     )
     return [_serialize_prediction_run(run) for run in runs]
+
+
+def _compute_scatter_metrics(points: List[Dict[str, float]]) -> Dict[str, Optional[float]]:
+    """Compute the diagnostic-plot statistics that the frontend renders in
+    the card header. All formulas are unweighted and use n-1 / n where
+    standard for sample stats:
+
+      R²      — 1 - SSE/SST, the coefficient of determination of
+                predicted vs observed. Negative when the model is worse
+                than predicting the mean.
+      RMSE    — sqrt( mean( (predicted - observed)² ) ).
+      MAE     — mean( |predicted - observed| ).
+      bias    — mean residual (predicted - observed). Positive = the
+                model systematically over-predicts.
+      slope,  — ordinary-least-squares fit of `predicted = slope *
+      intercept observed + intercept`. Slope of 1 + intercept of 0 means
+                the model tracks the 1:1 line perfectly.
+    """
+    n = len(points)
+    if n < 2:
+        return {
+            "n": n,
+            "r2": None,
+            "rmse": None,
+            "mae": None,
+            "bias": None,
+            "slope": None,
+            "intercept": None,
+            "observed_min": None,
+            "observed_max": None,
+            "predicted_min": None,
+            "predicted_max": None,
+        }
+
+    obs = [p["observed"] for p in points]
+    pred = [p["predicted"] for p in points]
+    residuals = [pred[i] - obs[i] for i in range(n)]
+
+    obs_mean = sum(obs) / n
+    pred_mean = sum(pred) / n
+
+    sse = sum(r * r for r in residuals)
+    sst = sum((o - obs_mean) ** 2 for o in obs)
+    r2 = 1.0 - (sse / sst) if sst > 0 else None
+    rmse = math.sqrt(sse / n)
+    mae = sum(abs(r) for r in residuals) / n
+    bias = sum(residuals) / n
+
+    # OLS regression of predicted on observed.
+    num = sum((obs[i] - obs_mean) * (pred[i] - pred_mean) for i in range(n))
+    den = sum((obs[i] - obs_mean) ** 2 for i in range(n))
+    if den > 0:
+        slope = num / den
+        intercept = pred_mean - slope * obs_mean
+    else:
+        slope = None
+        intercept = None
+
+    return {
+        "n": n,
+        "r2": r2,
+        "rmse": rmse,
+        "mae": mae,
+        "bias": bias,
+        "slope": slope,
+        "intercept": intercept,
+        "observed_min": min(obs),
+        "observed_max": max(obs),
+        "predicted_min": min(pred),
+        "predicted_max": max(pred),
+    }
+
+
+@router.get(
+    "/scatter",
+    summary="Predicted vs observed pairs + regression metrics for a model",
+)
+async def get_prediction_scatter(
+    db: Session = Depends(get_db),
+    model_id: Optional[int] = Query(
+        None,
+        description="Model version id. Defaults to the production model if unset.",
+    ),
+    season: Optional[List[int]] = Query(
+        None,
+        description=(
+            "Optional filter — restrict to one or more season years (repeat the "
+            "query param to pass multiple, e.g. season=2023&season=2024). "
+            "Helpful for matching the slice your training set was cut on."
+        ),
+    ),
+    state: Optional[str] = Query(
+        None,
+        description="Optional filter — restrict to a single state (e.g. 'Kansas').",
+    ),
+    limit: int = Query(
+        5000,
+        ge=1,
+        le=20000,
+        description="Hard cap on points returned. Use a smaller number for snappier scatter renders.",
+    ),
+):
+    """Return all (predicted, observed) pairs for a given model plus the
+    standard diagnostic statistics. Powers the Model Regression card on
+    the Analytics → Model & Data view.
+
+    Only includes field-seasons that have both a stored prediction for
+    the requested model AND a non-null observed `yield_bu_ac`. Field-
+    seasons where either side is missing are excluded so the metrics
+    aren't biased by half-pairs.
+
+    The `season` and `state` query params let callers narrow the slice
+    to match their training subset, which often raises R² substantially
+    (the full prediction set includes out-of-time / out-of-geography
+    field-seasons that the model was never tuned on).
+    """
+    # Resolve the model. Fall back to the production model if no id was
+    # supplied — the frontend will use this to label its initial render.
+    if model_id is None:
+        mv = (
+            db.query(db_models.ModelVersion)
+            .filter(db_models.ModelVersion.is_production.is_(True))
+            .first()
+        )
+    else:
+        mv = db.get(db_models.ModelVersion, model_id)
+
+    if mv is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "No production model registered."
+                if model_id is None
+                else f"Model version {model_id} not found."
+            ),
+        )
+
+    # Build the joined query. We always pull season_year and field.state
+    # alongside the value columns so the response can carry them on each
+    # point (cheap; same row already joined) — that lets the frontend show
+    # which slice each point belongs to in hover tooltips and lets us
+    # echo the filters back without a second round-trip.
+    query = (
+        db.query(
+            db_models.ModelPrediction.field_season_id,
+            db_models.ModelPrediction.predicted_yield,
+            db_models.FieldSeason.yield_bu_ac,
+            db_models.Field.field_number,
+            db_models.Field.state,
+            db_models.FieldSeason.season_id,
+            db_models.Season.season_year,
+        )
+        .join(
+            db_models.FieldSeason,
+            db_models.ModelPrediction.field_season_id == db_models.FieldSeason.field_season_id,
+        )
+        .join(
+            db_models.Field,
+            db_models.FieldSeason.field_id == db_models.Field.field_id,
+        )
+        .join(
+            db_models.Season,
+            db_models.FieldSeason.season_id == db_models.Season.season_id,
+        )
+        .filter(
+            db_models.ModelPrediction.model_version_id == mv.model_version_id,
+            db_models.ModelPrediction.predicted_yield.is_not(None),
+            db_models.FieldSeason.yield_bu_ac.is_not(None),
+        )
+    )
+
+    if season:
+        query = query.filter(db_models.Season.season_year.in_(season))
+    if state:
+        # Postgres ILIKE keeps the filter case-insensitive so the UI can
+        # pass "kansas" or "Kansas" interchangeably.
+        query = query.filter(db_models.Field.state.ilike(state))
+
+    rows = query.limit(limit).all()
+
+    points: List[Dict[str, Any]] = []
+    for fs_id, predicted, observed, field_number, field_state, season_id, season_year in rows:
+        try:
+            p = float(predicted)
+            o = float(observed)
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(p) and math.isfinite(o)):
+            continue
+        points.append(
+            {
+                "field_season_id": fs_id,
+                "field_number": field_number,
+                "state": field_state,
+                "season_id": season_id,
+                "season_year": season_year,
+                "observed": o,
+                "predicted": p,
+                "residual": p - o,
+            }
+        )
+
+    metrics = _compute_scatter_metrics(points)
+
+    # Distinct seasons + states across the unfiltered prediction set for
+    # this model — used by the frontend to populate the filter dropdowns
+    # with only values that have at least one matching point. This is one
+    # extra lightweight query but it means the dropdowns can't offer
+    # impossible combinations.
+    available = (
+        db.query(
+            db_models.Season.season_year,
+            db_models.Field.state,
+        )
+        .join(
+            db_models.FieldSeason,
+            db_models.FieldSeason.season_id == db_models.Season.season_id,
+        )
+        .join(
+            db_models.Field,
+            db_models.FieldSeason.field_id == db_models.Field.field_id,
+        )
+        .join(
+            db_models.ModelPrediction,
+            db_models.ModelPrediction.field_season_id == db_models.FieldSeason.field_season_id,
+        )
+        .filter(
+            db_models.ModelPrediction.model_version_id == mv.model_version_id,
+            db_models.ModelPrediction.predicted_yield.is_not(None),
+            db_models.FieldSeason.yield_bu_ac.is_not(None),
+        )
+        .distinct()
+        .all()
+    )
+    available_seasons = sorted({y for y, _ in available if y is not None})
+    available_states = sorted({s for _, s in available if s})
+
+    return {
+        "model_version": {
+            "model_version_id": mv.model_version_id,
+            "version_tag": mv.version_tag,
+            "model_type": mv.model_type,
+            "is_production": bool(mv.is_production),
+        },
+        "filters_applied": {
+            "season": list(season) if season else None,
+            "state": state,
+        },
+        "available_filters": {
+            "seasons": available_seasons,
+            "states": available_states,
+        },
+        "metrics": metrics,
+        "points": points,
+        "truncated": len(points) >= limit,
+    }
 
 
 # Helper function for logging

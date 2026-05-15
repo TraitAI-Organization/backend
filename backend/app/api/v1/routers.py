@@ -12,6 +12,7 @@ from .endpoints import (
     data_upload_router,
     manual_entry_router,
     auth_router,
+    season_status_router,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "data_upload_router",
     "manual_entry_router",
     "auth_router",
+    "season_status_router",
 ]

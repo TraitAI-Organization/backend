@@ -233,8 +233,8 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
   const theme = useTheme();
   // Hint banner is collapsible — closed by default so the wizard's
   // primary content (the model cards) leads the page on first paint.
-  // Users who want the "Which model should I pick?" guidance can pop
-  // it open with a single click on the header.
+  // Users who want the "Why use CatBoost?" guidance can pop it open
+  // with a single click on the header.
   const [hintOpen, setHintOpen] = useState(false);
 
   // Surface tokens matched to the Overview tab's metric-tile family —
@@ -294,7 +294,7 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
           onClick={() => setHintOpen((prev) => !prev)}
           role="button"
           aria-expanded={hintOpen}
-          aria-label="Toggle which-model-to-pick hint"
+          aria-label="Toggle why-use-catboost hint"
         >
           <Box
             sx={{
@@ -315,7 +315,7 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
               letterSpacing: '0.01em'
             }}
           >
-            Which model should I pick?
+            Why use CatBoost?
           </Typography>
           <IconButton
             size="small"
@@ -339,10 +339,6 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
           <Box sx={{ px: 2, pb: 2, pl: 5 }}>
             <Typography sx={{ color: alpha(theme.palette.common.white, 0.85), fontSize: '0.9rem', lineHeight: 1.6 }}>
               Use{' '}
-              <Box component="span" sx={{ fontWeight: 700, color: headingColor }}>
-                Deep Learning
-              </Box>{' '}
-              when your input data has many numeric features or non-linear interactions (e.g., spectral, weather, soil data). Use{' '}
               <Box component="span" sx={{ fontWeight: 700, color: headingColor }}>
                 CatBoost
               </Box>{' '}

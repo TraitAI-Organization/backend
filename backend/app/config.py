@@ -52,5 +52,14 @@ class Settings(BaseSettings):
     firebase_project_id: Optional[str] = None
     firebase_credentials_path: Optional[str] = None
 
+    # USDA NASS Quick Stats (free key from https://quickstats.nass.usda.gov/api/).
+    # If unset, the /season-status endpoint falls back to calendar-derived
+    # estimates instead of live survey data.
+    nass_api_key: Optional[str] = None
+    # Cache TTL for NASS responses. NASS only publishes once a week (Monday 4pm
+    # ET during the growing season), so a 6-hour TTL is plenty conservative and
+    # keeps us comfortably under the 50k-row request cap.
+    nass_cache_ttl_seconds: int = 6 * 60 * 60
+
 
 settings = Settings()

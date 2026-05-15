@@ -1,24 +1,35 @@
-// Approximate winter-wheat phenology + harvest dates for the major US wheat
-// states. Dates are typical mid-points; real-world stage timing varies with
-// weather, variety, and elevation. These are "good enough" defaults for the
-// hero banner — swap in real per-state model output later if you want.
-
-// Stage transitions for winter wheat. Encoded as month*100 + day so they're
-// easy to compare against the current date. The order matters: list latest
-// stage first so the lookup falls through cleanly. Each stage carries a
-// short `description` (what's actually happening to the plant) and a
-// `link` to a reputable agronomy reference for deeper reading.
+// Winter-wheat phenology helpers for the Crop Studio overview banner.
 //
-// All links go to the University of Nebraska-Lincoln CropWatch wheat
-// section — a freely accessible, well-maintained land-grant extension
-// resource that covers the same Feekes/Zadoks growth-stage material
-// with a clear agronomic-application slant. UNL CropWatch is a
-// long-standing institutional resource maintained by university
-// extension agronomists.
+// The stage set here is intentionally trimmed to the three macro-stages
+// the USDA NASS Crop Progress survey actually tracks for winter wheat —
+// Emerged, Headed, Harvested — plus three calendar-only "gap" stages that
+// fill in the windows when NASS isn't reporting (winter dormancy, spring
+// pre-heading growth, and post-harvest stubble). When the backend
+// /api/v1/season-status endpoint returns a stage key from a live NASS
+// pull, the UI should prefer that; these helpers are the offline /
+// out-of-survey-window fallback.
+//
+// NASS only tracks Emerged / Headed / Harvested nationally for winter
+// wheat — finer Feekes/Zadoks stages (tillering, jointing, anthesis,
+// grain fill, maturity) are not in the federal weekly survey, so we
+// don't pretend to identify them here.
+//
+// Stage reference: University of Nebraska-Lincoln CropWatch wheat
+// section, a free land-grant extension resource.
+
 const WHEAT_STAGE_REFERENCE_URL = 'https://cropwatch.unl.edu/wheat';
 
+// Each entry carries the same shape the Overview banner has always
+// consumed: { label, detail, description, link, key }. `key` matches
+// the stage strings the backend /season-status endpoint can return, so
+// lookup-by-key is a one-liner on the frontend.
+//
+// `from` is encoded as month*100 + day. The calendar lookup walks the
+// list from latest stage backward and returns the first entry whose
+// `from` is on or before today — so order matters.
 const WHEAT_STAGES = [
   {
+    key: 'post_harvest',
     from: 815,
     label: 'Post-harvest',
     detail: 'Stubble / fallow',
@@ -27,94 +38,61 @@ const WHEAT_STAGES = [
     link: WHEAT_STAGE_REFERENCE_URL
   },
   {
-    from: 705,
-    label: 'Maturity',
-    detail: 'Hard dough · ready to combine',
-    description:
-      'Grain has reached physiological maturity. Kernels are hard, moisture is dropping toward the harvest threshold of about 13.5%, and combines start moving into the field.',
-    link: WHEAT_STAGE_REFERENCE_URL
-  },
-  {
+    key: 'harvested',
     from: 615,
-    label: 'Grain fill',
-    detail: 'Soft to hard dough',
+    label: 'Harvested',
+    detail: 'Combines moving · grain off the field',
     description:
-      'Carbohydrates and protein are being deposited into the kernels. Yield potential set during heading is now being converted into actual grain weight; heat or drought during this window is especially costly.',
+      'Grain has reached harvest moisture and combines are running. NASS tracks this as "PCT HARVESTED" on the weekly Crop Progress report; the figure climbs from 0% to ~95% over roughly three weeks once harvest gets rolling in a given state.',
     link: WHEAT_STAGE_REFERENCE_URL
   },
   {
-    from: 525,
-    label: 'Anthesis',
-    detail: 'Flowering · pollination',
+    key: 'headed',
+    from: 501,
+    label: 'Headed',
+    detail: 'Spike emerged · yield potential set',
     description:
-      'Wheat is self-pollinating. Anthers extrude from each spikelet over the course of three to five days. Disease management decisions for Fusarium head blight (scab) are made now.',
+      'The spike has emerged from the boot and all spikelets are visible above the flag leaf. Yield potential is essentially fixed at this point. NASS tracks this as "PCT HEADED" — the survey runs weekly through the heading window and the figure typically reaches ~95% in 4-6 weeks.',
     link: WHEAT_STAGE_REFERENCE_URL
   },
   {
-    from: 510,
-    label: 'Heading',
-    detail: 'Spike emergence',
-    description:
-      'The spike emerges from the boot. All spikelets and the floret count are now visible above the flag leaf — yield potential is essentially fixed at this point.',
-    link: WHEAT_STAGE_REFERENCE_URL
-  },
-  {
-    from: 415,
-    label: 'Booting',
-    detail: 'Spike forming inside flag leaf',
-    description:
-      'The developing spike is enclosed in the flag-leaf sheath. Floret abortion happens in this window if the plant is stressed, directly capping the potential kernel count per head.',
-    link: WHEAT_STAGE_REFERENCE_URL
-  },
-  {
+    key: 'spring_growth',
     from: 315,
-    label: 'Stem extension',
-    detail: 'Jointing · rapid growth',
+    label: 'Spring growth',
+    detail: 'Green-up through pre-heading',
     description:
-      'Stems begin elongating and the first node becomes detectable above the soil. Nitrogen demand surges; this is the typical window for spring nitrogen top-dress in winter wheat.',
+      'Winter wheat has resumed active growth from dormancy and is building biomass toward heading. NASS does not publish a national progress series for this window — the next live reading will be "PCT HEADED" once spikes start emerging.',
     link: WHEAT_STAGE_REFERENCE_URL
   },
   {
-    from: 215,
-    label: 'Tillering',
-    detail: 'Tiller production',
-    description:
-      'Plants are producing additional shoots, called tillers, from the crown. Final tiller count and head density are determined here; spring nitrogen timing trades off tiller survival against lodging risk.',
-    link: WHEAT_STAGE_REFERENCE_URL
-  },
-  {
-    from: 115,
-    label: 'Green-up',
-    detail: 'Resuming growth from dormancy',
-    description:
-      'Winter wheat resumes active growth as soil temperatures warm. Scout for winter-kill, frost-heaved crowns, and grass-weed pressure; assess stand counts before making in-season decisions.',
-    link: WHEAT_STAGE_REFERENCE_URL
-  },
-  {
-    from: 1015,
-    label: 'Tillering',
-    detail: 'Fall tillering before dormancy',
-    description:
-      'Plants put on additional tillers in the fall before going dormant. A two- to three-tiller crown going into winter is the typical target for cold-hardy yield potential.',
-    link: WHEAT_STAGE_REFERENCE_URL
-  },
-  {
+    key: 'emerged',
     from: 915,
-    label: 'Emergence',
-    detail: 'Seedlings emerging',
+    label: 'Emerged',
+    detail: 'Seedlings up · fall establishment',
     description:
-      'Seeds have germinated and the coleoptile is pushing through the soil surface. Stand establishment, planting depth, and seedbed moisture decide first-tiller vigor.',
+      'Seeds have germinated and seedlings are establishing crowns and tillers before going dormant. NASS tracks this as "PCT EMERGED" on the weekly Crop Progress report; in a normal year the figure reaches ~90% by mid-November.',
     link: WHEAT_STAGE_REFERENCE_URL
   },
   {
+    key: 'dormant',
     from: 0,
-    label: 'Dormancy',
+    label: 'Dormant',
     detail: 'Winter dormancy',
     description:
-      'Growth is paused while soil temperatures stay cold. The plant relies on stored energy in the crown; cold-hardiness is at its peak. Winter-kill risk depends on crown moisture and snow cover.',
+      'Growth is paused while soil temperatures stay cold. The plant relies on stored energy in the crown. NASS does not publish a progress series during the dormancy gap — the next live reading will not arrive until spring.',
     link: WHEAT_STAGE_REFERENCE_URL
   }
 ];
+
+// Quick-lookup index for the frontend: given a `stage` key from the
+// backend /season-status response, get the same { label, detail,
+// description, link } shape the calendar fallback produces. Lets the
+// Overview banner render the API stage and the calendar stage from
+// the same code path.
+export const STAGE_INFO_BY_KEY = WHEAT_STAGES.reduce((acc, stage) => {
+  acc[stage.key] = stage;
+  return acc;
+}, {});
 
 // Approximate winter-wheat harvest date by state. Encoded as { month, day }
 // where month is 1-indexed. Defaults to Kansas if the requested state isn't
@@ -172,12 +150,24 @@ export const STATE_PLANT_DATES = {
 const DEFAULT_PLANT = STATE_PLANT_DATES.Kansas;
 const DEFAULT_HARVEST = STATE_HARVEST_DATES.Kansas;
 
+// Calendar-only stage estimate. Used when the backend /season-status
+// endpoint returns null (NASS unconfigured, dormancy gap, or pre-survey)
+// and the UI needs *something* to show. Prefer the live API stage where
+// available — this function reads only the calendar.
 export function getWheatStage(date = new Date()) {
   const monthDay = (date.getMonth() + 1) * 100 + date.getDate();
+  // Walk the list and pick the latest stage whose `from` is on or before
+  // today. The harvest/post-harvest windows have higher `from` values
+  // than emerged/dormant so they win in late summer; in spring (Mar–
+  // Apr) `spring_growth` wins; from mid-Sep to year-end `emerged` wins;
+  // Jan–mid-Mar falls through to `dormant`.
+  let best = WHEAT_STAGES[WHEAT_STAGES.length - 1];
   for (const entry of WHEAT_STAGES) {
-    if (monthDay >= entry.from) return entry;
+    if (monthDay >= entry.from && entry.from >= best.from) {
+      best = entry;
+    }
   }
-  return WHEAT_STAGES[WHEAT_STAGES.length - 1];
+  return best;
 }
 
 // Days from `date` until the next harvest in `state`. If we're past this
@@ -212,4 +202,57 @@ export function getSeasonProgress(date = new Date(), state = 'Kansas') {
   const totalMs = harvestDate - plantDate;
   const elapsedMs = date - plantDate;
   return Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100));
+}
+
+// Derive a 0–100 "season progress" number from a NASS snapshot. Maps the
+// three NASS percents into the same conceptual axis getSeasonProgress
+// returns, so the UI can plug either source into the same bar. Returns
+// null when the snapshot has no usable signal (e.g. dormancy gap), in
+// which case callers should fall back to getSeasonProgress.
+//
+// Mapping (matches the calendar-stage windows above):
+//   harvested_pct > 0  → 85 + harvested_pct * 0.15        (last 15 pts of the bar)
+//   headed_pct  > 0    → 50 + headed_pct  * 0.35          (heading window: 50–85)
+//   emerged_pct > 0 and date < Mar 1
+//                      → 5 + emerged_pct * 0.20           (fall establishment: 5–25)
+//   else               → null  (let the calendar take over)
+export function deriveSeasonProgressFromNass(snapshot, date = new Date()) {
+  if (!snapshot) return null;
+  const { harvested_pct: harvested, headed_pct: headed, emerged_pct: emerged } = snapshot;
+  if (typeof harvested === 'number' && harvested > 0) {
+    return Math.min(100, 85 + harvested * 0.15);
+  }
+  if (typeof headed === 'number' && headed > 0) {
+    return Math.min(85, 50 + headed * 0.35);
+  }
+  if (typeof emerged === 'number' && emerged > 0 && date.getMonth() < 2) {
+    // Only use the emerged signal in fall — by January it's stale and
+    // the calendar's "dormant" / "spring_growth" estimate is better.
+    return Math.min(25, 5 + emerged * 0.2);
+  }
+  return null;
+}
+
+// Derive a days-to-harvest estimate from a NASS snapshot. Returns null
+// when there's no usable signal — callers should fall back to
+// getDaysToHarvest(date, state).
+//
+//   harvested_pct > 0 → (100 - harvested_pct) / 100 * 21
+//                       (typical state-level harvest runs ~3 weeks end-to-end)
+//   headed_pct    > 0 → ~35 days from full heading to harvest start,
+//                       scaled by how complete heading is
+//   else              → null
+export function deriveDaysToHarvestFromNass(snapshot) {
+  if (!snapshot) return null;
+  const { harvested_pct: harvested, headed_pct: headed } = snapshot;
+  if (typeof harvested === 'number' && harvested > 0) {
+    return Math.max(0, Math.round(((100 - harvested) / 100) * 21));
+  }
+  if (typeof headed === 'number' && headed > 0) {
+    // Full heading (~100% headed) → harvest is ~35 days out.
+    // Just starting (~5% headed)   → harvest is ~55 days out.
+    // Linear in between.
+    return Math.max(0, Math.round(55 - (headed / 100) * 20));
+  }
+  return null;
 }

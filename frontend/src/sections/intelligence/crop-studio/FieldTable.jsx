@@ -233,11 +233,28 @@ function writeStoredModelId(value) {
   }
 }
 
+// Returns true when a model version object is a CatBoost-family model.
+// Currently the product surfaces only CatBoost in user-facing selectors
+// (Deep Learning is registered in the backend but intentionally hidden
+// from the UI), so we filter the API's `/models/versions` response to
+// just the CatBoost rows wherever the user can pick a model. Keeping
+// the predicate in one place means adding/removing supported models
+// later is a one-line change.
+function isCatBoostModel(model) {
+  const key = String(model?.model_type || '').toLowerCase();
+  return key.includes('catboost') || key.includes('lgbm') || key.includes('lightgbm') || key.includes('boost');
+}
+
 export default function FieldTable({
   // Show the per-model toggle pill in the table header (the
   // CatBoost / Deep Learning selector). The Overview tab now hides
   // this — there's no per-model swap there.
   showModelSelector = true,
+  // When true, the model pill is rendered as a static chip rather
+  // than a clickable Button. Used on the Analyze tab where the table
+  // should still surface which model produced the Predicted Yield
+  // column but the user shouldn't be able to swap models from here.
+  lockModelSelector = false,
   // Include the "Predicted Yield (bu/ac)" column. Hidden on the
   // Overview tab's simplified table where the observed yield is the
   // only yield signal of interest.
@@ -536,7 +553,12 @@ export default function FieldTable({
         const response = await fetch(`${API_BASE_URL}/models/versions?limit=200`, { signal: controller.signal });
         if (!response.ok) return;
         const payload = await response.json();
-        setAvailableModels(Array.isArray(payload) ? payload : []);
+        // Filter to CatBoost-family models only — the product currently
+        // exposes only CatBoost in user-facing selectors. Hiding here at
+        // the data layer (rather than in each render site) keeps both the
+        // selector pill and the FieldDetailDrawer's model menu in sync.
+        const all = Array.isArray(payload) ? payload : [];
+        setAvailableModels(all.filter(isCatBoostModel));
       } catch (error) {
         if (error.name !== 'AbortError') setAvailableModels([]);
       }
@@ -820,35 +842,61 @@ export default function FieldTable({
               Field &amp; Harvest Records
             </Typography>
             {showModelSelector && availableModels.length > 0 ? (
-              <Button
-                ref={modelButtonRef}
-                size="small"
-                onClick={handleOpenModelMenu}
-                endIcon={<DownOutlined style={{ fontSize: '0.7rem' }} />}
-                sx={{
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  fontSize: '0.72rem',
-                  letterSpacing: '0.02em',
-                  minHeight: 0,
-                  whiteSpace: 'nowrap',
-                  py: 0.3,
-                  px: 1.25,
-                  borderRadius: 999,
-                  color: modelPalette.fg,
-                  bgcolor: modelPalette.bg,
-                  border: `1px solid ${modelPalette.border}`,
-                  transition: 'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease',
-                  '&:hover': {
-                    color: theme.palette.common.white,
-                    bgcolor: modelPalette.hoverBg,
-                    borderColor: modelPalette.hoverBorder,
-                    boxShadow: `0 0 0 2px ${alpha(modelPalette.dot, 0.18)}`
-                  }
-                }}
-              >
-                {modelLabel}
-              </Button>
+              lockModelSelector ? (
+                // Locked variant — renders as a static Box pill (no hover
+                // affordance, no click handler, no dropdown chevron) so the
+                // user can see which model produced the Predicted Yield
+                // column without being able to swap it from this surface.
+                // Used on the Analyze tab.
+                <Box
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    fontWeight: 600,
+                    fontSize: '0.72rem',
+                    letterSpacing: '0.02em',
+                    whiteSpace: 'nowrap',
+                    py: 0.3,
+                    px: 1.25,
+                    borderRadius: 999,
+                    color: modelPalette.fg,
+                    bgcolor: modelPalette.bg,
+                    border: `1px solid ${modelPalette.border}`
+                  }}
+                >
+                  {modelLabel}
+                </Box>
+              ) : (
+                <Button
+                  ref={modelButtonRef}
+                  size="small"
+                  onClick={handleOpenModelMenu}
+                  endIcon={<DownOutlined style={{ fontSize: '0.7rem' }} />}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    fontSize: '0.72rem',
+                    letterSpacing: '0.02em',
+                    minHeight: 0,
+                    whiteSpace: 'nowrap',
+                    py: 0.3,
+                    px: 1.25,
+                    borderRadius: 999,
+                    color: modelPalette.fg,
+                    bgcolor: modelPalette.bg,
+                    border: `1px solid ${modelPalette.border}`,
+                    transition: 'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease',
+                    '&:hover': {
+                      color: theme.palette.common.white,
+                      bgcolor: modelPalette.hoverBg,
+                      borderColor: modelPalette.hoverBorder,
+                      boxShadow: `0 0 0 2px ${alpha(modelPalette.dot, 0.18)}`
+                    }
+                  }}
+                >
+                  {modelLabel}
+                </Button>
+              )
             ) : null}
           </Stack>
           <Typography variant="body2" sx={{ color: alpha(theme.palette.primary.light, 0.85), fontWeight: 500 }}>

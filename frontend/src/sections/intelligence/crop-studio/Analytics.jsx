@@ -29,12 +29,12 @@ import CloseOutlined from '@ant-design/icons/CloseOutlined';
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
 import FallOutlined from '@ant-design/icons/FallOutlined';
 import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
-import RightOutlined from '@ant-design/icons/RightOutlined';
 import RiseOutlined from '@ant-design/icons/RiseOutlined';
 import ThunderboltOutlined from '@ant-design/icons/ThunderboltOutlined';
 
 import MainCard from 'components/MainCard';
 import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
+import ModelRegressionCard from 'sections/intelligence/crop-studio/ModelRegressionCard';
 import { formatCropName } from 'utils/cropName';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
@@ -691,12 +691,16 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
   const theme = useTheme();
   if (!overview) return null;
 
+  // Pulls the aggregate prediction stats straight from /fields/overview.
+  // These already combine field-season-level predictions (ModelPrediction
+  // table, populated by the backfill) with ad-hoc PredictionRun rows from
+  // the wizard, so the card reflects the true model footprint across the
+  // dataset rather than just the interactive history.
   const stats = overview?.prediction_stats || {};
   const totalFieldSeasons = overview?.total_field_seasons || 0;
   const withPredictions = stats.field_seasons_with_predictions || 0;
   const coveragePct = totalFieldSeasons ? (100 * withPredictions) / totalFieldSeasons : 0;
   const fieldPredictionsTotal = stats.field_predictions_total || 0;
-  const predictionRunsTotal = stats.prediction_runs_total || 0;
 
   // Color for the coverage bar — escalates from neutral info to warning to
   // success as coverage improves. Same thresholds the Overview's previous
@@ -707,12 +711,9 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
   // The four headline stats. Held in a config array so the JSX stays
   // declarative and the layout is trivially extensible — drop in a new
   // metric here and it slots into the grid without restructuring.
-  // The "Avg Predicted" entry carries `trend: true` — the strip renders a
-  // small sparkline beside its number when month-over-month data exists,
-  // showing the recent trajectory without needing a separate chart card.
   const stats4 = [
     { label: 'Total Predictions', value: (stats.total_predictions || 0).toLocaleString(), unit: null },
-    { label: 'Avg Predicted', value: (stats.predicted_yield_avg || 0).toFixed(1), unit: 'bu/ac', trend: true },
+    { label: 'Avg Predicted', value: (stats.predicted_yield_avg || 0).toFixed(1), unit: 'bu/ac' },
     { label: 'Min Predicted', value: (stats.predicted_yield_min || 0).toFixed(1), unit: 'bu/ac' },
     { label: 'Max Predicted', value: (stats.predicted_yield_max || 0).toFixed(1), unit: 'bu/ac' }
   ];
@@ -770,7 +771,7 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
             "Analyze Prediction" CTA. */}
         <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
           <Typography sx={{ color: alpha(theme.palette.primary.light, 0.85), fontSize: '0.75rem', fontWeight: 600 }}>
-            {fieldPredictionsTotal.toLocaleString()} field predictions · {predictionRunsTotal.toLocaleString()} runs
+            {fieldPredictionsTotal.toLocaleString()} field predictions
           </Typography>
           {lastRunRelative ? (
             <>
@@ -796,7 +797,6 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
             <Button
               size="small"
               onClick={onViewRunsHistory}
-              endIcon={<RightOutlined style={{ fontSize: '0.62rem' }} />}
               sx={{
                 textTransform: 'none',
                 fontWeight: 600,
@@ -804,8 +804,15 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
                 letterSpacing: '0.01em',
                 minHeight: 0,
                 py: 0.15,
-                px: 0.85,
+                // Symmetric horizontal padding + centered content so the
+                // label sits visually centered inside the pill. The
+                // previous endIcon (a small chevron) pulled the text off
+                // center because `text + icon` were centered as a unit,
+                // making the label itself read as skewed left of center.
+                px: 1.25,
                 borderRadius: 999,
+                justifyContent: 'center',
+                textAlign: 'center',
                 color: alpha(theme.palette.primary.light, 0.95),
                 bgcolor: 'transparent',
                 border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
@@ -926,31 +933,6 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
                       </Typography>
                     ) : null}
                   </Stack>
-                  {/* Trend sparkline — only on the "Avg Predicted" stat,
-                      and only when we have at least 2 months of data. The
-                      tooltip surfaces the underlying month-by-month
-                      values so a hovering user can read the actual
-                      trajectory rather than just see the curve. */}
-                  {stat.trend && Array.isArray(avgYieldTrend) && avgYieldTrend.length >= 2 ? (
-                    <Tooltip
-                      arrow
-                      placement="top"
-                      title={
-                        <Box sx={{ p: 0.25 }}>
-                          <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, mb: 0.25 }}>
-                            Avg predicted yield · last {avgYieldTrend.length} mo
-                          </Typography>
-                          <Typography sx={{ fontSize: '0.7rem', opacity: 0.85 }}>
-                            {avgYieldTrend.map((v) => v.toFixed(1)).join(' → ')} bu/ac
-                          </Typography>
-                        </Box>
-                      }
-                    >
-                      <Box sx={{ display: 'inline-flex', cursor: 'help' }}>
-                        <Sparkline data={avgYieldTrend} color={alpha(theme.palette.primary.light, 0.9)} />
-                      </Box>
-                    </Tooltip>
-                  ) : null}
                 </Stack>
               </Stack>
             </Grid>
@@ -1113,7 +1095,13 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
     const controller = new AbortController();
     const loadOverview = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/fields/overview`, { signal: controller.signal });
+        // Scope the macro Model Performance card to CatBoost-family
+        // predictions only. The backend does a case-insensitive substring
+        // match against ModelVersion.model_type, so this also catches
+        // tagged variants like "catboost_v3" while excluding
+        // deep-learning rows (which were inflating the aggregate stats
+        // with out-of-range predicted yields).
+        const response = await fetch(`${API_BASE_URL}/fields/overview?model_type=catboost`, { signal: controller.signal });
         if (!response.ok) return;
         const payload = await response.json();
         setOverview(payload);
@@ -1201,11 +1189,11 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   // selected via a ToggleButtonGroup at the top.
   //   'predictions' — Saved Predictions table + analyzed-prediction drawer
   //                   (the action-oriented working surface)
-  //   'model-data'  — Model Performance card + Field Records table
-  //                   (the reference-oriented context surface)
-  // Default to 'predictions' since that's the primary work users come here
-  // for; the Model & Data view is consulted occasionally.
-  const [analyticsView, setAnalyticsView] = useState('predictions');
+  //   'model-data'  — Model Performance card + regression scatter + Field
+  //                   Records table (the reference-oriented context view).
+  // Defaults to 'model-data' so the first thing the user sees in Analytics
+  // is the model's track record and the regression diagnostic.
+  const [analyticsView, setAnalyticsView] = useState('model-data');
 
   const handleViewChange = (_, newView) => {
     if (!newView) return; // ToggleButtonGroup fires null when active is re-clicked; ignore.
@@ -1238,10 +1226,15 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   // `lastRunAt` becomes the "Last run · 2 days ago" stamp in the header,
   // `avgYieldTrend` becomes the sparkline beside the Avg Predicted stat.
   // We cap the trend at the last 6 months so the sparkline stays readable
-  // at its tiny 84×24 footprint.
+  // at its tiny 84×24 footprint. Only CatBoost runs feed the timeline so
+  // it matches the CatBoost-only stats shown elsewhere on this card.
   const predictionTimeline = useMemo(() => {
     if (!Array.isArray(predictionRuns) || predictionRuns.length === 0) return null;
-    const valid = predictionRuns.filter((r) => r?.createdAt && Number.isFinite(Number(r?.predictedYield)));
+    const valid = predictionRuns.filter((r) => {
+      if (!r?.createdAt || !Number.isFinite(Number(r?.predictedYield))) return false;
+      const modelKey = String(modelTypesByVersionId[r.modelVersionId] || r.modelVersionTag || '').toLowerCase();
+      return modelKey.includes('catboost') || modelKey.includes('lgbm') || modelKey.includes('lightgbm') || modelKey.includes('boost');
+    });
     if (valid.length === 0) return null;
     const sorted = [...valid].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
     const lastRunAt = sorted[sorted.length - 1].createdAt;
@@ -1262,7 +1255,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
     const monthlyAvgs = Array.from(byMonth.values()).map((e) => e.sum / e.count);
     const trend = monthlyAvgs.slice(-6);
     return { lastRunAt, avgYieldTrend: trend };
-  }, [predictionRuns]);
+  }, [predictionRuns, modelTypesByVersionId]);
 
   return (
     <MainCard title="Prediction Analytics">
@@ -1313,19 +1306,50 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               }
             }}
           >
-            <ToggleButton value="predictions">Predictions</ToggleButton>
             <ToggleButton value="model-data">Model &amp; Data</ToggleButton>
+            <ToggleButton value="predictions">Predictions</ToggleButton>
           </ToggleButtonGroup>
         </Box>
 
         {/* ===================== VIEW A — PREDICTIONS ===================== */}
         {analyticsView === 'predictions' ? (
           <>
-            {/* Brief context line above the table — clarifies the user's path
-                through the page (browse the table → select → analyze). */}
-            <Typography variant="body1" color="text.primary">
-              Select a saved prediction from the table below, then run analysis using the exact values used for that prediction.
-            </Typography>
+            {/* Header + context block above the table. Frames the view as
+                an active "use the model to predict yield" workflow rather
+                than a passive log: the heading states the user-facing
+                action, the description explains how to operate it (pick a
+                row of inputs → run the model → inspect the prediction in
+                the drawer). Without the heading, users could mistake this
+                view for a read-only history page. */}
+            <Stack spacing={0.75}>
+              <Typography
+                variant="h4"
+                sx={{
+                  fontWeight: 700,
+                  color: theme.palette.common.white,
+                  lineHeight: 1.2,
+                  letterSpacing: '0.01em'
+                }}
+              >
+                Make a Yield Prediction
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{
+                  color: alpha(theme.palette.common.white, 0.7),
+                  fontSize: '0.95rem',
+                  maxWidth: 760,
+                  lineHeight: 1.55
+                }}
+              >
+                Use the model to predict yield for any of your fields. Select a saved input set from the table below and click{' '}
+                <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
+                  Analyze Prediction
+                </Box>{' '}
+                to run the model on those values — you&apos;ll see the predicted yield, confidence interval, and which inputs drove the
+                result.
+              </Typography>
+            </Stack>
 
             {loadError ? <Alert severity="error">{loadError}</Alert> : null}
 
@@ -2489,13 +2513,23 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               onViewRunsHistory={handleViewRunsHistory}
             />
 
+            {/* Predicted vs Observed regression diagnostic. Sits between
+                the aggregate Model Performance card (the "track record"
+                story) and the row-level Field Records table (the
+                "evidence" story) — it's the visual bridge that shows
+                how those aggregate stats are actually distributed. */}
+            <ModelRegressionCard />
+
             {/* Field-level records table — chevron + row-click affordance
                 hidden because Analytics is read-only context; the Overview
                 tab keeps a chevron-enabled copy for drilling into field
                 detail. The "Why predict yields on harvests?" explainer
                 banner is rendered inside FieldTable, so it lands here
-                automatically. */}
-            <FieldTable showChevron={false} />
+                automatically. `lockModelSelector` renders the model pill
+                as a static chip (no dropdown) — Analyze surfaces which
+                model produced the column but doesn't let the user swap
+                models from this view. */}
+            <FieldTable showChevron={false} lockModelSelector />
           </>
         )}
       </Stack>

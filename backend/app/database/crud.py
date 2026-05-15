@@ -656,7 +656,7 @@ def get_variety_comparison(
 
 # ==================== Overview ====================
 
-def get_overview_stats(db: Session) -> Dict[str, Any]:
+def get_overview_stats(db: Session, model_type: Optional[str] = None) -> Dict[str, Any]:
     """
     Get overall statistics for the dashboard.
     """
@@ -704,24 +704,59 @@ def get_overview_stats(db: Session) -> Dict[str, Any]:
     # Prediction statistics:
     # - model_predictions: field-season level predictions (used for coverage)
     # - prediction_runs: ad-hoc saved prediction requests (wizard/history)
+    #
+    # When `model_type` is supplied, the queries below join through
+    # `ModelVersion.model_type` and filter case-insensitively using a
+    # substring match. This lets callers ask for "catboost"-only stats
+    # without having to know the exact tag (e.g. "catboost_v3") and
+    # without coupling the API to a fixed enum of model families.
+    model_type_filter = (model_type or "").strip().lower()
+
+    def _apply_pred_filter(q):
+        if not model_type_filter:
+            return q
+        return q.join(
+            models.ModelVersion,
+            models.ModelPrediction.model_version_id == models.ModelVersion.model_version_id,
+        ).filter(func.lower(models.ModelVersion.model_type).like(f"%{model_type_filter}%"))
+
+    def _apply_run_filter(q):
+        if not model_type_filter:
+            return q
+        return q.join(
+            models.ModelVersion,
+            models.PredictionRun.model_version_id == models.ModelVersion.model_version_id,
+        ).filter(func.lower(models.ModelVersion.model_type).like(f"%{model_type_filter}%"))
+
     field_seasons_with_predictions = (
-        db.query(func.count(func.distinct(models.ModelPrediction.field_season_id))).scalar() or 0
+        _apply_pred_filter(
+            db.query(func.count(func.distinct(models.ModelPrediction.field_season_id)))
+        ).scalar()
+        or 0
     )
-    field_predictions_total = db.query(func.count(models.ModelPrediction.prediction_id)).scalar() or 0
+    field_predictions_total = (
+        _apply_pred_filter(db.query(func.count(models.ModelPrediction.prediction_id))).scalar() or 0
+    )
     field_pred_range = (
-        db.query(
-            func.min(models.ModelPrediction.predicted_yield),
-            func.max(models.ModelPrediction.predicted_yield),
-            func.avg(models.ModelPrediction.predicted_yield),
+        _apply_pred_filter(
+            db.query(
+                func.min(models.ModelPrediction.predicted_yield),
+                func.max(models.ModelPrediction.predicted_yield),
+                func.avg(models.ModelPrediction.predicted_yield),
+            )
         ).first()
     )
 
-    prediction_runs_total = db.query(func.count(models.PredictionRun.prediction_run_id)).scalar() or 0
+    prediction_runs_total = (
+        _apply_run_filter(db.query(func.count(models.PredictionRun.prediction_run_id))).scalar() or 0
+    )
     run_pred_range = (
-        db.query(
-            func.min(models.PredictionRun.predicted_yield),
-            func.max(models.PredictionRun.predicted_yield),
-            func.avg(models.PredictionRun.predicted_yield),
+        _apply_run_filter(
+            db.query(
+                func.min(models.PredictionRun.predicted_yield),
+                func.max(models.PredictionRun.predicted_yield),
+                func.avg(models.PredictionRun.predicted_yield),
+            )
         ).first()
     )
 

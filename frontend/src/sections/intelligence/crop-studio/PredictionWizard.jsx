@@ -105,7 +105,15 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
         }
 
         const payload = await response.json();
-        const list = Array.isArray(payload) ? payload : [];
+        const all = Array.isArray(payload) ? payload : [];
+        // CatBoost-only filter — the product currently exposes only
+        // CatBoost as a user-selectable model. Deep Learning is still
+        // registered in the backend but intentionally hidden from the
+        // wizard so the user can't pick it as the prediction model.
+        const list = all.filter((model) => {
+          const key = String(model?.model_type || '').toLowerCase();
+          return key.includes('catboost') || key.includes('lgbm') || key.includes('lightgbm') || key.includes('boost');
+        });
         setModels(list);
 
         const production = list.find((model) => model.is_production);

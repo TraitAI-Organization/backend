@@ -8,6 +8,7 @@ from .exports import router as exports_router
 from .data_upload import router as data_upload_router
 from .manual_entry import router as manual_entry_router
 from .auth import router as auth_router
+from .season_status import router as season_status_router
 
 __all__ = [
     "fields_router",
@@ -17,4 +18,5 @@ __all__ = [
     "data_upload_router",
     "manual_entry_router",
     "auth_router",
+    "season_status_router",
 ]

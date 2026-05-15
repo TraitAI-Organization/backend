@@ -35,12 +35,17 @@ def _safe_float(value):
 @router.get("/overview", response_model=OverviewResponse, summary="Dashboard overview")
 async def get_overview(
     db: Session = Depends(get_db),
+    # Case-insensitive substring filter on ModelVersion.model_type for
+    # prediction stats only (counts/min/max/avg/coverage). Other top-level
+    # fields are unaffected. Omit to get the all-models aggregate; pass
+    # `catboost` to scope the macro stats to the CatBoost family.
+    model_type: Optional[str] = Query(None, description="Filter prediction_stats to ModelVersion.model_type ILIKE %model_type%"),
 ):
     """
     Get overall statistics for the dashboard.
     Returns counts, available filters, and yield ranges.
     """
-    stats = crud.get_overview_stats(db)
+    stats = crud.get_overview_stats(db, model_type=model_type)
 
     # Get latest model version info
     from app.ml.model_registry import ModelRegistry
