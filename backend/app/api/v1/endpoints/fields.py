@@ -40,12 +40,21 @@ async def get_overview(
     # fields are unaffected. Omit to get the all-models aggregate; pass
     # `catboost` to scope the macro stats to the CatBoost family.
     model_type: Optional[str] = Query(None, description="Filter prediction_stats to ModelVersion.model_type ILIKE %model_type%"),
+    # When true, prediction_stats are scoped to predictions whose joined
+    # FieldSeason has a non-null yield_bu_ac. This is the same gate the
+    # Predicted-vs-Observed scatter uses, so the headline stats line up
+    # with what's plotted there. Default false preserves the Overview
+    # tab's broader "everything we've predicted" framing.
+    require_observed: bool = Query(
+        False,
+        description="If true, scope prediction stats to field-seasons with observed yields (matches the scatter chart).",
+    ),
 ):
     """
     Get overall statistics for the dashboard.
     Returns counts, available filters, and yield ranges.
     """
-    stats = crud.get_overview_stats(db, model_type=model_type)
+    stats = crud.get_overview_stats(db, model_type=model_type, require_observed=require_observed)
 
     # Get latest model version info
     from app.ml.model_registry import ModelRegistry

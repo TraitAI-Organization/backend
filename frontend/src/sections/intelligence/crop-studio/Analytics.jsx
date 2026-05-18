@@ -1102,7 +1102,18 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
         // tagged variants like "catboost_v3" while excluding
         // deep-learning rows (which were inflating the aggregate stats
         // with out-of-range predicted yields).
-        const response = await fetch(`${API_BASE_URL}/fields/overview?model_type=catboost`, { signal: controller.signal });
+        //
+        // `require_observed=true` further scopes the prediction stats to
+        // field-seasons that actually have an observed yield. This keeps
+        // the headline numbers (Total Predictions, Max / Min / Avg
+        // Predicted, coverage count) consistent with what the
+        // Predicted-vs-Observed scatter below renders — without it, an
+        // in-progress field could hold the max prediction and the
+        // headline would disagree with the chart.
+        const response = await fetch(
+          `${API_BASE_URL}/fields/overview?model_type=catboost&require_observed=true`,
+          { signal: controller.signal }
+        );
         if (!response.ok) return;
         const payload = await response.json();
         setOverview(payload);

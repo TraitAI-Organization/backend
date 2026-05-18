@@ -656,9 +656,21 @@ def get_variety_comparison(
 
 # ==================== Overview ====================
 
-def get_overview_stats(db: Session, model_type: Optional[str] = None) -> Dict[str, Any]:
+def get_overview_stats(
+    db: Session,
+    model_type: Optional[str] = None,
+    require_observed: bool = False,
+) -> Dict[str, Any]:
     """
     Get overall statistics for the dashboard.
+
+    When `require_observed` is True, the prediction_stats block is scoped
+    to predictions whose joined FieldSeason has a non-null `yield_bu_ac`.
+    That keeps the headline numbers (Total Predictions, Max / Min / Avg
+    Predicted, coverage count) consistent with the Predicted-vs-Observed
+    scatter — which only plots field-seasons that have BOTH a stored
+    prediction AND an observed harvest. Default is False so the Overview
+    tab's aggregate "everything we've predicted" framing is preserved.
     """
     total_fields = db.query(func.count(models.Field.field_id)).scalar()
     total_field_seasons = db.query(func.count(models.FieldSeason.field_season_id)).scalar()
@@ -713,6 +725,17 @@ def get_overview_stats(db: Session, model_type: Optional[str] = None) -> Dict[st
     model_type_filter = (model_type or "").strip().lower()
 
     def _apply_pred_filter(q):
+        # When `require_observed` is set, join FieldSeason and require a
+        # non-null yield_bu_ac. This is the same gate the scatter endpoint
+        # applies (see /predict/scatter), so the headline stats line up
+        # with what's actually on the chart. We add the join here rather
+        # than at each call site so every aggregate downstream (count,
+        # min/max/avg, distinct field-seasons) inherits the same filter.
+        if require_observed:
+            q = q.join(
+                models.FieldSeason,
+                models.ModelPrediction.field_season_id == models.FieldSeason.field_season_id,
+            ).filter(models.FieldSeason.yield_bu_ac.isnot(None))
         if not model_type_filter:
             return q
         return q.join(
@@ -747,18 +770,27 @@ def get_overview_stats(db: Session, model_type: Optional[str] = None) -> Dict[st
         ).first()
     )
 
-    prediction_runs_total = (
-        _apply_run_filter(db.query(func.count(models.PredictionRun.prediction_run_id))).scalar() or 0
-    )
-    run_pred_range = (
-        _apply_run_filter(
-            db.query(
-                func.min(models.PredictionRun.predicted_yield),
-                func.max(models.PredictionRun.predicted_yield),
-                func.avg(models.PredictionRun.predicted_yield),
-            )
-        ).first()
-    )
+    # When the caller asks for observed-yield-only stats, exclude
+    # PredictionRun rows entirely. Wizard runs aren't tied to a harvested
+    # field-season, so including them would re-introduce the very
+    # inconsistency we're trying to fix (max predicted in the headline
+    # numbers but no matching dot on the scatter).
+    if require_observed:
+        prediction_runs_total = 0
+        run_pred_range = (None, None, None)
+    else:
+        prediction_runs_total = (
+            _apply_run_filter(db.query(func.count(models.PredictionRun.prediction_run_id))).scalar() or 0
+        )
+        run_pred_range = (
+            _apply_run_filter(
+                db.query(
+                    func.min(models.PredictionRun.predicted_yield),
+                    func.max(models.PredictionRun.predicted_yield),
+                    func.avg(models.PredictionRun.predicted_yield),
+                )
+            ).first()
+        )
 
     field_min = float(field_pred_range[0]) if field_pred_range and field_pred_range[0] is not None else None
     field_max = float(field_pred_range[1]) if field_pred_range and field_pred_range[1] is not None else None
