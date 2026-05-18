@@ -76,6 +76,18 @@ def build_coverage(
     target_column: str = "yield",
 ) -> dict:
     """Build the coverage payload from the training DataFrame."""
+    # Training row identifiers. The CSV's `field` column carries a unique
+    # ID per row (also the natural primary key in the DB's Field table —
+    # imported as Field.field_number, BigInteger). Capturing these gives
+    # the Analytics tab an exact, unambiguous in-envelope filter: a
+    # prediction is "in the trained envelope" iff its field_number is in
+    # this list. The (state, county, variety) geographic check below is
+    # kept as a secondary signal — useful for new field-seasons that
+    # weren't in the training set but live in the same geography.
+    training_field_numbers = sorted(
+        int(f) for f in df["field"].dropna().astype("int64").unique().tolist()
+    )
+
     crops = sorted(df["crop_name_en"].dropna().unique().tolist())
     varieties_by_crop: dict[str, list[str]] = {}
     for crop in crops:
@@ -119,6 +131,10 @@ def build_coverage(
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "source_file": source_file,
         "training_rows": int(len(df)),
+        # Exact training row identifiers — used by Analytics to filter
+        # backfilled predictions to the model's trained envelope. See
+        # the comment in build_coverage() for the full rationale.
+        "training_field_numbers": training_field_numbers,
         "crops": crops,
         "varieties_by_crop": varieties_by_crop,
         "seasons": seasons,

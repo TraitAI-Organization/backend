@@ -33,7 +33,9 @@ import RiseOutlined from '@ant-design/icons/RiseOutlined';
 import ThunderboltOutlined from '@ant-design/icons/ThunderboltOutlined';
 
 import MainCard from 'components/MainCard';
-import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
+// FieldTable is no longer rendered from Analytics — per-row prediction
+// inspection now happens inline via each chart card's Chart/Table toggle.
+// The component itself is still used by the Overview tab, so the file stays.
 import ModelRegressionCard from 'sections/intelligence/crop-studio/ModelRegressionCard';
 import ResidualDiagnosticsCard from 'sections/intelligence/crop-studio/ResidualDiagnosticsCard';
 import { formatCropName } from 'utils/cropName';
@@ -176,6 +178,13 @@ function buildPredictionRunsCsv(rows, modelTypesByVersionId, stateStats) {
     'P (lb/ac)',
     'K (lb/ac)',
     'Water Applied (mm)',
+    // Advanced fertilizer breakdowns — populated when the user filled
+    // the wizard's Advanced section. Empty otherwise.
+    'Anhydrous Ammonia (lb-N/ac)',
+    'UAN Solution (lb-N/ac)',
+    'Other N (lb-N/ac)',
+    'DAP — Nitrogen (lb-N/ac)',
+    'DAP — Phosphorus (lb-P/ac)',
     'Predicted Yield (bu/ac)',
     'Confidence Lower (bu/ac)',
     'Confidence Upper (bu/ac)',
@@ -243,6 +252,13 @@ function buildPredictionRunsCsv(rows, modelTypesByVersionId, stateStats) {
       Number.isFinite(row.totalP) ? row.totalP : '',
       Number.isFinite(row.totalK) ? row.totalK : '',
       Number.isFinite(row.waterApplied) ? row.waterApplied : '',
+      // Advanced fertilizer breakdowns — same null-aware pattern.
+      // Empty cells when the user didn't fill the Advanced section.
+      Number.isFinite(row.ammoniaN) ? row.ammoniaN : '',
+      Number.isFinite(row.uanN) ? row.uanN : '',
+      Number.isFinite(row.otherN) ? row.otherN : '',
+      Number.isFinite(row.dapN) ? row.dapN : '',
+      Number.isFinite(row.dapP) ? row.dapP : '',
       Number.isFinite(predicted) ? predicted.toFixed(4) : '',
       Number.isFinite(lower) ? lower.toFixed(4) : '',
       Number.isFinite(upper) ? upper.toFixed(4) : '',
@@ -344,6 +360,16 @@ async function fetchPredictionRuns(signal) {
       totalP: toNumberOrNull(row.totalP_per_ac ?? requestPayload.totalP_per_ac),
       totalK: toNumberOrNull(row.totalK_per_ac ?? requestPayload.totalK_per_ac),
       waterApplied: toNumberOrNull(row.water_applied_mm ?? requestPayload.water_applied_mm),
+      // Advanced fertilizer breakdowns — wired into the prediction wizard
+      // via the Advanced collapsible section. Stored on the prediction
+      // run's request_payload; surfaced here so the table can flag rows
+      // with detailed fertilizer info and the analysis drawer can show
+      // the per-fertilizer values without re-fetching the run.
+      ammoniaN: toNumberOrNull(requestPayload.ammonia_lbN_per_ac),
+      uanN: toNumberOrNull(requestPayload.urea_ammonium_nitrate_solution_lbN_per_ac),
+      otherN: toNumberOrNull(requestPayload.other_lbN_per_ac),
+      dapN: toNumberOrNull(requestPayload.diammonium_phosphate_lbN_per_ac),
+      dapP: toNumberOrNull(requestPayload.diammonium_phosphate_lbP_per_ac),
       predictedYield: toNumberOrNull(row.predicted_yield ?? responsePayload.predicted_yield),
       confidenceLower: toNumberOrNull(row.confidence_lower ?? responsePayload?.confidence_interval?.[0]),
       confidenceUpper: toNumberOrNull(row.confidence_upper ?? responsePayload?.confidence_interval?.[1]),
@@ -1157,6 +1183,13 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
 
   useEffect(() => {
     if (!preselectedPredictionRunId) return;
+    // When the prediction wizard's "Open Predictions Table" button
+    // routes the user here, switch to the Predictions view so the
+    // Saved Predictions table is the surface they land on. Previously
+    // the user was dropped onto the Analytics tab's default Model &
+    // Data view and had to manually flip the toggle to find the
+    // table — defeating the point of the deep link.
+    setAnalyticsView('predictions');
     const matched = predictionRuns.find((row) => String(row.predictionRunId) === String(preselectedPredictionRunId));
     if (matched) {
       setSelectedPredictionRunId(matched.predictionRunId);
@@ -1217,71 +1250,12 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
     }
   };
 
-  // "View runs history" — clicked from the Model Performance card on the
-  // Model & Data view. Smooth-scrolls down to the Field & Harvest Records
-  // table at the bottom of the same view.
-  //
-  // We don't use the native `scrollIntoView({ behavior: 'smooth' })`
-  // because its duration is browser-controlled (~200–500ms) and lands
-  // before the FieldTable's data fetch / virtualized rows have settled,
-  // so the user arrives mid-skeleton. The custom rAF scroller below
-  // takes ~1200ms with easeInOutCubic timing, which gives the table
-  // time to load and renders as a calmer transition.
-  //
-  // The scroller walks up from the target to find the nearest scrollable
-  // ancestor — falls back to the window if none qualify — so it works
-  // whether the dashboard scrolls at the window level or inside a Box
-  // with overflow:auto.
-  const handleViewRunsHistory = () => {
-    const el = document.getElementById('field-harvest-records-table');
-    if (!el) return;
-
-    // Locate the actual scrolling container (overflow auto|scroll with
-    // overflowing content). Standards-mode browsers treat the documentElement
-    // as the window-scroll root, so that's the fallback.
-    let scroller = el.parentElement;
-    while (scroller && scroller !== document.body) {
-      const overflowY = getComputedStyle(scroller).overflowY;
-      if ((overflowY === 'auto' || overflowY === 'scroll') && scroller.scrollHeight > scroller.clientHeight) {
-        break;
-      }
-      scroller = scroller.parentElement;
-    }
-    const isWindowScroll = !scroller || scroller === document.body;
-
-    const offset = 88; // matches the table's scrollMarginTop — keeps the
-    // table header clear of any sticky chrome above it.
-
-    const startY = isWindowScroll ? window.scrollY : scroller.scrollTop;
-    const elTop = el.getBoundingClientRect().top;
-    const containerTop = isWindowScroll ? 0 : scroller.getBoundingClientRect().top;
-    const targetY = startY + (elTop - containerTop) - offset;
-    const distance = targetY - startY;
-
-    if (Math.abs(distance) < 1) return; // already there
-
-    const duration = 1200; // ms — feels deliberate without dragging
-    const startTime = performance.now();
-
-    // easeInOutCubic — starts slow, accelerates through the middle, eases
-    // out at the end. Gentler than linear and works equally well in both
-    // directions (scrolling up or down).
-    const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-
-    const step = (now) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = easeInOutCubic(progress);
-      const y = startY + distance * eased;
-      if (isWindowScroll) {
-        window.scrollTo(0, y);
-      } else {
-        scroller.scrollTop = y;
-      }
-      if (progress < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  };
+  // Note: the old `handleViewRunsHistory` helper was removed alongside
+  // the standalone "Field & Harvest Records" FieldTable that used to
+  // live at the bottom of the Model & Data view. Per-row prediction
+  // inspection now happens inline via each chart card's Chart/Table
+  // toggle (see ModelRegressionCard + ResidualDiagnosticsCard), so
+  // there's no longer a separate scroll target to navigate to.
 
   // Derive last-run timestamp + month-over-month avg-yield trend from the
   // already-fetched predictionRuns. Both feed the Model Performance card:
@@ -1566,12 +1540,20 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                       <TableCell align="right">P</TableCell>
                       <TableCell align="right">K</TableCell>
                       <TableCell align="right">Water (mm)</TableCell>
+                      {/* New "Inputs" column — flags whether the user
+                          supplied the Advanced fertilizer breakdown
+                          (anhydrous ammonia, UAN solution, DAP-N, DAP-P,
+                          other-N) when running the prediction. The
+                          per-row chip below evaluates each breakdown
+                          field and stamps "Advanced" when any are
+                          non-null; otherwise "Basic". */}
+                      <TableCell sx={{ width: 110 }}>Inputs</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {!isLoading && predictionRuns.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={15}>
+                        <TableCell colSpan={16}>
                           <Stack spacing={0.5} sx={{ py: 1 }}>
                             <Typography variant="body2">No saved predictions found.</Typography>
                             <Typography variant="caption" color="text.secondary">
@@ -1670,6 +1652,158 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                           <TableCell align="right">{formatNumber(row.totalP)}</TableCell>
                           <TableCell align="right">{formatNumber(row.totalK)}</TableCell>
                           <TableCell align="right">{formatNumber(row.waterApplied)}</TableCell>
+                          <TableCell>
+                            {/* Inputs chip — "Advanced" when the user
+                                supplied at least one fertilizer
+                                breakdown field on this run (anhydrous
+                                ammonia, UAN solution, DAP-N, DAP-P,
+                                other-N). Otherwise "Basic". Styled to
+                                match the Model chip's pattern (size,
+                                weight, height) so the two chips in the
+                                same row read as one family. Tooltip uses
+                                the same primary-tinted opaque surface
+                                the rest of the app's hover-help
+                                tooltips use — see PredictionInputStep
+                                / Analytics ModelRegressionCard for the
+                                same slotProps shape. */}
+                            {(() => {
+                              const breakdownEntries = [
+                                ['Anhydrous Ammonia', row.ammoniaN, 'lb-N/ac'],
+                                ['UAN Solution', row.uanN, 'lb-N/ac'],
+                                ['Other N', row.otherN, 'lb-N/ac'],
+                                ['DAP — Nitrogen', row.dapN, 'lb-N/ac'],
+                                ['DAP — Phosphorus', row.dapP, 'lb-P/ac']
+                              ].filter(([, v]) => v !== null && v !== undefined);
+                              const isAdvanced = breakdownEntries.length > 0;
+                              // Match the Model chip's palette pattern
+                              // (success-green for active, muted neutral
+                              // for inactive). The "Advanced" chip uses
+                              // the primary family because the action it
+                              // surfaces (filling Advanced inputs) is a
+                              // primary-blue affordance elsewhere in the
+                              // app — keeps color semantics consistent.
+                              const palette = isAdvanced
+                                ? {
+                                    fg: theme.palette.primary.light,
+                                    bg: alpha(theme.palette.primary.main, 0.18),
+                                    border: alpha(theme.palette.primary.main, 0.5)
+                                  }
+                                : {
+                                    fg: alpha(theme.palette.common.white, 0.55),
+                                    bg: alpha(theme.palette.common.white, 0.06),
+                                    border: alpha(theme.palette.common.white, 0.18)
+                                  };
+                              // Themed tooltip surface — same primary-
+                              // tinted color-mix opaque background and
+                              // primary-alpha border the rest of the
+                              // app's hover-help tooltips use, so this
+                              // chip's hover affordance lands as part
+                              // of the same family rather than the
+                              // default MUI dark-gray surface.
+                              const tooltipSlotProps = {
+                                tooltip: {
+                                  sx: {
+                                    bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 22%, ${theme.palette.background.paper})`,
+                                    color: theme.palette.common.white,
+                                    border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+                                    fontSize: '0.74rem',
+                                    fontWeight: 500,
+                                    lineHeight: 1.55,
+                                    maxWidth: 320,
+                                    px: 1.5,
+                                    py: 1.1,
+                                    borderRadius: 1.25,
+                                    boxShadow: `0 6px 18px ${alpha(theme.palette.common.black, 0.4)}`
+                                  }
+                                },
+                                arrow: {
+                                  sx: {
+                                    color: `color-mix(in srgb, ${theme.palette.primary.main} 22%, ${theme.palette.background.paper})`
+                                  }
+                                }
+                              };
+                              return (
+                                <Tooltip
+                                  arrow
+                                  placement="top"
+                                  slotProps={tooltipSlotProps}
+                                  title={
+                                    isAdvanced ? (
+                                      <Stack spacing={0.5} sx={{ minWidth: 220 }}>
+                                        <Typography
+                                          sx={{
+                                            color: alpha(theme.palette.primary.light, 0.95),
+                                            fontWeight: 700,
+                                            fontSize: '0.7rem',
+                                            letterSpacing: '0.1em',
+                                            textTransform: 'uppercase',
+                                            mb: 0.25
+                                          }}
+                                        >
+                                          Advanced inputs supplied
+                                        </Typography>
+                                        {breakdownEntries.map(([label, value, unit]) => (
+                                          <Stack
+                                            key={label}
+                                            direction="row"
+                                            sx={{ justifyContent: 'space-between', alignItems: 'baseline', gap: 1.5 }}
+                                          >
+                                            <Typography
+                                              sx={{ color: alpha(theme.palette.common.white, 0.75), fontSize: '0.74rem' }}
+                                            >
+                                              {label}
+                                            </Typography>
+                                            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'baseline' }}>
+                                              <Typography
+                                                sx={{
+                                                  color: theme.palette.common.white,
+                                                  fontWeight: 700,
+                                                  fontSize: '0.78rem',
+                                                  fontVariantNumeric: 'tabular-nums',
+                                                  whiteSpace: 'nowrap'
+                                                }}
+                                              >
+                                                {formatNumber(value)}
+                                              </Typography>
+                                              <Typography
+                                                sx={{
+                                                  color: alpha(theme.palette.common.white, 0.5),
+                                                  fontSize: '0.68rem',
+                                                  fontWeight: 500
+                                                }}
+                                              >
+                                                {unit}
+                                              </Typography>
+                                            </Stack>
+                                          </Stack>
+                                        ))}
+                                      </Stack>
+                                    ) : (
+                                      <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.55 }}>
+                                        Only the standard inputs (Total N / P / K) were provided. The user
+                                        didn&apos;t fill in the wizard&apos;s Advanced fertilizer breakdown section.
+                                      </Typography>
+                                    )
+                                  }
+                                >
+                                  <Chip
+                                    size="small"
+                                    label={isAdvanced ? `Advanced (${breakdownEntries.length})` : 'Basic'}
+                                    sx={{
+                                      cursor: 'help',
+                                      fontWeight: 600,
+                                      fontSize: '0.72rem',
+                                      color: palette.fg,
+                                      bgcolor: palette.bg,
+                                      border: `1px solid ${palette.border}`,
+                                      borderRadius: 999,
+                                      height: 22
+                                    }}
+                                  />
+                                </Tooltip>
+                              );
+                            })()}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -2606,12 +2740,12 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                 <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
                   Residual Diagnostics
                 </Box>{' '}
-                surface where the model fails and by how much. The{' '}
+                surface where the model fails and by how much. Each chart card has a{' '}
                 <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
-                  Field &amp; Harvest Records
+                  Chart / Table
                 </Box>{' '}
-                table at the bottom holds the per-row predictions behind every chart — click any data point above, or
-                use the View run history button, to jump into it.
+                toggle in its top-right — flip to Table to inspect the per-row predictions behind that chart, sorted by
+                largest error first.
               </Typography>
             </Stack>
 
@@ -2619,43 +2753,23 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
               overview={overview}
               lastRunAt={predictionTimeline?.lastRunAt}
               avgYieldTrend={predictionTimeline?.avgYieldTrend}
-              onViewRunsHistory={handleViewRunsHistory}
             />
 
             {/* Predicted vs Observed regression diagnostic. Sits between
                 the aggregate Model Performance card (the "track record"
-                story) and the row-level Field Records table (the
-                "evidence" story) — it's the visual bridge that shows
-                how those aggregate stats are actually distributed. */}
+                story) and the residual card below. Now carries its own
+                Chart/Table toggle so per-row prediction inspection happens
+                in-place rather than requiring the user to scroll. */}
             <ModelRegressionCard />
 
             {/* Residual diagnostics — sits directly under the regression
                 card as its companion. Two stacked charts (residuals vs
-                observed yield, residual distribution) that surface where
-                the model fails and by how much. Independent model /
-                season / state filters so the residual view can be
-                sliced separately from the main regression scatter. */}
+                observed yield, residual distribution) plus its own
+                Chart/Table toggle that surfaces the per-row residual
+                evidence sorted by magnitude. Filters are kept local to
+                this card so a user can slice residuals independently
+                from the regression scatter. */}
             <ResidualDiagnosticsCard />
-
-            {/* Field-level records table — chevron + row-click affordance
-                hidden because Analytics is read-only context; the Overview
-                tab keeps a chevron-enabled copy for drilling into field
-                detail. The "Why predict yields on harvests?" explainer
-                banner is rendered inside FieldTable, so it lands here
-                automatically. `lockModelSelector` renders the model pill
-                as a static chip (no dropdown) — Analyze surfaces which
-                model produced the column but doesn't let the user swap
-                models from this view.
-                ---
-                Wrapped in a Box with id="field-harvest-records-table" so
-                the "View run history" button in the Model Performance
-                card up top can smooth-scroll the user down to this table.
-                `scrollMarginTop` keeps the table header from landing
-                directly under any sticky chrome (the analytics view
-                toggle, the workspace nav) once the scroll completes. */}
-            <Box id="field-harvest-records-table" sx={{ scrollMarginTop: 88 }}>
-              <FieldTable showChevron={false} lockModelSelector />
-            </Box>
           </>
         )}
       </Stack>

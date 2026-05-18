@@ -15,30 +15,40 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
+import DotChartOutlined from '@ant-design/icons/DotChartOutlined';
 import DownOutlined from '@ant-design/icons/DownOutlined';
+import TableOutlined from '@ant-design/icons/TableOutlined';
 
+import CoverageScopeSelector from 'sections/intelligence/crop-studio/CoverageScopeSelector';
 import FieldDetailDrawer from 'sections/intelligence/crop-studio/FieldDetailDrawer';
+import PredictionsTable from 'sections/intelligence/crop-studio/PredictionsTable';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
-// SVG layout constants. The plot is drawn in a 1000×620 viewBox and the
+// SVG layout constants. The plot is drawn in a 1000×480 viewBox and the
 // SVG element stretches to fit its container; preserveAspectRatio keeps
 // it letterboxed cleanly at any width.
 const VIEW_W = 1000;
 // VIEW_H controls the SVG aspect ratio. The SVG itself is sized to
 // `width: 100%`, `height: auto`, so the rendered pixel height tracks
-// `VIEW_H / VIEW_W` against the container width. Dropping from 620 to
-// 465 makes the regression plot ~25% shorter without disturbing
-// margins, tick spacing, or any of the plot math (everything else is
-// derived from VIEW_H / PLOT_H).
-const VIEW_H = 465;
+// `VIEW_H / VIEW_W` against the container width. Sized at 480 —
+// gives points more vertical breathing room so dense clusters are
+// readable, while staying short enough to keep the rest of the card
+// (filters, table toggle) visible in a single viewport on a 1080p
+// display. Margins/tick spacing/all plot math derive from VIEW_H,
+// so the only thing changing visually is the chart's aspect ratio
+// (now ~2.08:1).
+const VIEW_H = 480;
 const MARGIN = { top: 24, right: 24, bottom: 56, left: 64 };
 const PLOT_W = VIEW_W - MARGIN.left - MARGIN.right;
 const PLOT_H = VIEW_H - MARGIN.top - MARGIN.bottom;
@@ -122,12 +132,35 @@ export default function ModelRegressionCard() {
   const [modelMenuAnchor, setModelMenuAnchor] = useState(null);
   const [seasonMenuAnchor, setSeasonMenuAnchor] = useState(null);
   const [stateMenuAnchor, setStateMenuAnchor] = useState(null);
+  // coverageMenuAnchor used to back a FilterPill in the secondary
+  // filter bar — now that coverage scope is its own prominent
+  // ToggleButtonGroup (CoverageScopeSelector), this state is gone.
+  // View mode — the Chart/Table toggle in the header's Zone 1. Chart is
+  // the existing scatter visualization; Table renders the same filtered
+  // rows in a tabular format. Default is Chart for visual continuity with
+  // the previous design. State is local to the card so each card's view
+  // mode is independent (a user could be reading the regression chart
+  // while inspecting residual rows in a table).
+  const [viewMode, setViewMode] = useState('chart');
   const [hoverPoint, setHoverPoint] = useState(null);
   // Active filters. `season` is an array (the backend accepts multiple),
   // but the dropdown UI is single-select so the array will have length 0
   // or 1 in practice. `state` is a single optional string.
   const [seasonFilter, setSeasonFilter] = useState([]);
   const [stateFilter, setStateFilter] = useState(null);
+  // Coverage-scope filter — three tiers, surfaced as a single pill:
+  //   - 'in_distribution' (default) : rows whose inputs look like the
+  //     training data (state/county/variety + yield range + acres/totalN
+  //     range). This is the most meaningful real-world R² — it mixes
+  //     in-sample training rows with similar-shape production rows the
+  //     model should handle well, giving a number close to but not
+  //     identical to the published CV R².
+  //   - 'in_envelope' : only the exact training rows (1,002 for wheat).
+  //     In-sample R²; useful for verifying the model fits the data it
+  //     was trained on.
+  //   - 'all' : every prediction including out-of-distribution rows.
+  //     Lowest R² because the metric dilutes against unhandled cases.
+  const [coverageScope, setCoverageScope] = useState('in_distribution');
   // Drawer state — clicking a point opens the FieldDetailDrawer (same one
   // the FieldTable / Overview chevron opens). null = closed.
   const [drawerFieldSeasonId, setDrawerFieldSeasonId] = useState(null);
@@ -190,6 +223,11 @@ export default function ModelRegressionCard() {
     if (selectedId > 0) params.append('model_id', String(selectedId));
     for (const year of seasonFilter) params.append('season', String(year));
     if (stateFilter) params.append('state', stateFilter);
+    // coverage_scope is always sent (even when it's the default) so the
+    // backend echoes filters_applied.coverage_scope and the response's
+    // coverage block carries the in-envelope-vs-total counts the UI
+    // uses for the "1,002 of 3,435 fields" caption.
+    params.append('coverage_scope', coverageScope);
     const url = `${API_BASE_URL}/predict/scatter${params.toString() ? `?${params.toString()}` : ''}`;
     setLoading(true);
     setError('');
@@ -212,7 +250,7 @@ export default function ModelRegressionCard() {
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [selectedId, seasonFilter, stateFilter]);
+  }, [selectedId, seasonFilter, stateFilter, coverageScope]);
 
   // Derive everything the SVG needs in one pass: scaled coordinates,
   // axis bounds, residual color scale, fitted-line endpoints. We memoize
@@ -294,28 +332,190 @@ export default function ModelRegressionCard() {
         boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
       }}
     >
-      {/* Header — title + model selector on the left, metrics pills on
-          the right. The metrics row is the heart of the card: at a
-          glance, R² tells you how much of the variance the model
-          captures, RMSE/MAE quantify how far off it is in bu/ac, and n
-          shows how many real harvest records back the read. */}
+      {/* Header — stratified into three horizontal zones so the user
+          parses identity → outputs → inputs in the natural reading
+          order they actually ask questions about. Replaces the prior
+          single wrapping row that crammed title, filters and metrics
+          into one visually flat stripe.
+
+          Zone 1 — Identity: title left, view toggle (Chart/Table) right.
+          Zone 2 — Outputs: hero R² with secondary metrics inline.
+          Zone 3 — Inputs:  filter bar with model + coverage + season + state. */}
       <Stack
-        direction="row"
         sx={{
           px: 2.5,
           py: 1.5,
-          alignItems: 'center',
-          justifyContent: 'space-between',
           borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
-          flexWrap: 'wrap',
-          gap: 1.5
+          gap: 1.25
         }}
       >
-        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: '0.95rem', color: theme.palette.common.white }}>Predicted vs Observed</Typography>
-          <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.78rem' }}>
-            Regression diagnostic across every harvested field-season
+        {/* ============== Zone 1 — Identity + View Toggle ============== */}
+        <Stack
+          direction="row"
+          sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}
+        >
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontSize: '1.05rem',
+              color: theme.palette.common.white,
+              letterSpacing: '0.01em',
+              lineHeight: 1.2
+            }}
+          >
+            Predicted vs Observed
           </Typography>
+          {/* Segmented Chart/Table toggle. Lives in the title row so the
+              view-switch is treated as a first-class action — the user's
+              eye finds it where they look for "card-level controls". The
+              chosen mode flips the body below from the SVG scatter to a
+              tabular row-level rendering of the same filtered data. */}
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            size="small"
+            onChange={(_, next) => {
+              if (next) setViewMode(next);
+            }}
+            sx={{
+              '& .MuiToggleButtonGroup-grouped': {
+                borderRadius: 1.25
+              },
+              '& .MuiToggleButton-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.78rem',
+                letterSpacing: '0.01em',
+                color: alpha(theme.palette.common.white, 0.7),
+                bgcolor: alpha(theme.palette.primary.main, 0.1),
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+                px: 1.25,
+                py: 0.4,
+                gap: 0.6,
+                lineHeight: 1.2,
+                transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+                '&:hover': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.18),
+                  color: theme.palette.common.white,
+                  borderColor: alpha(theme.palette.primary.main, 0.6)
+                },
+                '&.Mui-selected': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.32),
+                  color: theme.palette.common.white,
+                  borderColor: theme.palette.primary.main,
+                  '&:hover': {
+                    bgcolor: alpha(theme.palette.primary.main, 0.4)
+                  }
+                }
+              }
+            }}
+          >
+            <ToggleButton value="chart" aria-label="Chart view">
+              <DotChartOutlined style={{ fontSize: '0.85rem' }} />
+              Chart
+            </ToggleButton>
+            <ToggleButton value="table" aria-label="Table view">
+              <TableOutlined style={{ fontSize: '0.85rem' }} />
+              Table
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+
+        {/* ============== Zone 2 — Primary scope selector ==============
+            The coverage scope is the single most impactful control on
+            this card — flipping it shifts the headline R² and the row
+            count meaningfully — so it gets first-class visual weight
+            ABOVE the metrics. Reads as: "I am looking at THIS subset
+            of predictions, and HERE is the R² for that subset." The
+            secondary filter bar in Zone 4 holds the smaller filters
+            (Model / Season / State) — refinements within the chosen
+            scope, not scope itself. */}
+        <CoverageScopeSelector
+          value={coverageScope}
+          onChange={(next) => setCoverageScope(next || 'in_distribution')}
+          coverage={payload?.coverage}
+        />
+
+        {/* ============== Zone 3 — Outputs (metrics) ==============
+            Hero R² on the left at a much larger weight than the inline
+            secondary metrics. Visual hierarchy here is the whole point
+            of the redesign: one number gets the user's first read; the
+            supporting stats are quiet, comma-separated muted text that
+            never competes for attention. Each metric carries its own
+            hover tooltip for definition (preserved from the old
+            MetricsRow). */}
+        <HeaderMetrics
+          metrics={layout?.metrics}
+          loading={loading}
+          theme={theme}
+          hero={{
+            label: 'R²',
+            value: layout?.metrics?.r2,
+            fmt: (v) => v.toFixed(3),
+            tooltip: 'Coefficient of determination. 1.0 is perfect; 0 means the model is no better than predicting the mean.'
+          }}
+          secondary={[
+            {
+              label: 'RMSE',
+              value: layout?.metrics?.rmse,
+              fmt: (v) => v.toFixed(2),
+              unit: 'bu/ac',
+              tooltip: 'Root mean squared error. Same units as yield; penalizes big misses more than small ones.'
+            },
+            {
+              label: 'MAE',
+              value: layout?.metrics?.mae,
+              fmt: (v) => v.toFixed(2),
+              unit: 'bu/ac',
+              tooltip: 'Mean absolute error. Average size of the prediction error, ignoring direction.'
+            },
+            {
+              label: 'Bias',
+              value: layout?.metrics?.bias,
+              fmt: (v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`,
+              unit: 'bu/ac',
+              tooltip: 'Mean residual (predicted − observed). Positive = model systematically over-predicts; negative = under-predicts.'
+            },
+            {
+              label: 'n',
+              value: layout?.metrics?.n,
+              fmt: (v) => v.toLocaleString(),
+              tooltip: 'Number of field-seasons with both a stored prediction and an observed yield.'
+            }
+          ]}
+        />
+
+        {/* Subtle visual wall between outputs (above) and inputs (below).
+            Reinforces that filters are a different *kind* of thing from
+            metrics — the eye reads metrics as "here is the answer" and
+            filters as "here is how I narrowed the question". */}
+        <Divider sx={{ borderColor: alpha(theme.palette.primary.main, 0.18), my: 0.25 }} />
+
+        {/* ============== Zone 3 — Inputs (filter bar) ==============
+            All filters live in their own row prefixed with a small
+            "Filters" caption. Order is purposeful:
+              1. Model picker — most identifying
+              2. Coverage scope — most impactful on the headline metric
+              3. Season + State — situational narrowing
+            On wrap, less-important pills move to the next line first. */}
+        <Stack
+          direction="row"
+          sx={{ alignItems: 'center', flexWrap: 'wrap', columnGap: 1, rowGap: 0.75 }}
+        >
+          <Typography
+            sx={{
+              color: alpha(theme.palette.common.white, 0.5),
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              pr: 0.25
+            }}
+          >
+            Filters
+          </Typography>
+
+          {/* Model picker (identity) */}
           <Button
             size="small"
             onClick={(e) => setModelMenuAnchor(e.currentTarget)}
@@ -393,11 +593,14 @@ export default function ModelRegressionCard() {
             ))}
           </Menu>
 
+          {/* Coverage scope used to live here; it's now promoted to its
+              own prominent row above the metrics (CoverageScopeSelector).
+              The filter bar now only carries secondary filters that
+              refine the chosen scope further. */}
+
           {/* Season filter pill — narrows the scatter to one growing
               season. Useful for reproducing the slice your training set
-              was cut on (R² typically rises when you restrict to a
-              single season the model was tuned for). The "All seasons"
-              option clears the filter. */}
+              was cut on. */}
           <FilterPill
             label={seasonFilter.length > 0 ? `Season ${seasonFilter[0]}` : 'All seasons'}
             active={seasonFilter.length > 0}
@@ -413,8 +616,7 @@ export default function ModelRegressionCard() {
           />
 
           {/* State filter pill — narrows the scatter to a single state.
-              Pairs naturally with the season filter to reproduce the
-              training subset (e.g. 'Kansas, 2024'). */}
+              Pairs naturally with the season filter. */}
           <FilterPill
             label={stateFilter || 'All states'}
             active={Boolean(stateFilter)}
@@ -429,7 +631,6 @@ export default function ModelRegressionCard() {
             theme={theme}
           />
         </Stack>
-        <MetricsRow metrics={layout?.metrics} loading={loading} />
       </Stack>
 
       <Box sx={{ position: 'relative', px: 1.5, pt: 1.5, pb: 2 }}>
@@ -445,6 +646,20 @@ export default function ModelRegressionCard() {
             No paired (predicted, observed) data for this model yet. Once the model has predictions for at least two harvested
             field-seasons, the scatter will populate here.
           </Typography>
+        ) : viewMode === 'table' ? (
+          // Per-row table view — consumes the same payload.points the
+          // chart uses, so it inherits every active filter (model /
+          // coverage scope / season / state) without a second fetch.
+          // Default sort is |residual| desc to surface the worst
+          // predictions at the top. Row-click opens the same
+          // FieldDetailDrawer the scatter-point click does.
+          <PredictionsTable
+            points={payload?.points || []}
+            rmse={payload?.metrics?.rmse}
+            theme={theme}
+            onRowClick={(p) => setDrawerFieldSeasonId(p.field_season_id)}
+            emptyMessage="No paired (predicted, observed) data for this model yet."
+          />
         ) : (
           <PlotSvg
             layout={layout}
@@ -554,84 +769,108 @@ function useThemedTooltipSlotProps() {
   };
 }
 
-function MetricsRow({ metrics, loading }) {
-  const theme = useTheme();
+// Header metrics — a single horizontal row that renders the primary
+// metric (R² for regression, Bias for residuals) and the supporting
+// metrics in one continuous flow, separated by middle dots. The
+// primary metric gets *subtle* emphasis (slightly larger value, a
+// primary-tinted label) rather than a dramatic font-size jump — it
+// sits inline with the others instead of floating in giant text on
+// the left, which made the prior design read as visually disconnected.
+//
+// Every metric retains its hover tooltip with the long-form definition
+// (preserved from the original MetricsRow). Tabular-nums everywhere
+// keeps digit positions stable across refreshes.
+function HeaderMetrics({ metrics, loading, theme, hero, secondary }) {
   const tooltipSlotProps = useThemedTooltipSlotProps();
   if (loading && !metrics) return null;
+
+  // One ordered list, with the primary metric tagged so it can get its
+  // small accent. The hero/secondary distinction stays in the API
+  // (callers still pass them separately) but the rendering treats them
+  // as members of the same row.
   const items = [
-    {
-      label: 'R²',
-      value: metrics?.r2,
-      fmt: (v) => v.toFixed(3),
-      tooltip: 'Coefficient of determination. 1.0 is perfect; 0 means the model is no better than predicting the mean.'
-    },
-    {
-      label: 'RMSE',
-      value: metrics?.rmse,
-      fmt: (v) => v.toFixed(2),
-      unit: 'bu/ac',
-      tooltip: 'Root mean squared error. Same units as yield; penalizes big misses more than small ones.'
-    },
-    {
-      label: 'MAE',
-      value: metrics?.mae,
-      fmt: (v) => v.toFixed(2),
-      unit: 'bu/ac',
-      tooltip: 'Mean absolute error. Average size of the prediction error, ignoring direction.'
-    },
-    {
-      label: 'Bias',
-      value: metrics?.bias,
-      fmt: (v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`,
-      unit: 'bu/ac',
-      tooltip: 'Mean residual (predicted − observed). Positive = model systematically over-predicts; negative = under-predicts.'
-    },
-    {
-      label: 'n',
-      value: metrics?.n,
-      fmt: (v) => v.toLocaleString(),
-      tooltip: 'Number of field-seasons with both a stored prediction and an observed yield.'
-    }
+    { ...hero, isPrimary: true },
+    ...secondary.map((s) => ({ ...s, isPrimary: false }))
   ];
+
   return (
-    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.75 }}>
-      {items.map((it) => (
-        <Tooltip key={it.label} arrow placement="top" title={it.tooltip} slotProps={tooltipSlotProps}>
-          <Stack
-            direction="row"
-            spacing={0.5}
-            sx={{
-              alignItems: 'baseline',
-              px: 1,
-              py: 0.35,
-              borderRadius: 999,
-              bgcolor: alpha(theme.palette.primary.main, 0.22),
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-              cursor: 'help'
-            }}
-          >
-            <Typography
-              sx={{
-                color: alpha(theme.palette.common.white, 0.6),
-                fontSize: '0.7rem',
-                fontWeight: 600,
-                letterSpacing: '0.05em',
-                textTransform: 'uppercase'
-              }}
-            >
-              {it.label}
-            </Typography>
-            <Typography
-              sx={{ color: theme.palette.common.white, fontSize: '0.85rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
-            >
-              {Number.isFinite(it.value) ? it.fmt(it.value) : '—'}
-            </Typography>
-            {it.unit ? (
-              <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.7rem' }}>{it.unit}</Typography>
+    <Stack
+      direction="row"
+      sx={{
+        alignItems: 'baseline',
+        flexWrap: 'wrap',
+        columnGap: 1.25,
+        rowGap: 0.65
+      }}
+    >
+      {items.map((item, idx) => {
+        const finite = Number.isFinite(item.value);
+        const display = finite ? item.fmt(item.value) : '—';
+        return (
+          <Stack key={item.label} direction="row" spacing={0.65} sx={{ alignItems: 'baseline' }}>
+            {/* Middle-dot separator between metrics (none before the first). */}
+            {idx > 0 ? (
+              <Typography
+                aria-hidden
+                sx={{
+                  color: alpha(theme.palette.common.white, 0.28),
+                  fontSize: '0.9rem',
+                  px: 0.15,
+                  userSelect: 'none',
+                  lineHeight: 1
+                }}
+              >
+                ·
+              </Typography>
             ) : null}
+            <Tooltip arrow placement="top" title={item.tooltip} slotProps={tooltipSlotProps}>
+              <Stack direction="row" spacing={0.55} sx={{ alignItems: 'baseline', cursor: 'help' }}>
+                <Typography
+                  sx={{
+                    // Primary metric: primary-tinted label so the eye finds
+                    // it first. Secondary metrics: muted white. Same size
+                    // for both so the row reads as one rhythm.
+                    color: item.isPrimary
+                      ? alpha(theme.palette.primary.light, 0.95)
+                      : alpha(theme.palette.common.white, 0.55),
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    letterSpacing: item.isPrimary ? '0.1em' : '0.05em',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {item.label}
+                </Typography>
+                <Typography
+                  sx={{
+                    color: theme.palette.common.white,
+                    // Subtle size step: 1.05rem for primary vs 0.95rem for
+                    // secondary. Both are still in the same visual band so
+                    // there's no "giant number on the left" effect.
+                    fontSize: item.isPrimary ? '1.05rem' : '0.95rem',
+                    fontWeight: item.isPrimary ? 800 : 700,
+                    fontVariantNumeric: 'tabular-nums',
+                    lineHeight: 1.15
+                  }}
+                >
+                  {display}
+                </Typography>
+                {item.unit ? (
+                  <Typography
+                    sx={{
+                      color: alpha(theme.palette.common.white, 0.45),
+                      fontSize: '0.7rem',
+                      fontWeight: 500
+                    }}
+                  >
+                    {item.unit}
+                  </Typography>
+                ) : null}
+              </Stack>
+            </Tooltip>
           </Stack>
-        </Tooltip>
-      ))}
+        );
+      })}
     </Stack>
   );
 }
@@ -758,7 +997,12 @@ function PlotSvg({ layout, theme, onHover, hoverPoint, onPointClick }) {
       ref={svgRef}
       viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
       preserveAspectRatio="xMidYMid meet"
-      sx={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}
+      // maxHeight caps the chart at 560px on extra-wide displays so it
+      // doesn't grow unbounded on 1600px+ viewports. Set above the
+      // natural VIEW_H (480) so the cap only kicks in once the
+      // container is wider than ~1167px — at narrower widths the chart
+      // sizes proportionally from width:100% / height:auto.
+      sx={{ width: '100%', height: 'auto', maxHeight: 560, display: 'block', overflow: 'visible' }}
       onMouseLeave={() => onHover(null)}
     >
       {/* Grid */}

@@ -25,25 +25,36 @@ import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
+import AreaChartOutlined from '@ant-design/icons/AreaChartOutlined';
 import DownOutlined from '@ant-design/icons/DownOutlined';
+import TableOutlined from '@ant-design/icons/TableOutlined';
 
+import CoverageScopeSelector from 'sections/intelligence/crop-studio/CoverageScopeSelector';
 import FieldDetailDrawer from 'sections/intelligence/crop-studio/FieldDetailDrawer';
+import PredictionsTable from 'sections/intelligence/crop-studio/PredictionsTable';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
-// Plot geometry. The viewBox is wider than tall (16:9-ish) so each chart
-// reads as a "panel" rather than a square. The SVG element itself sizes
-// to width: 100%, height: auto — so on a desktop the chart renders large
-// enough to read individual points, and on mobile it scales down cleanly.
+// Plot geometry. The viewBox is ~2.3:1 so each chart reads as a wide
+// panel rather than a square. The SVG sizes to width: 100%, height:
+// auto — desktop renders large enough to read individual points,
+// mobile scales down cleanly. Sized at 1200×520: gives the residuals
+// scatter and histogram enough vertical real estate to read at a
+// glance without making the card a long scroll (two charts stack in
+// this card, so each height roughly doubles the card's total chart
+// area).
 const VIEW_W = 1200;
-const VIEW_H = 560;
+const VIEW_H = 520;
 const MARGIN = { top: 28, right: 28, bottom: 56, left: 76 };
 const PLOT_W = VIEW_W - MARGIN.left - MARGIN.right;
 const PLOT_H = VIEW_H - MARGIN.top - MARGIN.bottom;
@@ -136,8 +147,21 @@ export default function ResidualDiagnosticsCard() {
   const [modelMenuAnchor, setModelMenuAnchor] = useState(null);
   const [seasonMenuAnchor, setSeasonMenuAnchor] = useState(null);
   const [stateMenuAnchor, setStateMenuAnchor] = useState(null);
+  // coverageMenuAnchor used to back the secondary filter-bar pill —
+  // not needed now that CoverageScopeSelector renders the prominent
+  // ToggleButtonGroup above the metrics.
+  // View mode — Chart/Table toggle in the header's Zone 1. Independent
+  // from ModelRegressionCard's viewMode so the user can compare one
+  // card's chart view against the other's table view if useful.
+  const [viewMode, setViewMode] = useState('chart');
   const [seasonFilter, setSeasonFilter] = useState([]);
   const [stateFilter, setStateFilter] = useState(null);
+  // Coverage-scope filter — mirrors ModelRegressionCard's three-tier
+  // toggle so both cards default to the "similar to training" view. The
+  // two toggles are intentionally independent so a user can compare
+  // in-distribution residuals against the wider population by flipping
+  // one chart at a time.
+  const [coverageScope, setCoverageScope] = useState('in_distribution');
   // Hover state for the live-data readout on the residuals scatter.
   const [hoverPoint, setHoverPoint] = useState(null);
   // Drawer state — clicking a point opens the FieldDetailDrawer (same
@@ -187,6 +211,7 @@ export default function ResidualDiagnosticsCard() {
     if (selectedId > 0) params.append('model_id', String(selectedId));
     for (const year of seasonFilter) params.append('season', String(year));
     if (stateFilter) params.append('state', stateFilter);
+    params.append('coverage_scope', coverageScope);
     const url = `${API_BASE_URL}/predict/scatter${params.toString() ? `?${params.toString()}` : ''}`;
     setLoading(true);
     setError('');
@@ -206,7 +231,7 @@ export default function ResidualDiagnosticsCard() {
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [selectedId, seasonFilter, stateFilter]);
+  }, [selectedId, seasonFilter, stateFilter, coverageScope]);
 
   // Memoize the points array so the two chart components don't recompute
   // their geometry every render.
@@ -244,26 +269,149 @@ export default function ResidualDiagnosticsCard() {
         boxShadow: `0 4px 14px ${alpha(theme.palette.common.black, 0.35)}`
       }}
     >
-      {/* Header — title + filter pills. Same surface family as the
-          regression card so the two read as a connected pair. */}
+      {/* Header — three stratified zones mirroring ModelRegressionCard's
+          layout so the two cards read as a connected pair. The hero
+          metric is *Bias* here (not R²) because the diagnostic value of
+          this card is asking "is the model systematically wrong?" — Bias
+          answers that directly. RMSE / MAE / n provide the magnitude
+          and sample size in the secondary line. */}
       <Stack
-        direction="row"
         sx={{
           px: 2.5,
           py: 1.5,
-          alignItems: 'center',
-          justifyContent: 'space-between',
           borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
-          flexWrap: 'wrap',
-          gap: 1.5
+          gap: 1.25
         }}
       >
-        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: '0.95rem', color: theme.palette.common.white }}>
+        {/* ============== Zone 1 — Identity + View Toggle ============== */}
+        <Stack
+          direction="row"
+          sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}
+        >
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontSize: '1.05rem',
+              color: theme.palette.common.white,
+              letterSpacing: '0.01em',
+              lineHeight: 1.2
+            }}
+          >
             Residual Diagnostics
           </Typography>
-          <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.78rem' }}>
-            Where the model fails — and by how much
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            size="small"
+            onChange={(_, next) => {
+              if (next) setViewMode(next);
+            }}
+            sx={{
+              '& .MuiToggleButtonGroup-grouped': { borderRadius: 1.25 },
+              '& .MuiToggleButton-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.78rem',
+                letterSpacing: '0.01em',
+                color: alpha(theme.palette.common.white, 0.7),
+                bgcolor: alpha(theme.palette.primary.main, 0.1),
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+                px: 1.25,
+                py: 0.4,
+                gap: 0.6,
+                lineHeight: 1.2,
+                transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+                '&:hover': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.18),
+                  color: theme.palette.common.white,
+                  borderColor: alpha(theme.palette.primary.main, 0.6)
+                },
+                '&.Mui-selected': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.32),
+                  color: theme.palette.common.white,
+                  borderColor: theme.palette.primary.main,
+                  '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.4) }
+                }
+              }
+            }}
+          >
+            <ToggleButton value="chart" aria-label="Chart view">
+              <AreaChartOutlined style={{ fontSize: '0.85rem' }} />
+              Chart
+            </ToggleButton>
+            <ToggleButton value="table" aria-label="Table view">
+              <TableOutlined style={{ fontSize: '0.85rem' }} />
+              Table
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+
+        {/* ============== Zone 2 — Primary scope selector ==============
+            Same prominent CoverageScopeSelector ModelRegressionCard
+            uses, kept in lockstep so the two cards present the same
+            primary control in the same place. */}
+        <CoverageScopeSelector
+          value={coverageScope}
+          onChange={(next) => setCoverageScope(next || 'in_distribution')}
+          coverage={payload?.coverage}
+        />
+
+        {/* ============== Zone 3 — Outputs (metrics) ============== */}
+        <HeaderMetrics
+          metrics={metrics}
+          loading={loading}
+          theme={theme}
+          hero={{
+            label: 'Bias',
+            value: metrics?.bias,
+            fmt: (v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`,
+            unit: 'bu/ac',
+            tooltip:
+              'Mean residual (predicted − observed). Positive = model systematically over-predicts; negative = under-predicts. ' +
+              'A residual diagnostic card centers on this number — it tells you whether the model is calibrated or skewed.'
+          }}
+          secondary={[
+            {
+              label: 'RMSE',
+              value: metrics?.rmse,
+              fmt: (v) => v.toFixed(2),
+              unit: 'bu/ac',
+              tooltip: 'Root mean squared error. Same units as yield; penalizes big misses more than small ones.'
+            },
+            {
+              label: 'MAE',
+              value: metrics?.mae,
+              fmt: (v) => v.toFixed(2),
+              unit: 'bu/ac',
+              tooltip: 'Mean absolute error. Average size of the prediction error, ignoring direction.'
+            },
+            {
+              label: 'n',
+              value: metrics?.n,
+              fmt: (v) => v.toLocaleString(),
+              tooltip: 'Number of field-seasons with both a stored prediction and an observed yield.'
+            }
+          ]}
+        />
+
+        <Divider sx={{ borderColor: alpha(theme.palette.primary.main, 0.18), my: 0.25 }} />
+
+        {/* ============== Zone 3 — Inputs (filter bar) ============== */}
+        <Stack
+          direction="row"
+          sx={{ alignItems: 'center', flexWrap: 'wrap', columnGap: 1, rowGap: 0.75 }}
+        >
+          <Typography
+            sx={{
+              color: alpha(theme.palette.common.white, 0.5),
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              pr: 0.25
+            }}
+          >
+            Filters
           </Typography>
 
           <Button
@@ -343,6 +491,11 @@ export default function ResidualDiagnosticsCard() {
             ))}
           </Menu>
 
+          {/* Coverage scope moved out of the secondary filter bar into
+              its own prominent row above the metrics. The filter bar
+              now only holds Season / State / Model — refinements
+              within the chosen scope, not the scope itself. */}
+
           <FilterPill
             label={seasonFilter.length > 0 ? `Season ${seasonFilter[0]}` : 'All seasons'}
             active={seasonFilter.length > 0}
@@ -371,8 +524,6 @@ export default function ResidualDiagnosticsCard() {
             theme={theme}
           />
         </Stack>
-
-        <CountChip n={metrics?.n} bias={metrics?.bias} loading={loading} />
       </Stack>
 
       <Box sx={{ position: 'relative', px: 1.5, pt: 1.5, pb: 2 }}>
@@ -388,6 +539,19 @@ export default function ResidualDiagnosticsCard() {
             No paired (predicted, observed) data for this model yet. Once the model has predictions for at least two harvested
             field-seasons, the residual diagnostics will populate here.
           </Typography>
+        ) : viewMode === 'table' ? (
+          // Per-row residual table — same data backing the charts, but
+          // sorted by |residual| desc so the biggest misses bubble up.
+          // This is the diagnostic complement of the chart's two-up view:
+          // the chart shows the pattern, the table names the specific
+          // field-seasons driving it.
+          <PredictionsTable
+            points={points}
+            rmse={metrics?.rmse}
+            theme={theme}
+            onRowClick={(p) => setDrawerFieldSeasonId(p.field_season_id)}
+            emptyMessage="No paired (predicted, observed) data for this model yet."
+          />
         ) : (
           <Stack spacing={2}>
             <Box sx={{ position: 'relative' }}>
@@ -468,90 +632,90 @@ export default function ResidualDiagnosticsCard() {
   );
 }
 
-// Small header chip — shows n and bias in the same pill family the regression
-// card uses for its metrics row, so the two cards read consistently.
-function CountChip({ n, bias, loading }) {
-  const theme = useTheme();
+// Header metrics — mirrors ModelRegressionCard's HeaderMetrics
+// line-for-line so the two cards present metrics in the same visual
+// rhythm. Bias is the primary metric here (it's the diagnostic
+// question this card answers); RMSE / MAE / n are supporting.
+function HeaderMetrics({ metrics, loading, theme, hero, secondary }) {
   const tooltipSlotProps = useThemedTooltipSlotProps();
-  if (loading && !Number.isFinite(n)) return null;
-  const biasStr = Number.isFinite(bias) ? `${bias >= 0 ? '+' : ''}${bias.toFixed(2)}` : '—';
+  if (loading && !metrics) return null;
+
+  const items = [
+    { ...hero, isPrimary: true },
+    ...secondary.map((s) => ({ ...s, isPrimary: false }))
+  ];
+
   return (
-    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-      <Tooltip
-        arrow
-        placement="top"
-        title="Number of field-seasons with both a stored prediction and an observed yield."
-        slotProps={tooltipSlotProps}
-      >
-        <Stack
-          direction="row"
-          spacing={0.5}
-          sx={{
-            alignItems: 'baseline',
-            px: 1,
-            py: 0.35,
-            borderRadius: 999,
-            bgcolor: alpha(theme.palette.primary.main, 0.22),
-            border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-            cursor: 'help'
-          }}
-        >
-          <Typography
-            sx={{
-              color: alpha(theme.palette.common.white, 0.6),
-              fontSize: '0.7rem',
-              fontWeight: 600,
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase'
-            }}
-          >
-            n
-          </Typography>
-          <Typography
-            sx={{ color: theme.palette.common.white, fontSize: '0.85rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
-          >
-            {Number.isFinite(n) ? n.toLocaleString() : '—'}
-          </Typography>
-        </Stack>
-      </Tooltip>
-      <Tooltip
-        arrow
-        placement="top"
-        title="Mean residual (predicted − observed). Positive = model systematically over-predicts; negative = under-predicts."
-        slotProps={tooltipSlotProps}
-      >
-        <Stack
-          direction="row"
-          spacing={0.5}
-          sx={{
-            alignItems: 'baseline',
-            px: 1,
-            py: 0.35,
-            borderRadius: 999,
-            bgcolor: alpha(theme.palette.primary.main, 0.22),
-            border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-            cursor: 'help'
-          }}
-        >
-          <Typography
-            sx={{
-              color: alpha(theme.palette.common.white, 0.6),
-              fontSize: '0.7rem',
-              fontWeight: 600,
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase'
-            }}
-          >
-            bias
-          </Typography>
-          <Typography
-            sx={{ color: theme.palette.common.white, fontSize: '0.85rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
-          >
-            {biasStr}
-          </Typography>
-          <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.7rem' }}>bu/ac</Typography>
-        </Stack>
-      </Tooltip>
+    <Stack
+      direction="row"
+      sx={{
+        alignItems: 'baseline',
+        flexWrap: 'wrap',
+        columnGap: 1.25,
+        rowGap: 0.65
+      }}
+    >
+      {items.map((item, idx) => {
+        const finite = Number.isFinite(item.value);
+        const display = finite ? item.fmt(item.value) : '—';
+        return (
+          <Stack key={item.label} direction="row" spacing={0.65} sx={{ alignItems: 'baseline' }}>
+            {idx > 0 ? (
+              <Typography
+                aria-hidden
+                sx={{
+                  color: alpha(theme.palette.common.white, 0.28),
+                  fontSize: '0.9rem',
+                  px: 0.15,
+                  userSelect: 'none',
+                  lineHeight: 1
+                }}
+              >
+                ·
+              </Typography>
+            ) : null}
+            <Tooltip arrow placement="top" title={item.tooltip} slotProps={tooltipSlotProps}>
+              <Stack direction="row" spacing={0.55} sx={{ alignItems: 'baseline', cursor: 'help' }}>
+                <Typography
+                  sx={{
+                    color: item.isPrimary
+                      ? alpha(theme.palette.primary.light, 0.95)
+                      : alpha(theme.palette.common.white, 0.55),
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    letterSpacing: item.isPrimary ? '0.1em' : '0.05em',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {item.label}
+                </Typography>
+                <Typography
+                  sx={{
+                    color: theme.palette.common.white,
+                    fontSize: item.isPrimary ? '1.05rem' : '0.95rem',
+                    fontWeight: item.isPrimary ? 800 : 700,
+                    fontVariantNumeric: 'tabular-nums',
+                    lineHeight: 1.15
+                  }}
+                >
+                  {display}
+                </Typography>
+                {item.unit ? (
+                  <Typography
+                    sx={{
+                      color: alpha(theme.palette.common.white, 0.45),
+                      fontSize: '0.7rem',
+                      fontWeight: 500
+                    }}
+                  >
+                    {item.unit}
+                  </Typography>
+                ) : null}
+              </Stack>
+            </Tooltip>
+          </Stack>
+        );
+      })}
     </Stack>
   );
 }
@@ -721,7 +885,15 @@ function ResidualsByYieldSvg({ points, theme, hoverPoint, onHover, onPointClick 
         component="svg"
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
         preserveAspectRatio="xMidYMid meet"
-        sx={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}
+        // maxHeight caps each chart at 600px on extra-wide displays so
+        // the two stacked panels don't grow unbounded on 1600px+
+        // viewports. Set above the natural VIEW_H (520) so the cap
+        // only kicks in once the container is wider than ~1385px — at
+        // narrower widths the chart sizes proportionally via
+        // width:100% / height:auto. The previous 420 cap was actually
+        // clipping the chart at typical desktop widths since it was
+        // below the natural rendered height.
+        sx={{ width: '100%', height: 'auto', maxHeight: 600, display: 'block', overflow: 'visible' }}
         onMouseLeave={() => onHover && onHover(null)}
       >
         {/* Grid */}
@@ -922,7 +1094,15 @@ function ResidualDistributionSvg({ points, metrics, theme }) {
         component="svg"
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
         preserveAspectRatio="xMidYMid meet"
-        sx={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}
+        // maxHeight caps each chart at 600px on extra-wide displays so
+        // the two stacked panels don't grow unbounded on 1600px+
+        // viewports. Set above the natural VIEW_H (520) so the cap
+        // only kicks in once the container is wider than ~1385px — at
+        // narrower widths the chart sizes proportionally via
+        // width:100% / height:auto. The previous 420 cap was actually
+        // clipping the chart at typical desktop widths since it was
+        // below the natural rendered height.
+        sx={{ width: '100%', height: 'auto', maxHeight: 600, display: 'block', overflow: 'visible' }}
       >
         {/* Vertical grid at each tick */}
         {xTicks.map((t, i) => (
