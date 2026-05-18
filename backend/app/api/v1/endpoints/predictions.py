@@ -1,11 +1,15 @@
 """
 Prediction endpoints - ML model inference
 """
+import json
 import math
+import os
+from functools import lru_cache
+from typing import Dict, Any, List, Optional, Tuple
+
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from typing import Dict, Any, List, Optional
 import logging
 
 from app.database.session import get_db
@@ -25,6 +29,74 @@ from app.services.regional_stats import RegionalStatsService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# County-centroid lookup for lat/long enrichment
+# ---------------------------------------------------------------------------
+# `long` (importance 11.10) and `lat` (6.22) are the 2nd- and 4th-most
+# important features in the live GenMills CatBoost model — between them
+# they're roughly 17 importance points the model can use when both are
+# present. The prediction wizard intentionally doesn't ask users for
+# coordinates (most growers don't know their field's lat/long), so the
+# request payload arrives with state + county but no coords. This lookup
+# fills them in from a (state, county) -> centroid table derived from the
+# training data, restoring the model's geographic signal.
+#
+# The enrichment is reported back in the response (`coordinates_source`)
+# so the frontend can tell the user we used their county's centroid
+# rather than asking them to provide coordinates manually.
+
+_CENTROIDS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+    "data",
+    "state_county_centroids.json",
+)
+
+
+@lru_cache(maxsize=1)
+def _load_centroids() -> Dict[str, Dict[str, Dict[str, float]]]:
+    """Load the state -> county -> {lat, long, training_rows} table.
+
+    Cached for the process lifetime — the file is static, regenerated only
+    when we retrain or import a new model.
+    """
+    try:
+        with open(_CENTROIDS_PATH, "r") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        logger.warning(
+            "Centroid lookup file not found at %s; lat/long will not be auto-filled",
+            _CENTROIDS_PATH,
+        )
+        return {}
+    except Exception as exc:
+        logger.warning("Failed to load centroid lookup: %s", exc)
+        return {}
+
+
+def _resolve_centroid(state: Optional[str], county: Optional[str]) -> Optional[Tuple[float, float]]:
+    """Return (lat, long) for a (state, county) pair, or None if not covered.
+
+    The centroid table is derived from the model's training data, so any
+    (state, county) that the model was actually trained on will resolve.
+    Unsupported regions return None and the predict path will pass NaN
+    coords to the model (same behavior as before this enrichment landed).
+    """
+    if not state or not county:
+        return None
+    centroids = _load_centroids()
+    state_block = centroids.get(state)
+    if not state_block:
+        return None
+    point = state_block.get(county)
+    if not point:
+        return None
+    lat = point.get("lat")
+    lng = point.get("long")
+    if lat is None or lng is None:
+        return None
+    return float(lat), float(lng)
 
 
 def _to_float(value: Any) -> Optional[float]:
@@ -127,8 +199,32 @@ async def predict_yield(
             )
             regional_comparison = regional_avg
 
+        # Enrich the request payload with a county-centroid lat/long when
+        # the user didn't supply coordinates. `long` and `lat` are the
+        # 2nd/4th most important features in the live model, so feeding
+        # the model NaN for both (the previous behavior) was costing us
+        # noticeable accuracy. We record what we did via
+        # `coordinates_source` so the response can be transparent about
+        # whether the prediction used user-provided or county-centroid
+        # coordinates.
+        request_features = request.model_dump(exclude_none=True)
+        user_lat = request_features.get("lat")
+        user_long = request_features.get("long")
+        coordinates_source = "user_provided" if (user_lat is not None and user_long is not None) else None
+        if coordinates_source is None:
+            centroid = _resolve_centroid(state, county)
+            if centroid is not None:
+                centroid_lat, centroid_long = centroid
+                if user_lat is None:
+                    request_features["lat"] = centroid_lat
+                if user_long is None:
+                    request_features["long"] = centroid_long
+                coordinates_source = "county_centroid"
+            else:
+                coordinates_source = "unavailable"
+
         # Generate prediction
-        prediction_result = predictor.predict(request.model_dump(exclude_none=True), model_version)
+        prediction_result = predictor.predict(request_features, model_version)
 
         # Get explainability (best-effort; do not fail prediction if explanation fails)
         explanations = {"top_features": []}
@@ -167,6 +263,7 @@ async def predict_yield(
                 ]
             },
             recommendations=None,  # Future: fertilizer recommendations
+            coordinates_source=coordinates_source,
         )
 
         request_payload = request.model_dump(mode="json", exclude_none=True)

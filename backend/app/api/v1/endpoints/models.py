@@ -1,6 +1,9 @@
 """
 Model management endpoints
 """
+import json
+import os
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -249,3 +252,118 @@ async def get_model_performance(
         }
         for v in versions
     ]
+
+
+# ---------------------------------------------------------------------------
+# Model-coverage endpoint
+# ---------------------------------------------------------------------------
+# The frontend prediction wizard uses this to pre-constrain its dropdowns and
+# numeric inputs to values the active model was actually trained on. This is
+# the practical lever that lets us ship the "high random_cv_r2 / low grouped_cv_r2"
+# CatBoost model honestly: users only ever pick states/counties/varieties in
+# the model's trained envelope, and numeric inputs get typical-range hints
+# derived from the training distribution. Generated at training time (or
+# backfilled for imported externals) and stored as `coverage.json` next to
+# the model artifact.
+#
+# Shape (see scripts/build_coverage.py / outputs/build_coverage.py):
+#   {
+#     "model_version_tag": str,
+#     "training_rows": int,
+#     "crops": [str, ...],
+#     "varieties_by_crop": {crop: [variety, ...]},
+#     "seasons": [int, ...],
+#     "states": [str, ...],
+#     "counties_by_state": {state: [county, ...]},
+#     "numeric_ranges": {form_field: {p5, p50, p95, min, max, required, ...}},
+#     "yield_range": {p5, p95, min, max},
+#   }
+
+
+def _load_coverage_for_version(version_tag: str, db: Session) -> dict:
+    """
+    Resolve a model version's folder and load its coverage.json.
+
+    Raises FileNotFoundError if the model folder exists but has no coverage
+    artifact (i.e., it wasn't generated at training time and hasn't been
+    backfilled yet). Callers should translate that into a 404.
+    """
+    registry = ModelRegistry(db)
+    version_dir = registry._resolve_version_dir(version_tag)
+    coverage_path = os.path.join(version_dir, "coverage.json")
+    if not os.path.exists(coverage_path):
+        raise FileNotFoundError(coverage_path)
+    with open(coverage_path, "r") as fh:
+        return json.load(fh)
+
+
+@router.get("/coverage", summary="Get active model's input coverage")
+async def get_active_model_coverage(
+    db: Session = Depends(get_db),
+):
+    """
+    Return the active production model's coverage payload.
+
+    Coverage tells the frontend which categorical values and numeric ranges
+    the model was trained on. The prediction wizard uses this to scope its
+    dropdowns and constrain numeric inputs, so users never submit values
+    the model wasn't trained on.
+
+    404 cases:
+      - No production model registered
+      - Production model has no coverage.json on disk yet
+    """
+    mv = crud.get_production_model_version(db)
+    if not mv:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No production model is currently set",
+        )
+    try:
+        coverage = _load_coverage_for_version(mv.version_tag, db)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Production model '{mv.version_tag}' has no coverage.json. "
+                f"Run scripts/build_coverage.py against its training data, "
+                f"or expected path: {exc}"
+            ),
+        )
+    # Attach the live version_tag in case the on-disk coverage was generated
+    # with a stale tag — the frontend should trust whatever the DB says is
+    # currently in production.
+    coverage["model_version_tag"] = mv.version_tag
+    coverage["model_version_id"] = mv.model_version_id
+    return coverage
+
+
+@router.get("/versions/{version_id}/coverage", summary="Get a model version's input coverage")
+async def get_model_version_coverage(
+    version_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Same as /coverage but for an arbitrary model version (not just the
+    active production one). Used by admin UIs that need to compare
+    coverage envelopes across model versions.
+    """
+    mv = crud.get_model_version(db, version_id)
+    if not mv:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Model version {version_id} not found",
+        )
+    try:
+        coverage = _load_coverage_for_version(mv.version_tag, db)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Model version '{mv.version_tag}' has no coverage.json. "
+                f"Expected at: {exc}"
+            ),
+        )
+    coverage["model_version_tag"] = mv.version_tag
+    coverage["model_version_id"] = mv.model_version_id
+    return coverage

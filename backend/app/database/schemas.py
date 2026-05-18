@@ -217,6 +217,22 @@ class PredictionRequest(BaseSchema):
     county: Optional[str] = None
     state: Optional[str] = None
 
+    # ---------------------------------------------------------------
+    # Advanced fertilizer breakdowns
+    # ---------------------------------------------------------------
+    # The active CatBoost model was trained on per-fertilizer-type N/P
+    # breakdowns in addition to the totals. Each of these fields is the
+    # amount of elemental N (or P) per acre contributed by that specific
+    # fertilizer source. Surfaced to power users via the form's
+    # "Advanced" section; left null by casual users who only know totals.
+    # Only fields with meaningful training-data variation AND non-trivial
+    # CatBoost importance are exposed — see backend/scripts/build_coverage.py.
+    ammonia_lbN_per_ac: Optional[float] = None
+    urea_ammonium_nitrate_solution_lbN_per_ac: Optional[float] = None
+    other_lbN_per_ac: Optional[float] = None
+    diammonium_phosphate_lbN_per_ac: Optional[float] = None
+    diammonium_phosphate_lbP_per_ac: Optional[float] = None
+
 
 class FeatureContribution(BaseSchema):
     feature: str
@@ -243,6 +259,16 @@ class PredictionResponse(BaseSchema):
 
     # Recommendations (future)
     recommendations: Optional[Dict[str, Any]] = None
+
+    # Where the prediction's lat/long came from. The frontend uses this to
+    # surface to the user whether their county's centroid was substituted
+    # for missing coordinates. One of:
+    #   - "user_provided"   : user supplied lat AND long in the request
+    #   - "county_centroid" : backend filled lat/long from the
+    #                         (state, county) centroid lookup
+    #   - "unavailable"     : no user coords and no centroid match for
+    #                         the (state, county) pair — model received NaN
+    coordinates_source: Optional[str] = None
 
 
 class MultiModelPredictionItem(BaseSchema):

@@ -18,7 +18,14 @@ import PredictionReviewStep from 'sections/intelligence/crop-studio/prediction/P
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 const steps = ['Model Selection', 'Prediction Inputs', 'Review Result'];
-const requiredSelectionFields = ['crop', 'variety', 'season', 'state', 'county'];
+// Required selection fields for the prediction wizard form. Calibrated to
+// the active model's training-data reality, not the schema's nominal shape:
+//   - crop, season, state, county → 100% non-null in training, hard required
+//   - variety → DROPPED from required even though it's a model feature.
+//     73% of training rows had no variety listed, so the model has learned
+//     to predict reasonably without it. Forcing users to enter one (and
+//     making them guess if they don't know) is friction with low benefit.
+const requiredSelectionFields = ['crop', 'season', 'state', 'county'];
 
 const initialFormValues = {
   crop: '',
@@ -32,8 +39,30 @@ const initialFormValues = {
   waterApplied: '',
   state: '',
   county: '',
-  variety: ''
+  variety: '',
+  // Advanced fertilizer breakdowns — typically blank for casual users
+  // and filled in by power users with detailed records. Sent as
+  // optional numeric fields in the prediction payload; the backend's
+  // PredictionRequest schema maps each to its `*_per_ac` column name.
+  ammoniaN: '',
+  uanN: '',
+  otherN: '',
+  dapN: '',
+  dapP: ''
 };
+
+// Form-field → backend-payload-key mapping for the Advanced fertilizer
+// inputs. Keys match PredictionRequest field names in schemas.py; values
+// are the camelCase names the form uses internally. Defined once so the
+// payload-construction code below can iterate it instead of repeating
+// withNumericIfPresent calls for every fertilizer.
+const ADVANCED_FERTILIZER_FIELDS = [
+  ['ammonia_lbN_per_ac', 'ammoniaN'],
+  ['urea_ammonium_nitrate_solution_lbN_per_ac', 'uanN'],
+  ['other_lbN_per_ac', 'otherN'],
+  ['diammonium_phosphate_lbN_per_ac', 'dapN'],
+  ['diammonium_phosphate_lbP_per_ac', 'dapP']
+];
 
 function toNullableNumber(value) {
   if (value === '' || value === null || value === undefined) return null;
@@ -79,6 +108,14 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
   const [stateOptions, setStateOptions] = useState([]);
   const [countyOptions, setCountyOptions] = useState([]);
   const [optionLoadError, setOptionLoadError] = useState('');
+
+  // Coverage = the categorical values and numeric ranges the active model
+  // was actually trained on. When present, we scope every form dropdown
+  // and numeric hint to the model's trained envelope so users can't
+  // submit out-of-distribution inputs (which would silently produce
+  // low-quality predictions). Legacy /fields/ endpoints are kept as a
+  // fallback so the form still works against models without coverage.json.
+  const [coverage, setCoverage] = useState(null);
 
   const [isSubmittingPrediction, setIsSubmittingPrediction] = useState(false);
   const [predictionResult, setPredictionResult] = useState(null);
@@ -136,34 +173,63 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     return () => controller.abort();
   }, []);
 
+  // Top-level options: try coverage first, fall back to legacy /fields/
+  // endpoints. Coverage gives us only model-trained values (the safe set);
+  // the legacy endpoints return everything in the database (could include
+  // values the model has never seen). We prefer coverage whenever it loads.
   useEffect(() => {
     const controller = new AbortController();
+
+    const loadFromCoverage = async () => {
+      const res = await fetch(`${API_BASE_URL}/models/coverage`, { signal: controller.signal });
+      if (!res.ok) {
+        // 404 here just means the production model has no coverage.json yet.
+        // Caller will fall back to legacy /fields/ fetches below.
+        return null;
+      }
+      return res.json();
+    };
+
+    const loadFromFields = async () => {
+      const [cropsRes, seasonsRes, statesRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/fields/crops/`, { signal: controller.signal }),
+        fetch(`${API_BASE_URL}/fields/seasons/`, { signal: controller.signal }),
+        fetch(`${API_BASE_URL}/fields/states/`, { signal: controller.signal })
+      ]);
+      if (!cropsRes.ok || !seasonsRes.ok || !statesRes.ok) {
+        throw new Error('Failed to load form options from backend.');
+      }
+      const [cropsPayload, seasonsPayload, statesPayload] = await Promise.all([
+        cropsRes.json(),
+        seasonsRes.json(),
+        statesRes.json()
+      ]);
+      const crops = Array.isArray(cropsPayload) ? cropsPayload.map((item) => item?.crop_name_en).filter(Boolean) : [];
+      const seasons = Array.isArray(seasonsPayload)
+        ? seasonsPayload.map((item) => item?.season_year).filter((v) => v !== null && v !== undefined)
+        : [];
+      const states = Array.isArray(statesPayload) ? statesPayload.map((item) => item?.state).filter(Boolean) : [];
+      return { crops, seasons, states };
+    };
 
     const loadOptions = async () => {
       setOptionLoadError('');
       try {
-        const [cropsRes, seasonsRes, statesRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/fields/crops/`, { signal: controller.signal }),
-          fetch(`${API_BASE_URL}/fields/seasons/`, { signal: controller.signal }),
-          fetch(`${API_BASE_URL}/fields/states/`, { signal: controller.signal })
-        ]);
-
-        if (!cropsRes.ok || !seasonsRes.ok || !statesRes.ok) {
-          throw new Error('Failed to load form options from backend.');
+        const cov = await loadFromCoverage();
+        if (cov) {
+          // Coverage path — the model's trained envelope drives the dropdowns.
+          setCoverage(cov);
+          setCropOptions(Array.from(new Set(cov.crops || [])).sort((a, b) => a.localeCompare(b)));
+          setSeasonOptions(Array.from(new Set(cov.seasons || [])).sort((a, b) => Number(b) - Number(a)));
+          setStateOptions(Array.from(new Set(cov.states || [])).sort((a, b) => a.localeCompare(b)));
+          return;
         }
-
-        const [cropsPayload, seasonsPayload, statesPayload] = await Promise.all([cropsRes.json(), seasonsRes.json(), statesRes.json()]);
-
-        const crops = Array.isArray(cropsPayload) ? cropsPayload.map((item) => item?.crop_name_en).filter(Boolean) : [];
-        const seasons = Array.isArray(seasonsPayload)
-          ? seasonsPayload.map((item) => item?.season_year).filter((v) => v !== null && v !== undefined)
-          : [];
-        const states = Array.isArray(statesPayload) ? statesPayload.map((item) => item?.state).filter(Boolean) : [];
-
+        // Legacy fallback — no coverage.json available for the active model.
+        setCoverage(null);
+        const { crops, seasons, states } = await loadFromFields();
         setCropOptions(Array.from(new Set(crops)).sort((a, b) => a.localeCompare(b)));
         setSeasonOptions(Array.from(new Set(seasons)).sort((a, b) => Number(b) - Number(a)));
         setStateOptions(Array.from(new Set(states)).sort((a, b) => a.localeCompare(b)));
-        setOptionLoadError('');
       } catch (error) {
         if (error.name !== 'AbortError') {
           setOptionLoadError(error.message || 'Failed to load form options.');
@@ -182,6 +248,16 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     const loadVarieties = async () => {
       if (!formValues.crop) {
         setVarietyOptions([]);
+        return;
+      }
+
+      // Coverage path — pull varieties for the selected crop from the
+      // model's trained envelope. Skips the network call entirely.
+      if (coverage && coverage.varieties_by_crop) {
+        const list = Array.isArray(coverage.varieties_by_crop[formValues.crop])
+          ? coverage.varieties_by_crop[formValues.crop]
+          : [];
+        setVarietyOptions(Array.from(new Set(list)).sort((a, b) => a.localeCompare(b)));
         return;
       }
 
@@ -208,7 +284,7 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     loadVarieties();
 
     return () => controller.abort();
-  }, [formValues.crop]);
+  }, [formValues.crop, coverage]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -216,6 +292,17 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     const loadCounties = async () => {
       if (!formValues.state) {
         setCountyOptions([]);
+        return;
+      }
+
+      // Coverage path — pull counties for the selected state from the
+      // model's trained envelope. Avoids exposing counties the model
+      // has never seen (where leave_one_county_out_r2 is ~0.07).
+      if (coverage && coverage.counties_by_state) {
+        const list = Array.isArray(coverage.counties_by_state[formValues.state])
+          ? coverage.counties_by_state[formValues.state]
+          : [];
+        setCountyOptions(Array.from(new Set(list)).sort((a, b) => a.localeCompare(b)));
         return;
       }
 
@@ -242,7 +329,7 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     loadCounties();
 
     return () => controller.abort();
-  }, [formValues.state]);
+  }, [formValues.state, coverage]);
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
@@ -298,10 +385,27 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
     // withNumericIfPresent(payload, 'lat', toNullableNumber(formValues.latitude));
     // withNumericIfPresent(payload, 'long', toNullableNumber(formValues.longitude));
     withNumericIfPresent(payload, 'season', toNullableNumber(formValues.season));
-    payload.totalN_per_ac = toNumberOrZero(formValues.totalN);
-    payload.totalP_per_ac = toNumberOrZero(formValues.totalP);
-    payload.totalK_per_ac = toNumberOrZero(formValues.totalK);
+    // Blank totals are sent as ABSENT (NaN to the model), not coerced
+    // to 0. This preserves the semantic difference between "the grower
+    // applied 0 lb/ac" (which they'd type as 0) and "we don't know"
+    // (which they signal by leaving the field empty). CatBoost was
+    // trained with NaN-bearing rows for these columns and handles
+    // missing values natively, so absence is honest signal rather
+    // than a silent default.
+    withNumericIfPresent(payload, 'totalN_per_ac', toNullableNumber(formValues.totalN));
+    withNumericIfPresent(payload, 'totalP_per_ac', toNullableNumber(formValues.totalP));
+    withNumericIfPresent(payload, 'totalK_per_ac', toNullableNumber(formValues.totalK));
     withNumericIfPresent(payload, 'water_applied_mm', toNullableNumber(formValues.waterApplied));
+
+    // Advanced fertilizer breakdowns — only included when the user
+    // actually typed something. Sent through withNumericIfPresent so
+    // blank fields stay absent from the payload (and the model sees
+    // NaN), rather than being coerced to 0 (which would imply "the
+    // grower applied 0 lb of this fertilizer" — a stronger statement
+    // than "we don't know").
+    ADVANCED_FERTILIZER_FIELDS.forEach(([apiKey, formKey]) => {
+      withNumericIfPresent(payload, apiKey, toNullableNumber(formValues[formKey]));
+    });
 
     return payload;
   };
@@ -461,6 +565,7 @@ export default function PredictionWizard({ onOpenPredictionsTable }) {
               states={stateOptions}
               counties={countyOptions}
               validationErrors={inputSelectionErrors}
+              coverage={coverage}
             />
             {optionLoadError ? <Alert severity="warning">{optionLoadError}</Alert> : null}
             {predictionError ? <Alert severity="error">{predictionError}</Alert> : null}

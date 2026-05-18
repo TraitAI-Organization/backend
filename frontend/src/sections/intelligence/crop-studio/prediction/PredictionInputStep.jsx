@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Collapse from '@mui/material/Collapse';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
+import IconButton from '@mui/material/IconButton';
 import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
@@ -12,10 +14,64 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 
+import BarChartOutlined from '@ant-design/icons/BarChartOutlined';
+import CloseOutlined from '@ant-design/icons/CloseOutlined';
+import DownOutlined from '@ant-design/icons/DownOutlined';
 import HistoryOutlined from '@ant-design/icons/HistoryOutlined';
 import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
+import UpOutlined from '@ant-design/icons/UpOutlined';
 
 import { formatCropName } from 'utils/cropName';
+
+// ---------------------------------------------------------------------------
+// Feature importance reference data
+// ---------------------------------------------------------------------------
+// Extracted from the live GenMills CatBoost model (model.cbm) via
+// `model.get_feature_importance()` on 2026-05-18 against the 1002-row
+// training dataset. Hardcoded here because the model is a single fixed
+// artifact — when a new model version is published, regenerate this
+// table from `python scripts/build_coverage.py`-style introspection.
+//
+// `badge` is the user-facing context tag ("You provide this", "Auto-filled
+// from your county", etc.) so the panel doubles as a "where does each
+// number come from" map. Importance values are CatBoost's native scale
+// (sums to ~100 across all features).
+const FEATURE_IMPORTANCE_STRONG = [
+  { label: 'Acres', importance: 21.48, badge: 'You provide this' },
+  { label: 'Longitude', importance: 11.1, badge: 'Auto-filled from your county selection', badgeTone: 'primary' },
+  { label: 'Latitude', importance: 6.22, badge: 'Auto-filled from your county selection', badgeTone: 'primary' },
+  { label: 'Crop', importance: 5.76, badge: 'You provide this' },
+  { label: 'State', importance: 4.92, badge: 'You provide this' },
+  { label: 'Total N (lb/ac)', importance: 3.71, badge: 'You provide this — required' },
+  { label: 'County', importance: 3.63, badge: 'You provide this' }
+];
+
+// Advanced fertilizer breakdowns — exposed in the form's collapsible
+// Advanced section. The DAP combined importance (7.37) is significant
+// even though only a small subset of growers apply it, so power users
+// with detailed records can opt in.
+const FEATURE_IMPORTANCE_ADVANCED = [
+  { label: 'DAP — Nitrogen (lb/ac)', importance: 4.44, badge: 'Advanced — leave blank if you don’t apply DAP' },
+  { label: 'DAP — Phosphorus (lb/ac)', importance: 2.93, badge: 'Advanced — leave blank if you don’t apply DAP' },
+  { label: 'Anhydrous Ammonia (lb-N/ac)', importance: 2.69, badge: 'Advanced — 16% of training rows used this' },
+  { label: 'Total K (lb/ac)', importance: 1.46, badge: 'Advanced — 87% of training rows had this blank' },
+  { label: 'Variety', importance: 1.29, badge: 'Optional — 73% of training rows had this blank' },
+  { label: 'Other N (lb/ac)', importance: 1.14, badge: 'Advanced — catch-all for fertilizers not listed' },
+  { label: 'UAN Solution (lb-N/ac)', importance: 0.96, badge: 'Advanced — 53% of training rows used this' },
+  { label: 'Total P (lb/ac)', importance: 0.63, badge: 'Optional — low impact' }
+];
+
+// Bar normalization: longest bar = the highest-importance feature, so
+// users see the dominance of `acres` at a glance.
+const FEATURE_IMPORTANCE_MAX = Math.max(
+  ...FEATURE_IMPORTANCE_STRONG.map((f) => f.importance),
+  ...FEATURE_IMPORTANCE_ADVANCED.map((f) => f.importance)
+);
+
+// Used for the panel button label and the panel title. Kept as a single
+// constant so updates only happen in one place.
+const FEATURE_PANEL_BUTTON_LABEL = 'How Inputs Affect Predictions';
+const FEATURE_PANEL_TITLE = 'How Your Inputs Affect Predictions';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
@@ -42,10 +98,55 @@ function summarizePrefillRun(run) {
   return parts.join(' · ');
 }
 
+// Shared themed-tooltip slotProps — mirrors the Prefill section's tooltip
+// styling (primary-tinted opaque background, primary border, small bold
+// text, narrow max-width) so every help-on-hover surface in the wizard
+// reads as one cohesive family. Used by both the asterisk-required
+// tooltip and the lat/long inline-info tooltip.
+function makeThemedTooltipSlotProps(theme, maxWidth = 280) {
+  const tone = `color-mix(in srgb, ${theme.palette.primary.main} 22%, ${theme.palette.background.paper})`;
+  return {
+    tooltip: {
+      sx: {
+        bgcolor: tone,
+        color: theme.palette.common.white,
+        border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+        fontSize: '0.74rem',
+        fontWeight: 500,
+        lineHeight: 1.55,
+        maxWidth,
+        px: 1.5,
+        py: 1.1,
+        borderRadius: 1.25,
+        boxShadow: `0 6px 18px ${alpha(theme.palette.common.black, 0.4)}`
+      }
+    },
+    arrow: { sx: { color: tone } }
+  };
+}
+
+// Reusable tooltip body for the "why is this field marked *?" explainer.
+// Defined as a constant rather than inline so the FieldLabel's tooltip
+// stays compact and the prose stays editable in one place.
+const REQUIRED_TOOLTIP_TEXT =
+  'Required because the model leans on this input heavily AND most training rows contained a value. ' +
+  'Crop, Season, State, County, and Total N all meet that bar — they’re strong signals the model expects every prediction to include.';
+
+// Reusable tooltip body for the lat/long inline-info icon. Mirrors the
+// text that used to live as a callout box in the side panel — moved
+// here so the user discovers the explanation in context (hovering the
+// info icon next to the actual mechanic) rather than having to open
+// the side panel to find it.
+const LATLONG_TOOLTIP_TEXT =
+  'Latitude and longitude are the model’s second-strongest signal, but most growers don’t know their field’s coordinates offhand. ' +
+  'The backend fills them in from the centroid of the county you pick. ' +
+  'The prediction response reports a coordinates_source field so you can verify whether the prediction used your county’s centroid or user-supplied coordinates.';
+
 // Field label component — small uppercase caption tinted to the primary
 // family, mirroring the InfoField pattern in ModelSelectionStep so the
 // two wizard steps read as one cohesive form. Required fields get a
-// red asterisk after the text; optional fields don't.
+// red asterisk after the text; the asterisk doubles as a hover affordance
+// that surfaces the "why required" explanation via a themed tooltip.
 function FieldLabel({ text, required = false }) {
   const theme = useTheme();
   return (
@@ -61,13 +162,37 @@ function FieldLabel({ text, required = false }) {
     >
       {text}
       {required ? (
-        <Box
-          component="span"
-          aria-hidden
-          sx={{ color: theme.palette.error.light, ml: 0.4, fontSize: '0.85rem' }}
+        // The asterisk is wrapped in a Tooltip and given tabIndex=0 so the
+        // explanation is reachable by both mouse hover and keyboard focus.
+        // Using `component="span"` with role="img" + aria-label gives
+        // screen readers "required" as a label, which is more useful than
+        // the bare "*" glyph.
+        <Tooltip
+          arrow
+          placement="top"
+          title={REQUIRED_TOOLTIP_TEXT}
+          slotProps={makeThemedTooltipSlotProps(theme, 320)}
         >
-          *
-        </Box>
+          <Box
+            component="span"
+            tabIndex={0}
+            role="img"
+            aria-label="Required field — hover for details"
+            sx={{
+              color: theme.palette.error.light,
+              ml: 0.4,
+              fontSize: '0.85rem',
+              cursor: 'help',
+              transition: 'color 0.15s ease',
+              outline: 'none',
+              '&:hover, &:focus-visible': {
+                color: theme.palette.error.main
+              }
+            }}
+          >
+            *
+          </Box>
+        </Tooltip>
       ) : null}
     </Typography>
   );
@@ -102,12 +227,151 @@ export default function PredictionInputStep({
   seasons,
   states,
   counties,
-  validationErrors = {}
+  validationErrors = {},
+  // Coverage payload from /api/v1/models/coverage. When present, drives the
+  // numeric-field guidance (typical range hints, soft out-of-range warnings,
+  // required-because-trainable cues) and the section-header coverage scope
+  // captions. Null is fine — the form degrades gracefully back to its
+  // pre-coverage behavior.
+  coverage = null
 }) {
   const theme = useTheme();
   const hasCrop = Boolean(formValues.crop);
   const hasVarietiesForCrop = varieties.length > 0;
   const isVarietyDisabled = !hasCrop || !hasVarietiesForCrop;
+
+  // Per-form-field metadata derived from coverage.numeric_ranges. We expose
+  // p5 / p95 (the typical-range shown to the user as a helper hint), absolute
+  // min / max (the hard input bounds), and a `required` flag indicating the
+  // model was trained on rows where this column was non-null and therefore
+  // can't tolerate a blank value from the form.
+  const numericMeta = (coverage && coverage.numeric_ranges) || {};
+  const getMeta = (formField) => numericMeta[formField] || null;
+
+  // Helper-text label under each numeric input. Returns one of:
+  //   - "Typical: X – Y" for the common case (training data has variation
+  //     across the percentile band)
+  //   - "Most growers leave at 0..." when the median is 0 but some
+  //     growers do apply it (long-tail fertilizers like DAP)
+  //   - "Leave blank unless you applied this..." when p95 itself is 0
+  //     (the feature is essentially binary — used or not)
+  //   - undefined when coverage isn't available, so the form doesn't
+  //     show placeholder helper text
+  const typicalRangeText = (meta) => {
+    if (!meta) return undefined;
+    if (meta.p95 <= 0) {
+      return 'Leave blank unless you applied this — most growers don’t.';
+    }
+    if (meta.p50 <= 0) {
+      return `Most growers leave at 0. When applied, typical: up to ${meta.p95}`;
+    }
+    return `Typical: ${meta.p5} – ${meta.p95}`;
+  };
+
+  // Soft out-of-range check. Returns true only when the user has actually
+  // typed something and the value falls outside the p5–p95 band derived
+  // from training. We don't block submission; we just paint the helper
+  // text yellow so the user knows the model is extrapolating.
+  const isOutOfTypicalRange = (value, meta) => {
+    if (!meta) return false;
+    if (value === '' || value === null || value === undefined) return false;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return false;
+    return n < meta.p5 || n > meta.p95;
+  };
+
+  // Reusable renderer for the numeric Field Inputs section. Folds the meta-
+  // lookup + range hint + soft warning + required-asterisk wiring into one
+  // place so each field below stays a tight one-liner. Returns the JSX for
+  // a single labeled TextField inside its Grid cell — or null when coverage
+  // is loaded and the field has no training signal (e.g., water_applied_mm
+  // is 100% null in the wheat training set, so the model can't use it and
+  // the form shouldn't ask for it).
+  const renderNumericField = ({ name, label, gridProps = { xs: 12, sm: 6, md: 4 } }) => {
+    const meta = getMeta(name);
+    // Coverage is the source of truth for which fields the active model
+    // actually uses. If coverage loaded but didn't surface this field
+    // (because the training column was entirely null or absent), drop it
+    // from the form entirely. When coverage is null (legacy fallback) we
+    // render every field as before so nothing silently disappears for
+    // models without a coverage.json yet.
+    if (coverage && !meta) return null;
+    const isRequired = Boolean(meta && meta.required);
+    const outOfRange = isOutOfTypicalRange(formValues[name], meta);
+    const helperRange = typicalRangeText(meta);
+    const helperText = outOfRange
+      ? `Outside typical range (${meta.p5} – ${meta.p95}). The model is extrapolating; prediction may be less reliable.`
+      : helperRange;
+    const inputProps = {};
+    if (meta) {
+      // Lower bound: clamp at 0 for fertilizer / acres / water (negative
+      // values are meaningless). Upper bound: use the training max — a
+      // hard ceiling above which the model definitely can't be trusted.
+      inputProps.min = Math.max(0, meta.min);
+      inputProps.max = meta.max;
+      inputProps.step = 'any';
+    }
+    // Placeholder distinguishes "blank = I don't know" from "user typed 0".
+    // Required fields prompt the user to enter a value; optional fields
+    // explicitly say it's fine to leave blank — this is the bit that
+    // tells users "0 is a real value, blank means unknown." The old
+    // "0.00" placeholder was misleading because it looked like a default,
+    // which collided with typical-range hints (e.g. acres p5–p95 = 5.75–189.3).
+    const fieldPlaceholder = isRequired ? 'Enter a value' : 'Leave blank if unknown';
+    return (
+      <Grid size={gridProps} key={name}>
+        <Stack spacing={0.85}>
+          <FieldLabel text={label} required={isRequired} />
+          <TextField
+            fullWidth
+            type="number"
+            name={name}
+            placeholder={fieldPlaceholder}
+            value={formValues[name]}
+            onChange={onChange}
+            inputProps={inputProps}
+            helperText={helperText || undefined}
+            sx={{
+              ...themedFieldSx,
+              // Soft warning paints the helper-text in the theme's warning
+              // color when the value sits outside the typical band. The
+              // input itself stays unstyled so it doesn't read as an error.
+              ...(outOfRange
+                ? {
+                    '& .MuiFormHelperText-root': {
+                      color: theme.palette.warning.light,
+                      fontWeight: 600
+                    }
+                  }
+                : {})
+            }}
+          />
+        </Stack>
+      </Grid>
+    );
+  };
+
+  // Section-header coverage scope captions — small "5 states, 90 counties"
+  // text under each SectionHeader so the user sees the model's trained
+  // envelope explicitly rather than wondering why the dropdowns are short.
+  const cropScopeText = (() => {
+    if (!coverage) return null;
+    const nCrops = Array.isArray(coverage.crops) ? coverage.crops.length : 0;
+    const nVarieties = coverage._summary?.n_varieties ?? Object.values(coverage.varieties_by_crop || {})
+      .reduce((acc, list) => acc + (Array.isArray(list) ? list.length : 0), 0);
+    if (!nCrops && !nVarieties) return null;
+    return `Model trained on ${nCrops} crop type${nCrops === 1 ? '' : 's'} · ${nVarieties} varieties`;
+  })();
+
+  const locationScopeText = (() => {
+    if (!coverage) return null;
+    const nStates = Array.isArray(coverage.states) ? coverage.states.length : 0;
+    const nCounties = coverage._summary?.n_counties_total ?? Object.values(coverage.counties_by_state || {})
+      .reduce((acc, list) => acc + (Array.isArray(list) ? list.length : 0), 0);
+    const nSeasons = Array.isArray(coverage.seasons) ? coverage.seasons.length : 0;
+    if (!nStates && !nCounties && !nSeasons) return null;
+    return `Supported: ${nStates} state${nStates === 1 ? '' : 's'} · ${nCounties} count${nCounties === 1 ? 'y' : 'ies'} · ${nSeasons} season${nSeasons === 1 ? '' : 's'}`;
+  })();
 
   // Saved prediction runs the user can prefill from. Same /predict/history
   // endpoint Analytics uses; pulled to a generous 50 entries so users with a
@@ -117,6 +381,31 @@ export default function PredictionInputStep({
   const [prefillRuns, setPrefillRuns] = useState([]);
   const [selectedPrefillId, setSelectedPrefillId] = useState('');
   const [prefillLoadError, setPrefillLoadError] = useState('');
+
+  // Feature-importance side panel — opened via the button in the Crop &
+  // Variety card header. Rendered as a fixed-position floating Paper
+  // (not a Popover or Drawer), so it stays open and doesn't trap focus
+  // or block clicks on the form behind it. The user can keep typing
+  // in the form while reading the panel — see the panel render block
+  // below for the non-modal positioning details.
+  const [featureInfoOpen, setFeatureInfoOpen] = useState(false);
+
+  // First-visit attention treatment for the "How Inputs Affect
+  // Predictions" button. Defaults to false on every mount of this
+  // component (component-local state, not persisted), so:
+  //   - User lands on the Prediction Inputs step → button pulses + brighter
+  //   - User clicks the button → state flips to true → pulse/brightness removed
+  //   - User navigates away, then back → component remounts → pulses again
+  // This intentionally doesn't persist across sessions: the goal is to
+  // draw the eye to a useful control on first encounter without nagging
+  // the user every time they revisit a working session.
+  const [hasOpenedPanel, setHasOpenedPanel] = useState(false);
+
+  // Collapsible "Advanced" section in the Field Inputs card. Hides
+  // detailed fertilizer-breakdown inputs (per-fertilizer N/P amounts
+  // and Total K) behind a toggle, so casual users see a compact form
+  // and power users with detailed records can opt in. Closed by default.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     if (typeof onPrefill !== 'function') return undefined;
@@ -321,8 +610,10 @@ export default function PredictionInputStep({
           Enter Prediction Inputs
         </Typography>
         <Typography sx={{ color: labelMuted, fontSize: '0.95rem', maxWidth: 760, lineHeight: 1.55 }}>
-          Provide the agronomic and location values used to generate a yield prediction. Optional numeric inputs may be left blank — entering
-          0 is also allowed.
+          Provide the agronomic and location values used to generate a yield prediction. Fields marked with{' '}
+          <Box component="span" sx={{ color: theme.palette.error.light, fontWeight: 700 }}>*</Box> are required because
+          the model relies on them heavily — see &ldquo;{FEATURE_PANEL_BUTTON_LABEL}&rdquo; for the full breakdown of
+          which inputs move the prediction and by how much.
         </Typography>
       </Stack>
 
@@ -564,9 +855,120 @@ export default function PredictionInputStep({
       >
         <Stack spacing={3}>
           {/* Section 1 — Crop & Variety. Both required, both drive the
-              prediction's reference distribution, so they lead the form. */}
+              prediction's reference distribution, so they lead the form.
+              Coverage scope caption beneath the header makes the model's
+              trained envelope visible — users see why the variety dropdown
+              is "short" rather than guessing the form is broken. */}
           <Stack spacing={1.75}>
-            <SectionHeader>Crop & Variety</SectionHeader>
+            {/* Section header + Feature Importance trigger. The button is
+                top-right of the Crop & Variety card so it's the first
+                thing the user sees on this step — they can pop the panel
+                before they type anything and reference it throughout. */}
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              spacing={1}
+            >
+              <SectionHeader>Crop & Variety</SectionHeader>
+              <Button
+                size="small"
+                onClick={() => {
+                  // Flip the open state AND mark the panel as seen for
+                  // this mount. Once seen, the pulse animation + brighter
+                  // surface treatment go away; on remount they come back.
+                  setFeatureInfoOpen((prev) => !prev);
+                  setHasOpenedPanel(true);
+                }}
+                startIcon={<BarChartOutlined style={{ fontSize: 12 }} />}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: '0.72rem',
+                  letterSpacing: '0.02em',
+                  px: 1.25,
+                  py: 0.4,
+                  borderRadius: 999,
+                  // Mirrors the Prefill button's surface treatment so the
+                  // two pill-shaped affordances in the form read as one
+                  // family. featureInfoOpen flips it to a "pressed" look
+                  // so the user sees the panel toggle is active.
+                  //
+                  // First-visit attention treatment: until the user has
+                  // opened the panel at least once during this mount, the
+                  // button gets a brighter base surface plus a pulsing
+                  // primary-tinted glow that draws the eye without being
+                  // obnoxious. After the first click, the styling reverts
+                  // to the regular pill so the affordance doesn't keep
+                  // nagging. State is component-local — fresh mount
+                  // (e.g., user revisits the page) restores the pulse.
+                  color: featureInfoOpen
+                    ? theme.palette.common.white
+                    : !hasOpenedPanel
+                      ? theme.palette.common.white
+                      : alpha(theme.palette.primary.light, 0.95),
+                  bgcolor: featureInfoOpen
+                    ? alpha(theme.palette.primary.main, 0.32)
+                    : !hasOpenedPanel
+                      ? alpha(theme.palette.primary.main, 0.35)
+                      : alpha(theme.palette.primary.main, 0.18),
+                  border: `1px solid ${
+                    featureInfoOpen
+                      ? theme.palette.primary.main
+                      : !hasOpenedPanel
+                        ? theme.palette.primary.light
+                        : alpha(theme.palette.primary.main, 0.55)
+                  }`,
+                  transition: 'background 0.18s ease, color 0.18s ease, border-color 0.18s ease',
+                  whiteSpace: 'nowrap',
+                  // Pulse glow ring — radiates out from the button on a
+                  // 2s loop, fading from a solid 8px-radius primary-light
+                  // halo to fully transparent. Kept gentle (peak alpha
+                  // ~0.55) so it feels like a "look here" cue rather than
+                  // a warning. Disabled the moment the user clicks the
+                  // button (or hovers, since hover gives them the same
+                  // affordance visually).
+                  ...(!hasOpenedPanel && !featureInfoOpen
+                    ? {
+                        animation: 'panelButtonPulse 2.2s ease-in-out infinite',
+                        '@keyframes panelButtonPulse': {
+                          '0%, 100%': {
+                            boxShadow: `0 0 0 0 ${alpha(theme.palette.primary.light, 0.55)}`
+                          },
+                          '50%': {
+                            boxShadow: `0 0 0 8px ${alpha(theme.palette.primary.light, 0)}`
+                          }
+                        }
+                      }
+                    : {}),
+                  '&:hover': {
+                    color: theme.palette.common.white,
+                    bgcolor: alpha(theme.palette.primary.main, 0.32),
+                    borderColor: theme.palette.primary.main,
+                    // Pause the pulse on hover so the user has a stable
+                    // surface to click without flicker.
+                    animation: 'none'
+                  }
+                }}
+                aria-expanded={featureInfoOpen}
+                aria-controls="feature-importance-panel"
+              >
+                {FEATURE_PANEL_BUTTON_LABEL}
+              </Button>
+            </Stack>
+            {cropScopeText ? (
+              <Typography
+                sx={{
+                  color: alpha(theme.palette.common.white, 0.55),
+                  fontSize: '0.72rem',
+                  fontWeight: 500,
+                  letterSpacing: '0.02em',
+                  mt: -0.75
+                }}
+              >
+                {cropScopeText}
+              </Typography>
+            ) : null}
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Stack spacing={0.85}>
@@ -600,7 +1002,12 @@ export default function PredictionInputStep({
 
               <Grid size={{ xs: 12, md: 6 }}>
                 <Stack spacing={0.85}>
-                  <FieldLabel text="Variety" required />
+                  {/* Variety is optional — 73% of training rows had no
+                      variety listed, so requiring it would be stricter
+                      than the model's actual data history. The dropdown
+                      is still scoped to varieties the model has seen so
+                      a power user with detailed records can pick one. */}
+                  <FieldLabel text="Variety" />
                   <TextField
                     select
                     fullWidth
@@ -608,13 +1015,10 @@ export default function PredictionInputStep({
                     value={formValues.variety}
                     onChange={onChange}
                     disabled={isVarietyDisabled}
-                    error={Boolean(validationErrors.variety)}
                     helperText={
-                      validationErrors.variety
-                        ? 'Variety is required.'
-                        : hasCrop && !hasVarietiesForCrop
-                          ? 'No variety available for selected crop'
-                          : undefined
+                      hasCrop && !hasVarietiesForCrop
+                        ? 'No variety available for selected crop'
+                        : undefined
                     }
                     sx={themedFieldSx}
                     SelectProps={{
@@ -644,96 +1048,162 @@ export default function PredictionInputStep({
 
           <Divider sx={{ borderColor: sectionDivider }} />
 
-          {/* Section 2 — Field Inputs. Numeric agronomic data: nutrient
-              applications, area, irrigation. All optional — entering 0
-              is meaningful (vs. blank, which means "unknown"). */}
+          {/* Section 2 — Field Inputs. Top-level numerics that most
+              users will fill in: nutrient totals, area. Required fields
+              get an asterisk (the panel explains why). Detailed
+              fertilizer breakdowns and low-signal inputs (totalK, etc.)
+              live under the Advanced toggle below so casual users see
+              a compact form. */}
           <Stack spacing={1.75}>
             <SectionHeader>Field Inputs</SectionHeader>
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                <Stack spacing={0.85}>
-                  <FieldLabel text="Total N (lb/ac)" />
-                  <TextField
-                    fullWidth
-                    type="number"
-                    name="totalN"
-                    placeholder="0.00"
-                    value={formValues.totalN}
-                    onChange={onChange}
-                    sx={themedFieldSx}
-                  />
-                </Stack>
-              </Grid>
-
-              <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                <Stack spacing={0.85}>
-                  <FieldLabel text="Total P (lb/ac)" />
-                  <TextField
-                    fullWidth
-                    type="number"
-                    name="totalP"
-                    placeholder="0.00"
-                    value={formValues.totalP}
-                    onChange={onChange}
-                    sx={themedFieldSx}
-                  />
-                </Stack>
-              </Grid>
-
-              <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                <Stack spacing={0.85}>
-                  <FieldLabel text="Total K (lb/ac)" />
-                  <TextField
-                    fullWidth
-                    type="number"
-                    name="totalK"
-                    placeholder="0.00"
-                    value={formValues.totalK}
-                    onChange={onChange}
-                    sx={themedFieldSx}
-                  />
-                </Stack>
-              </Grid>
-
-              <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                <Stack spacing={0.85}>
-                  <FieldLabel text="Acres" />
-                  <TextField
-                    fullWidth
-                    type="number"
-                    name="acres"
-                    placeholder="0.00"
-                    value={formValues.acres}
-                    onChange={onChange}
-                    sx={themedFieldSx}
-                  />
-                </Stack>
-              </Grid>
-
-              <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                <Stack spacing={0.85}>
-                  <FieldLabel text="Water Applied (mm)" />
-                  <TextField
-                    fullWidth
-                    type="number"
-                    name="waterApplied"
-                    placeholder="0.00"
-                    value={formValues.waterApplied}
-                    onChange={onChange}
-                    sx={themedFieldSx}
-                  />
-                </Stack>
-              </Grid>
+              {renderNumericField({ name: 'totalN', label: 'Total N (lb/ac)' })}
+              {renderNumericField({ name: 'totalP', label: 'Total P (lb/ac)' })}
+              {renderNumericField({ name: 'acres', label: 'Acres' })}
+              {renderNumericField({ name: 'waterApplied', label: 'Water Applied (mm)' })}
             </Grid>
+
+            {/* Advanced toggle + collapsible body. The toggle is a
+                full-width pill that matches the Prefill/panel button
+                family. When open, the chevron rotates and the section
+                slides down to reveal Total K + per-fertilizer N and P
+                breakdowns. All Advanced fields are optional — leaving
+                them blank tells the model "no detailed info available"
+                and it falls back to the totals. */}
+            <Button
+              fullWidth
+              onClick={() => setAdvancedOpen((prev) => !prev)}
+              endIcon={
+                advancedOpen ? (
+                  <UpOutlined style={{ fontSize: 10 }} />
+                ) : (
+                  <DownOutlined style={{ fontSize: 10 }} />
+                )
+              }
+              aria-expanded={advancedOpen}
+              aria-controls="advanced-field-inputs"
+              sx={{
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.78rem',
+                letterSpacing: '0.04em',
+                px: 1.5,
+                py: 0.75,
+                mt: 0.5,
+                borderRadius: 1.25,
+                justifyContent: 'space-between',
+                color: alpha(theme.palette.primary.light, 0.95),
+                bgcolor: alpha(theme.palette.primary.main, 0.12),
+                border: `1px dashed ${alpha(theme.palette.primary.main, 0.45)}`,
+                transition: 'background 0.18s ease, border-color 0.18s ease, color 0.18s ease',
+                '&:hover': {
+                  color: theme.palette.common.white,
+                  bgcolor: alpha(theme.palette.primary.main, 0.22),
+                  borderColor: alpha(theme.palette.primary.main, 0.7),
+                  borderStyle: 'solid'
+                }
+              }}
+            >
+              {advancedOpen ? 'Hide Advanced Inputs' : 'Show Advanced Inputs (fertilizer breakdown, total K)'}
+            </Button>
+            <Collapse in={advancedOpen} unmountOnExit timeout={250}>
+              <Box id="advanced-field-inputs" sx={{ pt: 0.5 }}>
+                <Typography
+                  sx={{
+                    color: alpha(theme.palette.common.white, 0.6),
+                    fontSize: '0.74rem',
+                    fontWeight: 500,
+                    lineHeight: 1.55,
+                    mb: 1.5
+                  }}
+                >
+                  All Advanced inputs are optional. If you don&apos;t track fertilizer applications by
+                  source, leave these blank — the model uses your Total N / Total P above as a
+                  fallback. Filling them in gives the model more detail and can sharpen the prediction
+                  for growers who apply DAP, anhydrous ammonia, or UAN solution.
+                </Typography>
+                <Grid container spacing={2}>
+                  {renderNumericField({ name: 'totalK', label: 'Total K (lb/ac)' })}
+                  {renderNumericField({ name: 'ammoniaN', label: 'Anhydrous Ammonia (lb-N/ac)' })}
+                  {renderNumericField({ name: 'uanN', label: 'UAN Solution (lb-N/ac)' })}
+                  {renderNumericField({ name: 'otherN', label: 'Other N (lb-N/ac)' })}
+                  {renderNumericField({ name: 'dapN', label: 'DAP — Nitrogen (lb-N/ac)' })}
+                  {renderNumericField({ name: 'dapP', label: 'DAP — Phosphorus (lb-P/ac)' })}
+                </Grid>
+              </Box>
+            </Collapse>
           </Stack>
 
           <Divider sx={{ borderColor: sectionDivider }} />
 
           {/* Section 3 — Time & Location. Season + geographic context.
               All required: the model uses these to scope its reference
-              comparison to the right region/year. */}
+              comparison to the right region/year. Coverage caption tells
+              the user the model's geographic / temporal envelope, so a
+              short State dropdown reads as "supported states" rather than
+              "missing data". */}
           <Stack spacing={1.75}>
             <SectionHeader>Time & Location</SectionHeader>
+            {locationScopeText ? (
+              <Typography
+                sx={{
+                  color: alpha(theme.palette.common.white, 0.55),
+                  fontSize: '0.72rem',
+                  fontWeight: 500,
+                  letterSpacing: '0.02em',
+                  mt: -0.75
+                }}
+              >
+                {locationScopeText}
+              </Typography>
+            ) : null}
+            {/* lat/long are auto-derived from county centroid on the
+                backend. The inline icon-with-tooltip surfaces the
+                mechanic in context — the user hovers (or focuses) the
+                info icon to learn why they don't see lat/long fields,
+                without having to open the side panel. */}
+            {coverage ? (
+              <Typography
+                sx={{
+                  color: alpha(theme.palette.primary.light, 0.85),
+                  fontSize: '0.72rem',
+                  fontWeight: 500,
+                  letterSpacing: '0.01em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.6,
+                  mt: -0.25
+                }}
+              >
+                <Tooltip
+                  arrow
+                  placement="top"
+                  title={LATLONG_TOOLTIP_TEXT}
+                  slotProps={makeThemedTooltipSlotProps(theme, 340)}
+                >
+                  <Box
+                    component="span"
+                    tabIndex={0}
+                    role="img"
+                    aria-label="How latitude and longitude are filled in — hover for details"
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      cursor: 'help',
+                      color: alpha(theme.palette.primary.light, 0.85),
+                      transition: 'color 0.15s ease',
+                      outline: 'none',
+                      '&:hover, &:focus-visible': {
+                        color: theme.palette.primary.light
+                      }
+                    }}
+                  >
+                    <InfoCircleOutlined style={{ fontSize: 12 }} />
+                  </Box>
+                </Tooltip>
+                Latitude and longitude are auto-derived from your county selection.
+              </Typography>
+            ) : null}
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                 <Stack spacing={0.85}>
@@ -835,6 +1305,315 @@ export default function PredictionInputStep({
           </Stack>
         </Stack>
       </Paper>
+
+      {/* Feature Importance side panel — fixed-position floating Paper.
+          Deliberately NOT a Popover/Modal/Drawer:
+            - Popover/Modal close on outside click, which would interrupt
+              the user the moment they tab back to the form.
+            - Drawer steals focus and pushes content (variant="persistent")
+              or covers it with a backdrop (variant="temporary").
+          A plain fixed-position Box stays open until the user explicitly
+          dismisses it, leaves the form behind it fully interactive, and
+          renders above the page chrome via theme.zIndex.appBar - 1.
+
+          On narrow screens (≤ sm) it spans most of the viewport width
+          and the user closes it to interact with the form; on wider
+          screens it docks to the right with a 420px width so the form
+          and the panel are visible side-by-side. */}
+      {featureInfoOpen ? (
+        <Box
+          id="feature-importance-panel"
+          role="region"
+          aria-label="Model feature importance"
+          sx={{
+            position: 'fixed',
+            top: { xs: 72, md: 96 },
+            right: { xs: 12, md: 24 },
+            bottom: { xs: 12, md: 24 },
+            width: { xs: 'calc(100vw - 24px)', sm: 380, md: 420 },
+            maxWidth: 'calc(100vw - 24px)',
+            zIndex: theme.zIndex.appBar - 1,
+            // Solid primary-tinted surface — uses color-mix instead of an
+            // alpha overlay so the panel is fully opaque and the form
+            // behind it doesn't bleed through. The tone matches the form
+            // card's apparent color (cardSurface = primary @ 0.18 alpha on
+            // background.paper) but rendered as a single opaque value so
+            // text and bars stay legible regardless of what's behind it.
+            bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+            border: `1px solid ${cardBorder}`,
+            borderRadius: 2,
+            boxShadow: cardShadow,
+            overflowY: 'auto',
+            backgroundImage: 'none',
+            // Custom scrollbar — matches the rest of the app's scroll
+            // surfaces (primary-tinted thumb on transparent track).
+            '&::-webkit-scrollbar': { width: 8 },
+            '&::-webkit-scrollbar-track': { background: 'transparent' },
+            '&::-webkit-scrollbar-thumb': {
+              background: alpha(theme.palette.primary.main, 0.35),
+              borderRadius: 999
+            },
+            '&::-webkit-scrollbar-thumb:hover': {
+              background: alpha(theme.palette.primary.main, 0.55)
+            }
+          }}
+        >
+          {/* Sticky header — keeps title + close button visible as the
+              user scrolls through the feature list. Backdrop-blur lets
+              the underlying bars peek through the header edge for a
+              subtle product-y feel. */}
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{
+              position: 'sticky',
+              top: 0,
+              bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 32%, ${theme.palette.background.paper})`,
+              backdropFilter: 'blur(8px)',
+              px: 2.25,
+              py: 1.5,
+              borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
+              zIndex: 1
+            }}
+          >
+            <Typography
+              sx={{
+                fontWeight: 700,
+                fontSize: '0.98rem',
+                color: theme.palette.common.white,
+                letterSpacing: '0.01em'
+              }}
+            >
+              {FEATURE_PANEL_TITLE}
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={() => setFeatureInfoOpen(false)}
+              aria-label="Close feature importance panel"
+              sx={{
+                color: alpha(theme.palette.common.white, 0.7),
+                width: 26,
+                height: 26,
+                '&:hover': {
+                  color: theme.palette.common.white,
+                  bgcolor: alpha(theme.palette.primary.main, 0.32)
+                }
+              }}
+            >
+              <CloseOutlined style={{ fontSize: 12 }} />
+            </IconButton>
+          </Stack>
+
+          <Stack spacing={2.75} sx={{ p: 2.25 }}>
+            <Typography
+              sx={{
+                color: alpha(theme.palette.common.white, 0.7),
+                fontSize: '0.8rem',
+                lineHeight: 1.55
+              }}
+            >
+              Each percentage is the share of the model&apos;s total predictive weight
+              that comes from that input — bars are sized to match. Acres at{' '}
+              <Box component="span" sx={{ color: theme.palette.common.white, fontWeight: 700 }}>
+                21.5%
+              </Box>{' '}
+              means roughly a fifth of the prediction is being driven by your field
+              size alone. Keep this panel open while you fill the form so you can
+              see which fields actually move the needle.
+            </Typography>
+
+            {/* Strong signal — features that meaningfully move the prediction. */}
+            <Stack spacing={1.5}>
+              <Typography
+                sx={{
+                  color: alpha(theme.palette.primary.light, 0.95),
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase'
+                }}
+              >
+                Strong signal
+              </Typography>
+              <Stack spacing={1.5}>
+                {FEATURE_IMPORTANCE_STRONG.map((feat) => (
+                  <FeatureImportanceBar
+                    key={feat.label}
+                    feat={feat}
+                    maxImportance={FEATURE_IMPORTANCE_MAX}
+                    theme={theme}
+                  />
+                ))}
+              </Stack>
+            </Stack>
+
+            <Divider sx={{ borderColor: alpha(theme.palette.primary.main, 0.22) }} />
+
+            {/* Advanced + optional — features the model uses but with
+                lower importance, plus the Advanced fertilizer breakdowns
+                that live in the form's collapsible section. */}
+            <Stack spacing={1.5}>
+              <Typography
+                sx={{
+                  color: alpha(theme.palette.primary.light, 0.95),
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase'
+                }}
+              >
+                Optional &amp; Advanced
+              </Typography>
+              <Typography
+                sx={{
+                  color: alpha(theme.palette.common.white, 0.6),
+                  fontSize: '0.76rem',
+                  lineHeight: 1.5
+                }}
+              >
+                These inputs the model uses lightly. Total K, per-fertilizer N/P
+                breakdowns, and Variety are all optional — leaving them blank is fine.
+                Filling them in helps the model when you have detailed records.
+              </Typography>
+              <Stack spacing={1.5}>
+                {FEATURE_IMPORTANCE_ADVANCED.map((feat) => (
+                  <FeatureImportanceBar
+                    key={feat.label}
+                    feat={feat}
+                    maxImportance={FEATURE_IMPORTANCE_MAX}
+                    theme={theme}
+                  />
+                ))}
+              </Stack>
+            </Stack>
+
+            <Divider sx={{ borderColor: alpha(theme.palette.primary.main, 0.22) }} />
+
+            {/* Why-required explainer — addresses the "why does this
+                field have a *?" question without making the user dig
+                through tooltips. */}
+            <Box
+              sx={{
+                p: 1.5,
+                borderRadius: 1.25,
+                bgcolor: alpha(theme.palette.primary.main, 0.12),
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.32)}`
+              }}
+            >
+              <Typography
+                sx={{
+                  color: alpha(theme.palette.common.white, 0.78),
+                  fontSize: '0.74rem',
+                  lineHeight: 1.55
+                }}
+              >
+                <Box component="span" sx={{ color: theme.palette.primary.light, fontWeight: 700 }}>
+                  Why do some fields have a{' '}
+                  <Box component="span" sx={{ color: theme.palette.error.light }}>*</Box>?
+                </Box>{' '}
+                A field is required when the model leans on it heavily AND most
+                training rows contained a value. Crop, Season, State, County, and
+                Total N all meet that bar — they&apos;re strong signals the model
+                expects every prediction to include. Everything else is optional
+                because either the model uses it lightly, or the training data
+                often had it blank — meaning the model already knows how to
+                handle a missing value.
+              </Typography>
+            </Box>
+
+            {/* The lat/long callout that used to live here was moved
+                to a hover tooltip on the info icon next to the
+                "Latitude and longitude are auto-derived…" line in the
+                Time & Location section. Putting it in context (next to
+                the actual behavior) is more discoverable than burying
+                it at the bottom of the side panel. */}
+          </Stack>
+        </Box>
+      ) : null}
+    </Stack>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Local presentational component: FeatureImportanceBar
+// ---------------------------------------------------------------------------
+// One row of the side-panel breakdown. Label + numeric importance + a filled
+// bar proportional to the model's max-importance feature, plus a small badge
+// describing where the value comes from ("You provide this", "Auto-filled
+// from your county", etc.). Kept colocated with the parent component because
+// it has no reuse elsewhere — promoting it would only add indirection.
+function FeatureImportanceBar({ feat, maxImportance, theme }) {
+  const ratio = Math.max(0.02, feat.importance / maxImportance);
+  const isAutoFilled = feat.badgeTone === 'primary';
+  return (
+    <Stack spacing={0.5}>
+      <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+        <Typography
+          sx={{
+            color: theme.palette.common.white,
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            lineHeight: 1.25
+          }}
+        >
+          {feat.label}
+        </Typography>
+        <Typography
+          sx={{
+            color: alpha(theme.palette.common.white, 0.6),
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            fontVariantNumeric: 'tabular-nums'
+          }}
+        >
+          {/* Importance values are CatBoost's normalized importance,
+              which sums to ~100 across all features in the model — so
+              displaying as a percentage is accurate. The "%" makes it
+              clear to users that 21.5 means "21.5% of the model's
+              total predictive weight comes from this feature". */}
+          {feat.importance.toFixed(1)}%
+        </Typography>
+      </Stack>
+      <Box
+        sx={{
+          height: 6,
+          width: '100%',
+          borderRadius: 999,
+          bgcolor: alpha(theme.palette.common.white, 0.08),
+          overflow: 'hidden'
+        }}
+      >
+        <Box
+          sx={{
+            height: '100%',
+            width: `${ratio * 100}%`,
+            // Auto-filled features (lat/long) get a slightly different
+            // bar treatment — same hue but brighter — so the user can
+            // visually distinguish "you control this" from "the system
+            // handles this for you" without reading the badge text.
+            background: isAutoFilled
+              ? `linear-gradient(90deg, ${theme.palette.primary.light}, ${alpha(theme.palette.primary.light, 0.7)})`
+              : `linear-gradient(90deg, ${theme.palette.primary.main}, ${alpha(theme.palette.primary.main, 0.7)})`,
+            borderRadius: 999,
+            transition: 'width 0.25s ease'
+          }}
+        />
+      </Box>
+      {feat.badge ? (
+        <Typography
+          sx={{
+            color: isAutoFilled
+              ? alpha(theme.palette.primary.light, 0.85)
+              : alpha(theme.palette.common.white, 0.55),
+            fontSize: '0.7rem',
+            fontWeight: 500,
+            lineHeight: 1.3
+          }}
+        >
+          {feat.badge}
+        </Typography>
+      ) : null}
     </Stack>
   );
 }
