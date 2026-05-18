@@ -42,6 +42,19 @@ export default function CropStudioDefault() {
 
   const handleChange = (_, newValue) => {
     setTabValue(newValue);
+    // Manual tab navigation consumes any pending "Open Predictions Table"
+    // deep link. The preselect was only meant to live for the one-shot
+    // jump from the prediction wizard's review step into the Saved
+    // Predictions view; once the user clicks a tab themselves they're
+    // navigating freely, and the next Analytics visit should default to
+    // the Model & Data view (not snap back to Predictions every time).
+    //
+    // The deep link itself bypasses this handler — handleOpenPredictionsTable
+    // calls setTabValue directly, not through onChange — so clearing here
+    // doesn't interfere with the deep-link flow.
+    if (preselectedPredictionRunId !== null) {
+      setPreselectedPredictionRunId(null);
+    }
   };
 
   return (

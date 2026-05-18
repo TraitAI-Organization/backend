@@ -194,6 +194,32 @@ export default function PredictionsTable({
   // grep target is here.
   const mutedAccent = alpha(theme.palette.primary.light, 0.85);
   const subtleText = theme.palette.text.secondary;
+  // Themed tooltip slotProps — same primary-tinted opaque surface every
+  // hover-help affordance in the app uses (PredictionInputStep's
+  // asterisks, ModelRegressionCard's coverage tooltip, the Saved
+  // Predictions Inputs chip). Centralized here so the column header
+  // tooltip and the per-row Coverage tier tooltip share one source of
+  // truth — fix the surface here, both surfaces update.
+  const themedTooltipSlotProps = {
+    tooltip: {
+      sx: {
+        bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 22%, ${theme.palette.background.paper})`,
+        color: theme.palette.common.white,
+        border: `1px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+        fontSize: '0.74rem',
+        fontWeight: 500,
+        lineHeight: 1.55,
+        maxWidth: 340,
+        px: 1.5,
+        py: 1.1,
+        borderRadius: 1.25,
+        boxShadow: `0 6px 18px ${alpha(theme.palette.common.black, 0.4)}`
+      }
+    },
+    arrow: {
+      sx: { color: `color-mix(in srgb, ${theme.palette.primary.main} 22%, ${theme.palette.background.paper})` }
+    }
+  };
   const tableScrollbarSx = {
     scrollbarWidth: 'thin',
     scrollbarColor: `${alpha(theme.palette.primary.main, 0.32)} transparent`,
@@ -334,6 +360,7 @@ export default function PredictionsTable({
                       placement="top"
                       title={column.tooltip || ''}
                       disableHoverListener={!column.tooltip}
+                      slotProps={themedTooltipSlotProps}
                     >
                       <TableSortLabel
                         active={orderBy === column.id}
@@ -530,7 +557,7 @@ export default function PredictionsTable({
                       the chevron lives here. */}
                   {hasCoverageData ? (
                     <TableCell sx={{ position: 'relative' }}>
-                      <Tooltip arrow placement="top" title={tier.tooltip}>
+                      <Tooltip arrow placement="top" title={tier.tooltip} slotProps={themedTooltipSlotProps}>
                         <Box
                           component="span"
                           sx={{
