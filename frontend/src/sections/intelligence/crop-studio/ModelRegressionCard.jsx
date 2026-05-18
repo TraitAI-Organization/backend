@@ -24,6 +24,8 @@ import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 import DownOutlined from '@ant-design/icons/DownOutlined';
 
+import FieldDetailDrawer from 'sections/intelligence/crop-studio/FieldDetailDrawer';
+
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
 // SVG layout constants. The plot is drawn in a 1000×620 viewBox and the
@@ -126,6 +128,9 @@ export default function ModelRegressionCard() {
   // or 1 in practice. `state` is a single optional string.
   const [seasonFilter, setSeasonFilter] = useState([]);
   const [stateFilter, setStateFilter] = useState(null);
+  // Drawer state — clicking a point opens the FieldDetailDrawer (same one
+  // the FieldTable / Overview chevron opens). null = closed.
+  const [drawerFieldSeasonId, setDrawerFieldSeasonId] = useState(null);
 
   // Pull the registered model versions for the dropdown. Deep Learning
   // is filtered out here so it never appears as a selectable option —
@@ -441,7 +446,13 @@ export default function ModelRegressionCard() {
             field-seasons, the scatter will populate here.
           </Typography>
         ) : (
-          <PlotSvg layout={layout} theme={theme} onHover={setHoverPoint} hoverPoint={hoverPoint} />
+          <PlotSvg
+            layout={layout}
+            theme={theme}
+            onHover={setHoverPoint}
+            hoverPoint={hoverPoint}
+            onPointClick={(p) => setDrawerFieldSeasonId(p.field_season_id)}
+          />
         )}
         {hoverPoint && layout ? <HoverChip point={hoverPoint} theme={theme} /> : null}
       </Box>
@@ -484,6 +495,27 @@ export default function ModelRegressionCard() {
           </Stack>
         </Stack>
       ) : null}
+
+      {/* Detail drawer — opens when a scatter point is clicked. The drawer
+          is a modal overlay (MUI Drawer), so it floats over the whole
+          page rather than displacing the card layout. fieldSeasonId
+          drives open/closed; passing null closes it.
+          ---
+          We pass the card's `models` list (already filtered to remove
+          Deep Learning at line 142) plus the active `selectedId`. The
+          drawer's predictions section uses `selectedModelId` to filter
+          its predictions array, so the user sees ONLY the CatBoost
+          prediction for the clicked field-season — never the Deep
+          Learning one. The drawer's model picker stays in sync with
+          this card via onModelChange, so swapping models in either
+          place updates the other. */}
+      <FieldDetailDrawer
+        fieldSeasonId={drawerFieldSeasonId}
+        onClose={() => setDrawerFieldSeasonId(null)}
+        availableModels={models}
+        selectedModelId={selectedId && selectedId > 0 ? selectedId : null}
+        onModelChange={setSelectedId}
+      />
     </Paper>
   );
 }
@@ -710,7 +742,7 @@ function LegendLine({ kind, label, theme }) {
   );
 }
 
-function PlotSvg({ layout, theme, onHover, hoverPoint }) {
+function PlotSvg({ layout, theme, onHover, hoverPoint, onPointClick }) {
   const svgRef = useRef(null);
   const { min, max, xScale, yScale, scatter, fitted, xTicks } = layout;
   // y ticks reuse the x tick set since the axes share a domain. Keeping
@@ -762,7 +794,10 @@ function PlotSvg({ layout, theme, onHover, hoverPoint }) {
         />
       ) : null}
 
-      {/* Points */}
+      {/* Points — clicking opens the FieldDetailDrawer (same surface the
+          Overview chevron / FieldTable row-click opens), so users can
+          drill into the full history for a flagged outlier without
+          leaving the chart. */}
       {scatter.map((p) => (
         <circle
           key={p.field_season_id}
@@ -775,6 +810,7 @@ function PlotSvg({ layout, theme, onHover, hoverPoint }) {
           opacity={0.85}
           style={{ cursor: 'pointer', transition: 'r 0.12s ease' }}
           onMouseEnter={() => onHover(p)}
+          onClick={() => onPointClick && onPointClick(p)}
         />
       ))}
 
@@ -854,6 +890,8 @@ function HoverChip({ point, theme }) {
         }}
       >
         Field {point.field_number}
+        {point.state ? ` · ${point.state}` : ''}
+        {point.season_year ? ` · ${point.season_year}` : ''}
       </Typography>
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'baseline', mt: 0.25 }}>
         <Stack spacing={0}>
@@ -883,6 +921,16 @@ function HoverChip({ point, theme }) {
           </Typography>
         </Stack>
       </Stack>
+      <Typography
+        sx={{
+          color: alpha(theme.palette.common.white, 0.5),
+          fontSize: '0.66rem',
+          mt: 0.5,
+          fontStyle: 'italic'
+        }}
+      >
+        Click for full field-season detail
+      </Typography>
     </Box>
   );
 }

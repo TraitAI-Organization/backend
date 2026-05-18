@@ -35,6 +35,7 @@ import ThunderboltOutlined from '@ant-design/icons/ThunderboltOutlined';
 import MainCard from 'components/MainCard';
 import FieldTable from 'sections/intelligence/crop-studio/FieldTable';
 import ModelRegressionCard from 'sections/intelligence/crop-studio/ModelRegressionCard';
+import ResidualDiagnosticsCard from 'sections/intelligence/crop-studio/ResidualDiagnosticsCard';
 import { formatCropName } from 'utils/cropName';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
@@ -1206,19 +1207,69 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
   };
 
   // "View runs history" — clicked from the Model Performance card on the
-  // Model & Data view. Switches to the Predictions view first (where the
-  // Saved Predictions table actually lives) and then scrolls to it. The
-  // setTimeout defers the scroll until React has had a chance to render
-  // the Predictions view; without that, getElementById finds nothing
-  // because the table isn't mounted yet.
+  // Model & Data view. Smooth-scrolls down to the Field & Harvest Records
+  // table at the bottom of the same view.
+  //
+  // We don't use the native `scrollIntoView({ behavior: 'smooth' })`
+  // because its duration is browser-controlled (~200–500ms) and lands
+  // before the FieldTable's data fetch / virtualized rows have settled,
+  // so the user arrives mid-skeleton. The custom rAF scroller below
+  // takes ~1200ms with easeInOutCubic timing, which gives the table
+  // time to load and renders as a calmer transition.
+  //
+  // The scroller walks up from the target to find the nearest scrollable
+  // ancestor — falls back to the window if none qualify — so it works
+  // whether the dashboard scrolls at the window level or inside a Box
+  // with overflow:auto.
   const handleViewRunsHistory = () => {
-    setAnalyticsView('predictions');
-    setTimeout(() => {
-      const el = document.getElementById('saved-predictions-table');
-      if (el && typeof el.scrollIntoView === 'function') {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const el = document.getElementById('field-harvest-records-table');
+    if (!el) return;
+
+    // Locate the actual scrolling container (overflow auto|scroll with
+    // overflowing content). Standards-mode browsers treat the documentElement
+    // as the window-scroll root, so that's the fallback.
+    let scroller = el.parentElement;
+    while (scroller && scroller !== document.body) {
+      const overflowY = getComputedStyle(scroller).overflowY;
+      if ((overflowY === 'auto' || overflowY === 'scroll') && scroller.scrollHeight > scroller.clientHeight) {
+        break;
       }
-    }, 60);
+      scroller = scroller.parentElement;
+    }
+    const isWindowScroll = !scroller || scroller === document.body;
+
+    const offset = 88; // matches the table's scrollMarginTop — keeps the
+    // table header clear of any sticky chrome above it.
+
+    const startY = isWindowScroll ? window.scrollY : scroller.scrollTop;
+    const elTop = el.getBoundingClientRect().top;
+    const containerTop = isWindowScroll ? 0 : scroller.getBoundingClientRect().top;
+    const targetY = startY + (elTop - containerTop) - offset;
+    const distance = targetY - startY;
+
+    if (Math.abs(distance) < 1) return; // already there
+
+    const duration = 1200; // ms — feels deliberate without dragging
+    const startTime = performance.now();
+
+    // easeInOutCubic — starts slow, accelerates through the middle, eases
+    // out at the end. Gentler than linear and works equally well in both
+    // directions (scrolling up or down).
+    const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+    const step = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeInOutCubic(progress);
+      const y = startY + distance * eased;
+      if (isWindowScroll) {
+        window.scrollTo(0, y);
+      } else {
+        scroller.scrollTop = y;
+      }
+      if (progress < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   };
 
   // Derive last-run timestamp + month-over-month avg-yield trend from the
@@ -1338,7 +1389,6 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                 sx={{
                   color: alpha(theme.palette.common.white, 0.7),
                   fontSize: '0.95rem',
-                  maxWidth: 760,
                   lineHeight: 1.55
                 }}
               >
@@ -2506,6 +2556,54 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
              the reference view — context the user reads occasionally
              rather than acts on every visit. */
           <>
+            {/* Header + context block above the diagnostics — mirrors the
+                Predictions view's "Make a Yield Prediction" intro so the
+                two views read as members of the same family. Frames the
+                Model & Data view as a "how is the model performing"
+                investigation rather than a passive data dump: each piece
+                below is introduced in the order it appears on the page,
+                so a new user knows what to read and in what order. */}
+            <Stack spacing={0.75}>
+              <Typography
+                variant="h4"
+                sx={{
+                  fontWeight: 700,
+                  color: theme.palette.common.white,
+                  lineHeight: 1.2,
+                  letterSpacing: '0.01em'
+                }}
+              >
+                Model Performance &amp; Diagnostics
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{
+                  color: alpha(theme.palette.common.white, 0.7),
+                  fontSize: '0.95rem',
+                  lineHeight: 1.55
+                }}
+              >
+                Inspect how the production model is performing across every field-season with a recorded yield. The{' '}
+                <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
+                  Model Performance
+                </Box>{' '}
+                card up top shows coverage and aggregate prediction statistics. The{' '}
+                <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
+                  Predicted vs Observed
+                </Box>{' '}
+                chart visualizes how well predictions match actual harvests, and the{' '}
+                <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
+                  Residual Diagnostics
+                </Box>{' '}
+                surface where the model fails and by how much. The{' '}
+                <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
+                  Field &amp; Harvest Records
+                </Box>{' '}
+                table at the bottom holds the per-row predictions behind every chart — click any data point above, or
+                use the View run history button, to jump into it.
+              </Typography>
+            </Stack>
+
             <ModelPerformanceCard
               overview={overview}
               lastRunAt={predictionTimeline?.lastRunAt}
@@ -2520,6 +2618,14 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                 how those aggregate stats are actually distributed. */}
             <ModelRegressionCard />
 
+            {/* Residual diagnostics — sits directly under the regression
+                card as its companion. Two stacked charts (residuals vs
+                observed yield, residual distribution) that surface where
+                the model fails and by how much. Independent model /
+                season / state filters so the residual view can be
+                sliced separately from the main regression scatter. */}
+            <ResidualDiagnosticsCard />
+
             {/* Field-level records table — chevron + row-click affordance
                 hidden because Analytics is read-only context; the Overview
                 tab keeps a chevron-enabled copy for drilling into field
@@ -2528,8 +2634,17 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                 automatically. `lockModelSelector` renders the model pill
                 as a static chip (no dropdown) — Analyze surfaces which
                 model produced the column but doesn't let the user swap
-                models from this view. */}
-            <FieldTable showChevron={false} lockModelSelector />
+                models from this view.
+                ---
+                Wrapped in a Box with id="field-harvest-records-table" so
+                the "View run history" button in the Model Performance
+                card up top can smooth-scroll the user down to this table.
+                `scrollMarginTop` keeps the table header from landing
+                directly under any sticky chrome (the analytics view
+                toggle, the workspace nav) once the scroll completes. */}
+            <Box id="field-harvest-records-table" sx={{ scrollMarginTop: 88 }}>
+              <FieldTable showChevron={false} lockModelSelector />
+            </Box>
           </>
         )}
       </Stack>
