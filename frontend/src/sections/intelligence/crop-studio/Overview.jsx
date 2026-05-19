@@ -179,16 +179,17 @@ function OverviewTableBanner() {
             table summarizes the observed (real-harvest) yield alongside
             its key inputs: crop and variety, acres, geographic
             location, and applied nutrients. Use the filters above the
-            table to narrow by crop, variety, season, state, or county.
+            table to narrow records by crop, variety, season, state, or
+            county.
           </Typography>
           <Typography sx={{ color: alpha(theme.palette.common.white, 0.85), fontSize: '0.88rem', lineHeight: 1.6, mt: 1.25 }}>
             Click the{' '}
             <Box component="span" sx={{ fontWeight: 700, color: theme.palette.primary.light }}>
               chevron (›)
             </Box>{' '}
-            on any row to open an in-depth view of that field-season,
+            on any row to open a detailed view of that field-season,
             including the full management history, applied operations,
-            and any model predictions attached to the record.
+            and any model predictions linked to the record.
           </Typography>
         </Box>
       </Collapse>
@@ -1723,8 +1724,8 @@ export default function Overview({ onNavigateToPredict }) {
                   </Typography>
                 </Stack>
                 <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 560 }}>
-                  Track crop performance, model coverage, and yield signals in one view. This dashboard blends observed field outcomes with
-                  machine-learning predictions to help prioritize decisions quickly.
+                  Track crop performance, model coverage, and yield signals in a single view. This dashboard blends observed field outcomes with
+                  machine-learning predictions to surface actionable insights and help you prioritize decisions quickly.
                 </Typography>
                 {/* Primary CTA — gives the hero a single, unambiguous action.
                     Jumps to the Predict tab via the callback passed down from

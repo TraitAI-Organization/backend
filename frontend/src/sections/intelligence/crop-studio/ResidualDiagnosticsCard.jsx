@@ -39,7 +39,8 @@ import AreaChartOutlined from '@ant-design/icons/AreaChartOutlined';
 import DownOutlined from '@ant-design/icons/DownOutlined';
 import TableOutlined from '@ant-design/icons/TableOutlined';
 
-import CoverageScopeSelector from 'sections/intelligence/crop-studio/CoverageScopeSelector';
+// CoverageScopeSelector import removed — card is pinned to the cleaned
+// training envelope and no longer surfaces tier toggles.
 import FieldDetailDrawer from 'sections/intelligence/crop-studio/FieldDetailDrawer';
 import PredictionsTable from 'sections/intelligence/crop-studio/PredictionsTable';
 
@@ -156,12 +157,12 @@ export default function ResidualDiagnosticsCard() {
   const [viewMode, setViewMode] = useState('chart');
   const [seasonFilter, setSeasonFilter] = useState([]);
   const [stateFilter, setStateFilter] = useState(null);
-  // Coverage-scope filter — mirrors ModelRegressionCard's three-tier
-  // toggle so both cards default to the "similar to training" view. The
-  // two toggles are intentionally independent so a user can compare
-  // in-distribution residuals against the wider population by flipping
-  // one chart at a time.
-  const [coverageScope, setCoverageScope] = useState('in_distribution');
+  // Coverage scope is pinned to 'in_envelope' so this card mirrors the
+  // ModelRegressionCard's scope (the cleaned training envelope —
+  // ~1,002 wheat field-seasons). The CoverageScopeSelector was removed
+  // when the team scoped Model & Data to the envelope only. Restore the
+  // useState + selector below if multi-tier comparison ever returns.
+  const coverageScope = 'in_envelope';
   // Hover state for the live-data readout on the residuals scatter.
   const [hoverPoint, setHoverPoint] = useState(null);
   // Drawer state — clicking a point opens the FieldDetailDrawer (same
@@ -346,15 +347,9 @@ export default function ResidualDiagnosticsCard() {
           </ToggleButtonGroup>
         </Stack>
 
-        {/* ============== Zone 2 — Primary scope selector ==============
-            Same prominent CoverageScopeSelector ModelRegressionCard
-            uses, kept in lockstep so the two cards present the same
-            primary control in the same place. */}
-        <CoverageScopeSelector
-          value={coverageScope}
-          onChange={(next) => setCoverageScope(next || 'in_distribution')}
-          coverage={payload?.coverage}
-        />
+        {/* Zone 2 (coverage-scope selector) intentionally omitted —
+            this card mirrors ModelRegressionCard's pinned scope
+            (cleaned training envelope; ~1,002 wheat field-seasons). */}
 
         {/* ============== Zone 3 — Outputs (metrics) ============== */}
         <HeaderMetrics

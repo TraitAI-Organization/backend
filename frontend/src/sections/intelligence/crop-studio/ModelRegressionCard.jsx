@@ -29,7 +29,8 @@ import DotChartOutlined from '@ant-design/icons/DotChartOutlined';
 import DownOutlined from '@ant-design/icons/DownOutlined';
 import TableOutlined from '@ant-design/icons/TableOutlined';
 
-import CoverageScopeSelector from 'sections/intelligence/crop-studio/CoverageScopeSelector';
+// CoverageScopeSelector import removed — the card is pinned to the
+// cleaned training envelope and no longer surfaces tier toggles.
 import FieldDetailDrawer from 'sections/intelligence/crop-studio/FieldDetailDrawer';
 import PredictionsTable from 'sections/intelligence/crop-studio/PredictionsTable';
 
@@ -148,19 +149,15 @@ export default function ModelRegressionCard() {
   // or 1 in practice. `state` is a single optional string.
   const [seasonFilter, setSeasonFilter] = useState([]);
   const [stateFilter, setStateFilter] = useState(null);
-  // Coverage-scope filter — three tiers, surfaced as a single pill:
-  //   - 'in_distribution' (default) : rows whose inputs look like the
-  //     training data (state/county/variety + yield range + acres/totalN
-  //     range). This is the most meaningful real-world R² — it mixes
-  //     in-sample training rows with similar-shape production rows the
-  //     model should handle well, giving a number close to but not
-  //     identical to the published CV R².
-  //   - 'in_envelope' : only the exact training rows (1,002 for wheat).
-  //     In-sample R²; useful for verifying the model fits the data it
-  //     was trained on.
-  //   - 'all' : every prediction including out-of-distribution rows.
-  //     Lowest R² because the metric dilutes against unhandled cases.
-  const [coverageScope, setCoverageScope] = useState('in_distribution');
+  // Coverage scope is now pinned to 'in_envelope' — the team scoped the
+  // dashboard to the cleaned training envelope (~1,002 wheat
+  // field-seasons from NSP_field_product_wheat1_cleaned.csv). The
+  // three-tier selector (in_envelope / in_distribution / all) was
+  // removed from the UI; this constant preserves the backend's
+  // existing filter contract so we still get back only the envelope
+  // rows. If the multi-tier comparison ever returns, restore the
+  // useState + CoverageScopeSelector below.
+  const coverageScope = 'in_envelope';
   // Drawer state — clicking a point opens the FieldDetailDrawer (same one
   // the FieldTable / Overview chevron opens). null = closed.
   const [drawerFieldSeasonId, setDrawerFieldSeasonId] = useState(null);
@@ -421,20 +418,10 @@ export default function ModelRegressionCard() {
           </ToggleButtonGroup>
         </Stack>
 
-        {/* ============== Zone 2 — Primary scope selector ==============
-            The coverage scope is the single most impactful control on
-            this card — flipping it shifts the headline R² and the row
-            count meaningfully — so it gets first-class visual weight
-            ABOVE the metrics. Reads as: "I am looking at THIS subset
-            of predictions, and HERE is the R² for that subset." The
-            secondary filter bar in Zone 4 holds the smaller filters
-            (Model / Season / State) — refinements within the chosen
-            scope, not scope itself. */}
-        <CoverageScopeSelector
-          value={coverageScope}
-          onChange={(next) => setCoverageScope(next || 'in_distribution')}
-          coverage={payload?.coverage}
-        />
+        {/* Zone 2 (coverage-scope selector) intentionally omitted —
+            the card is now scoped to the cleaned training envelope by
+            default (~1,002 wheat field-seasons). The CoverageScopeSelector
+            previously lived here. */}
 
         {/* ============== Zone 3 — Outputs (metrics) ==============
             Hero R² on the left at a much larger weight than the inline
@@ -495,8 +482,8 @@ export default function ModelRegressionCard() {
             All filters live in their own row prefixed with a small
             "Filters" caption. Order is purposeful:
               1. Model picker — most identifying
-              2. Coverage scope — most impactful on the headline metric
-              3. Season + State — situational narrowing
+              2. Season + State — situational narrowing within the
+                 cleaned training envelope (the card's pinned scope)
             On wrap, less-important pills move to the next line first. */}
         <Stack
           direction="row"

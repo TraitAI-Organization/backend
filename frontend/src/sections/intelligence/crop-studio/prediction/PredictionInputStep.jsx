@@ -609,7 +609,7 @@ export default function PredictionInputStep({
         <Typography variant="h4" sx={{ fontWeight: 700, color: headingColor, lineHeight: 1.2 }}>
           Enter Prediction Inputs
         </Typography>
-        <Typography sx={{ color: labelMuted, fontSize: '0.95rem', maxWidth: 760, lineHeight: 1.55 }}>
+        <Typography sx={{ color: labelMuted, fontSize: '0.95rem', lineHeight: 1.55 }}>
           Provide the agronomic and location values used to generate a yield prediction. Fields marked with{' '}
           <Box component="span" sx={{ color: theme.palette.error.light, fontWeight: 700 }}>*</Box> are required because
           the model relies on them heavily — see &ldquo;{FEATURE_PANEL_BUTTON_LABEL}&rdquo; for the full breakdown of
@@ -1413,13 +1413,12 @@ export default function PredictionInputStep({
                 lineHeight: 1.55
               }}
             >
-              Each percentage is the share of the model&apos;s total predictive weight
-              that comes from that input — bars are sized to match. Acres at{' '}
+              Each percentage shows how much that input contributes to the model&apos;s
+              prediction — the bars are sized to match. If Acres at{' '}
               <Box component="span" sx={{ color: theme.palette.common.white, fontWeight: 700 }}>
                 21.5%
-              </Box>{' '}
-              means roughly a fifth of the prediction is being driven by your field
-              size alone. Keep this panel open while you fill the form so you can
+              </Box>, about a fifth of the prediction is driven by your field size
+              alone. Keep this panel open while you fill out the form so you can
               see which fields actually move the needle.
             </Typography>
 

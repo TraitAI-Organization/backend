@@ -716,18 +716,57 @@ function MetricCard({ label, value, unit, helper, helperColor, range, comparison
 // ============================================================================
 function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHistory }) {
   const theme = useTheme();
+  // Envelope-scoped scatter — drives the headline stats so the card
+  // mirrors the regression/residual cards below (all pinned to the
+  // cleaned training envelope; ~1,002 wheat field-seasons). No model_id
+  // is sent so the backend resolves to the production model. Falls back
+  // gracefully to dataset-wide stats from `overview` if the fetch fails
+  // or arrives empty.
+  const [envelopePayload, setEnvelopePayload] = useState(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API_BASE_URL}/predict/scatter?coverage_scope=in_envelope`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => {
+        if (p) setEnvelopePayload(p);
+      })
+      .catch(() => {
+        /* silent — card falls back to dataset-wide overview stats */
+      });
+    return () => controller.abort();
+  }, []);
+
   if (!overview) return null;
 
-  // Pulls the aggregate prediction stats straight from /fields/overview.
-  // These already combine field-season-level predictions (ModelPrediction
-  // table, populated by the backfill) with ad-hoc PredictionRun rows from
-  // the wizard, so the card reflects the true model footprint across the
-  // dataset rather than just the interactive history.
+  // Dataset-wide fallback stats from /fields/overview.
   const stats = overview?.prediction_stats || {};
-  const totalFieldSeasons = overview?.total_field_seasons || 0;
-  const withPredictions = stats.field_seasons_with_predictions || 0;
+
+  // Envelope-scoped numbers, derived from the scatter response.
+  // points[*].predicted gives us the predicted-yield distribution for
+  // every envelope row that has both a stored prediction and an observed
+  // yield (the same rows that drive R²/RMSE on the regression card).
+  const envelopePoints = Array.isArray(envelopePayload?.points) ? envelopePayload.points : [];
+  const envelopePredicted = envelopePoints
+    .map((p) => Number(p?.predicted))
+    .filter((v) => Number.isFinite(v));
+  const envelopeWithPredictions = envelopePoints.length;
+  const envelopeTotal = Number.isFinite(envelopePayload?.coverage?.in_envelope_total)
+    ? envelopePayload.coverage.in_envelope_total
+    : 0;
+  const envelopeAvg = envelopePredicted.length
+    ? envelopePredicted.reduce((a, b) => a + b, 0) / envelopePredicted.length
+    : 0;
+  const envelopeMin = envelopePredicted.length ? Math.min(...envelopePredicted) : 0;
+  const envelopeMax = envelopePredicted.length ? Math.max(...envelopePredicted) : 0;
+
+  // When envelope data is available, the four headline stats and the
+  // coverage bar describe the envelope. When it isn't (initial fetch in
+  // flight, or call failed), we fall back to dataset-wide values.
+  const useEnvelope = envelopePayload != null && envelopeWithPredictions > 0;
+  const totalFieldSeasons = useEnvelope ? envelopeTotal : overview?.total_field_seasons || 0;
+  const withPredictions = useEnvelope ? envelopeWithPredictions : stats.field_seasons_with_predictions || 0;
   const coveragePct = totalFieldSeasons ? (100 * withPredictions) / totalFieldSeasons : 0;
-  const fieldPredictionsTotal = stats.field_predictions_total || 0;
+  const fieldPredictionsTotal = useEnvelope ? envelopeWithPredictions : stats.field_predictions_total || 0;
 
   // Color for the coverage bar — escalates from neutral info to warning to
   // success as coverage improves. Same thresholds the Overview's previous
@@ -738,14 +777,54 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
   // The four headline stats. Held in a config array so the JSX stays
   // declarative and the layout is trivially extensible — drop in a new
   // metric here and it slots into the grid without restructuring.
-  const stats4 = [
-    { label: 'Total Predictions', value: (stats.total_predictions || 0).toLocaleString(), unit: null },
-    { label: 'Avg Predicted', value: (stats.predicted_yield_avg || 0).toFixed(1), unit: 'bu/ac' },
-    { label: 'Min Predicted', value: (stats.predicted_yield_min || 0).toFixed(1), unit: 'bu/ac' },
-    { label: 'Max Predicted', value: (stats.predicted_yield_max || 0).toFixed(1), unit: 'bu/ac' }
-  ];
+  const stats4 = useEnvelope
+    ? [
+        { label: 'Total Predictions', value: envelopeWithPredictions.toLocaleString(), unit: null },
+        { label: 'Avg Predicted', value: envelopeAvg.toFixed(1), unit: 'bu/ac' },
+        { label: 'Min Predicted', value: envelopeMin.toFixed(1), unit: 'bu/ac' },
+        { label: 'Max Predicted', value: envelopeMax.toFixed(1), unit: 'bu/ac' }
+      ]
+    : [
+        { label: 'Total Predictions', value: (stats.total_predictions || 0).toLocaleString(), unit: null },
+        { label: 'Avg Predicted', value: (stats.predicted_yield_avg || 0).toFixed(1), unit: 'bu/ac' },
+        { label: 'Min Predicted', value: (stats.predicted_yield_min || 0).toFixed(1), unit: 'bu/ac' },
+        { label: 'Max Predicted', value: (stats.predicted_yield_max || 0).toFixed(1), unit: 'bu/ac' }
+      ];
 
   const lastRunRelative = getRelativeTime(lastRunAt);
+
+  // Themed Tooltip slotProps — same primary-tinted opaque surface every
+  // other hover-help affordance in the app uses (matches Overview.jsx's
+  // themedTooltipSlotProps and PredictionsTable's tier badges). Defined
+  // locally so the card stays self-contained.
+  const themedTooltipBg = `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`;
+  const themedTooltipSlotProps = {
+    tooltip: {
+      sx: {
+        bgcolor: themedTooltipBg,
+        color: theme.palette.common.white,
+        border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+        boxShadow: `0 6px 16px ${alpha(theme.palette.common.black, 0.45)}`,
+        backgroundImage: 'none',
+        fontSize: '0.78rem',
+        fontWeight: 500,
+        letterSpacing: '0.01em',
+        px: 1.25,
+        py: 0.85,
+        borderRadius: 1,
+        maxWidth: 280
+      }
+    },
+    arrow: {
+      sx: {
+        color: themedTooltipBg,
+        '&::before': {
+          border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+          backgroundColor: themedTooltipBg
+        }
+      }
+    }
+  };
 
   return (
     <Paper
@@ -788,7 +867,9 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
             Model Performance
           </Typography>
           <Typography sx={{ color: alpha(theme.palette.common.white, 0.55), fontSize: '0.78rem' }}>
-            Aggregate of every prediction the model has produced across your data
+            {useEnvelope
+              ? "Production model's predictions across the cleaned wheat dataset."
+              : 'Aggregate of every prediction the model has produced across your data.'}
           </Typography>
         </Stack>
         {/* Right-side metadata cluster — total counts, last-run freshness,
@@ -797,15 +878,14 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
             secondary text-button so it doesn't compete with the primary
             "Analyze Prediction" CTA. */}
         <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
-          <Typography sx={{ color: alpha(theme.palette.primary.light, 0.85), fontSize: '0.75rem', fontWeight: 600 }}>
-            {fieldPredictionsTotal.toLocaleString()} field predictions
-          </Typography>
           {lastRunRelative ? (
             <>
-              <Box component="span" aria-hidden sx={{ color: alpha(theme.palette.common.white, 0.3), fontSize: '0.75rem' }}>
-                ·
-              </Box>
-              <Tooltip title={lastRunAt ? `Last run: ${new Date(lastRunAt).toLocaleString()}` : ''} arrow placement="top">
+              <Tooltip
+                title={lastRunAt ? `Last run: ${new Date(lastRunAt).toLocaleString()}` : ''}
+                arrow
+                placement="top"
+                slotProps={themedTooltipSlotProps}
+              >
                 <Typography
                   component="span"
                   sx={{
@@ -876,7 +956,7 @@ function ModelPerformanceCard({ overview, lastRunAt, avgYieldTrend, onViewRunsHi
               Coverage
             </Typography>
             <Typography sx={{ color: alpha(theme.palette.common.white, 0.6), fontSize: '0.78rem' }}>
-              {withPredictions.toLocaleString()} of {totalFieldSeasons.toLocaleString()} field-seasons predicted
+              {withPredictions.toLocaleString()} of {totalFieldSeasons.toLocaleString()} field-seasons have a stored prediction
             </Typography>
           </Stack>
           <Stack direction="row" spacing={0.6} sx={{ alignItems: 'baseline' }}>
@@ -2728,7 +2808,7 @@ export default function Analytics({ preselectedPredictionRunId = null }) {
                   lineHeight: 1.55
                 }}
               >
-                Inspect how the production model is performing across every field-season with a recorded yield. The{' '}
+                Inspect how the production model is performing across the cleaned training envelope (~1,002 wheat field-seasons). The{' '}
                 <Box component="span" sx={{ fontWeight: 700, color: theme.palette.common.white }}>
                   Model Performance
                 </Box>{' '}

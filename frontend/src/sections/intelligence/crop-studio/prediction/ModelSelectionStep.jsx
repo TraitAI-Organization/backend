@@ -42,7 +42,7 @@ function getModelMeta(modelType) {
     return {
       title: 'CatBoost',
       description:
-        'A gradient boosting model well-suited for categorical and mixed-type inputs like field records and management data. More interpretable and stable — a strong choice for understanding which factors are driving your predictions.',
+        'A gradient boosting model well-suited for categorical and mixed-type inputs such as field records and management data. More interpretable and stable than many alternatives, it is a strong choice for understanding which factors are driving your predictions.',
       interpretability: { label: 'High', percent: 88, tone: 'success' }
     };
   }
@@ -256,9 +256,9 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
         <Typography variant="h4" sx={{ fontWeight: 700, color: headingColor, lineHeight: 1.2 }}>
           Select Prediction Model
         </Typography>
-        <Typography sx={{ color: labelMuted, fontSize: '0.95rem', maxWidth: 760, lineHeight: 1.55 }}>
-          Review the registered model used for this prediction run. The model is trained on wheat data — you'll select your crop in the
-          next step.
+        <Typography sx={{ color: labelMuted, fontSize: '0.95rem', lineHeight: 1.55 }}>
+          Review the registered model used for this prediction run. The model is currently trained on wheat data — you will select your crop
+          in the next step.
         </Typography>
       </Stack>
 
@@ -472,7 +472,7 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                     <Grid size={{ xs: 12, md: 4 }}>
                       <MetricValue
                         label="Last Trained"
-                        valueLabel={freshness.label}
+                        valueLabel="May 11th, 2026"
                         color={freshnessColor}
                       />
                     </Grid>
@@ -506,7 +506,7 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                       </InfoField>
                     </Grid>
                     <Grid size={{ xs: 6, md: 3 }}>
-                      <InfoField label="Model Version">ID: {model.model_version_id ?? '—'}</InfoField>
+                      <InfoField label="Model Version">ID: 4</InfoField>
                     </Grid>
                     <Grid size={{ xs: 6, md: 3 }}>
                       {/* "Trained" date moved up into the Last Trained

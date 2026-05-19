@@ -54,7 +54,11 @@ const COLUMNS = [
     tooltip:
       'Predicted − Observed. Positive = model over-predicted; negative = under-predicted. Sorted by magnitude by default — the worst misses float to the top.'
   },
-  { id: 'coverage_tier', label: 'Coverage', sortable: true }
+  // Coverage column removed — the dashboard is pinned to the cleaned
+  // training envelope, so every visible row would carry the same tier
+  // badge. Drop the column rather than render a wall of identical
+  // chips. If the multi-tier view returns, re-add:
+  //   { id: 'coverage_tier', label: 'Coverage', sortable: true }
 ];
 
 // Tier badge metadata — three tiers, each with a distinct hue so a
@@ -164,18 +168,12 @@ export default function PredictionsTable({
     return arr;
   }, [points, orderBy, order]);
 
-  // Detect whether the Coverage column has any real data in this payload.
-  // If every row's coverage_tier is missing or 'unknown' — which happens
-  // when the active model has no coverage.json, or the backend response
-  // predates the coverage_tier field — we hide the column entirely
-  // rather than showing a wall of "—" cells with empty-state tooltips.
-  // This is the cleaner fail-mode: the column either has meaning or
-  // doesn't exist.
-  const hasCoverageData = useMemo(() => {
-    if (!Array.isArray(points) || points.length === 0) return false;
-    const meaningfulTiers = new Set(['training_set', 'in_distribution', 'out_of_distribution']);
-    return points.some((p) => meaningfulTiers.has(p?.coverage_tier));
-  }, [points]);
+  // Coverage column has been removed from the table (dashboard scoped
+  // to the cleaned training envelope). hasCoverageData is forced false
+  // so the per-row coverage cell never renders and the chevron stays on
+  // the residual cell. Restore the useMemo + detection logic if the
+  // multi-tier view ever returns.
+  const hasCoverageData = false;
 
   // Column list filtered to drop the coverage column when there's no
   // tier data to display. Defined here so both the header rendering

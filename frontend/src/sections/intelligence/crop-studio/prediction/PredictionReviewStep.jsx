@@ -870,6 +870,26 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
   const confidenceLower = toNumberOrNull(predictionResult?.confidence_interval?.[0]);
   const confidenceUpper = toNumberOrNull(predictionResult?.confidence_interval?.[1]);
   const confidenceWidth = confidenceLower !== null && confidenceUpper !== null ? Math.max(confidenceUpper - confidenceLower, 0) : null;
+  // Distances from the predicted value to each bound. CatBoost quantile
+  // ensembles produce INDEPENDENT q=lo/q=hi predictions, so the interval
+  // is not guaranteed to be symmetric around the point estimate (we've
+  // seen e.g. predicted=37.16, lower=24.59, upper=38.83 → the lower bound
+  // is ~12.6 bu/ac below predicted but the upper is only ~1.7 above).
+  // Compute both deltas so the UI can render an honest "+X / −Y" when
+  // they diverge instead of pretending the interval is symmetric.
+  const upperDelta =
+    confidenceUpper !== null && predictedYield !== null
+      ? Math.max(confidenceUpper - predictedYield, 0)
+      : null;
+  const lowerDelta =
+    confidenceLower !== null && predictedYield !== null
+      ? Math.max(predictedYield - confidenceLower, 0)
+      : null;
+  // "Roughly symmetric" — small enough difference that a single ± value
+  // is honest. 0.5 bu/ac feels like the right floor for yield context
+  // (smaller than that and the asymmetry is in-the-noise).
+  const isApproxSymmetric =
+    upperDelta !== null && lowerDelta !== null && Math.abs(upperDelta - lowerDelta) < 0.5;
   // Coverage fraction returned by the backend (e.g. 0.95 for a Gaussian
   // 1.96·σ interval, 0.90 for a CatBoost q=0.05/q=0.95 ensemble). Renders
   // as a percentage label so we stop stamping "95%" on intervals that
@@ -1112,7 +1132,9 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
                   }}
                 >
                   {confidenceWidth !== null
-                    ? `${confidenceLabel} · ±${formatNumber(confidenceWidth / 2, 2)} bu/ac`
+                    ? isApproxSymmetric
+                      ? `${confidenceLabel} · ±${formatNumber((upperDelta + lowerDelta) / 2, 2)} bu/ac`
+                      : `${confidenceLabel} · +${formatNumber(upperDelta, 2)} / −${formatNumber(lowerDelta, 2)} bu/ac`
                     : 'Confidence interval not available'}
                 </Typography>
               </Stack>
