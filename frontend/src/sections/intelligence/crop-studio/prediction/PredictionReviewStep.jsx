@@ -870,26 +870,29 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
   const confidenceLower = toNumberOrNull(predictionResult?.confidence_interval?.[0]);
   const confidenceUpper = toNumberOrNull(predictionResult?.confidence_interval?.[1]);
   const confidenceWidth = confidenceLower !== null && confidenceUpper !== null ? Math.max(confidenceUpper - confidenceLower, 0) : null;
-  // Distances from the predicted value to each bound. CatBoost quantile
-  // ensembles produce INDEPENDENT q=lo/q=hi predictions, so the interval
-  // is not guaranteed to be symmetric around the point estimate (we've
-  // seen e.g. predicted=37.16, lower=24.59, upper=38.83 → the lower bound
-  // is ~12.6 bu/ac below predicted but the upper is only ~1.7 above).
-  // Compute both deltas so the UI can render an honest "+X / −Y" when
-  // they diverge instead of pretending the interval is symmetric.
+  // Signed distances from the predicted value to each bound. CatBoost
+  // quantile ensembles produce INDEPENDENT q=lo/q=hi predictions, so the
+  // interval is not guaranteed to be symmetric around the point estimate
+  // — and on miscalibrated models it can fail to bracket the point
+  // estimate at all (we've seen predicted=45.49, lower=40.57, upper=43.30
+  // → upper bound below predicted). We keep the signs honest here and
+  // let the render branch decide how to display each case.
   const upperDelta =
-    confidenceUpper !== null && predictedYield !== null
-      ? Math.max(confidenceUpper - predictedYield, 0)
-      : null;
+    confidenceUpper !== null && predictedYield !== null ? confidenceUpper - predictedYield : null;
   const lowerDelta =
-    confidenceLower !== null && predictedYield !== null
-      ? Math.max(predictedYield - confidenceLower, 0)
-      : null;
-  // "Roughly symmetric" — small enough difference that a single ± value
-  // is honest. 0.5 bu/ac feels like the right floor for yield context
-  // (smaller than that and the asymmetry is in-the-noise).
-  const isApproxSymmetric =
-    upperDelta !== null && lowerDelta !== null && Math.abs(upperDelta - lowerDelta) < 0.5;
+    confidenceLower !== null && predictedYield !== null ? predictedYield - confidenceLower : null;
+  // The interval is "well-formed" only when it brackets the predicted
+  // value (upper ≥ predicted ≥ lower). If either delta is negative, the
+  // bounds are pathological — the ± / +X / −Y notation falls apart and
+  // we should render the raw interval instead.
+  const bracketsPredicted = upperDelta !== null && lowerDelta !== null && upperDelta >= 0 && lowerDelta >= 0;
+  // Team preference: never collapse asymmetric intervals into a single ±.
+  // Always show "+X / −Y" when the interval brackets the predicted value,
+  // even when the two sides are nearly equal. The ± form was misleading
+  // in cases where the bounds were only barely symmetric. (If a single
+  // value is ever wanted again, gate it on isApproxSymmetric and pick a
+  // tolerance like 0.5.)
+  const isApproxSymmetric = false;
   // Coverage fraction returned by the backend (e.g. 0.95 for a Gaussian
   // 1.96·σ interval, 0.90 for a CatBoost q=0.05/q=0.95 ensemble). Renders
   // as a percentage label so we stop stamping "95%" on intervals that
@@ -1124,6 +1127,7 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
                   </Typography>
                 </Stack>
                 <Typography
+                  component="div"
                   sx={{
                     color: alpha(theme.palette.common.white, 0.65),
                     fontSize: '0.78rem',
@@ -1131,11 +1135,79 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
                     lineHeight: 1.4
                   }}
                 >
-                  {confidenceWidth !== null
-                    ? isApproxSymmetric
-                      ? `${confidenceLabel} · ±${formatNumber((upperDelta + lowerDelta) / 2, 2)} bu/ac`
-                      : `${confidenceLabel} · +${formatNumber(upperDelta, 2)} / −${formatNumber(lowerDelta, 2)} bu/ac`
-                    : 'Confidence interval not available'}
+                  {confidenceWidth === null ? (
+                    'Confidence interval not available'
+                  ) : !bracketsPredicted ? (
+                    <>
+                      {`${confidenceLabel} · [${formatNumber(confidenceLower, 2)}, ${formatNumber(confidenceUpper, 2)}] bu/ac `}
+                      <Tooltip
+                        arrow
+                        placement="top"
+                        title={
+                          <>
+                            The lower and upper bounds both fall on the same side of the predicted value, so the
+                            interval doesn&apos;t actually contain the point estimate.
+                            <br />
+                            <br />
+                            Why this happens: CatBoost trains the p10, p50, and p90 quantile heads independently, and
+                            tree-based quantile models don&apos;t guarantee that p10 ≤ p50 ≤ p90 for every input. For
+                            this specific row of inputs, the quantile heads disagree with the point-estimate head.
+                            <br />
+                            <br />
+                            What to do: treat the predicted value as the model&apos;s best guess and the interval as
+                            an indication that the model is uncertain or miscalibrated for inputs like these. The
+                            true yield could fall outside the shown range.
+                          </>
+                        }
+                        slotProps={{
+                          tooltip: {
+                            sx: {
+                              bgcolor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                              color: theme.palette.common.white,
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                              boxShadow: `0 6px 16px ${alpha(theme.palette.common.black, 0.45)}`,
+                              backgroundImage: 'none',
+                              fontSize: '0.78rem',
+                              fontWeight: 500,
+                              letterSpacing: '0.01em',
+                              px: 1.25,
+                              py: 0.85,
+                              borderRadius: 1,
+                              maxWidth: 340
+                            }
+                          },
+                          arrow: {
+                            sx: {
+                              color: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`,
+                              '&::before': {
+                                border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                                backgroundColor: `color-mix(in srgb, ${theme.palette.primary.main} 18%, ${theme.palette.background.paper})`
+                              }
+                            }
+                          }
+                        }}
+                      >
+                        <Box
+                          component="span"
+                          sx={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 0.35,
+                            color: theme.palette.warning.light,
+                            borderBottom: `1px dotted ${alpha(theme.palette.warning.light, 0.6)}`,
+                            cursor: 'help'
+                          }}
+                        >
+                          (does not bracket predicted)
+                          <InfoCircleOutlined style={{ fontSize: '0.72rem' }} />
+                        </Box>
+                      </Tooltip>
+                    </>
+                  ) : isApproxSymmetric ? (
+                    `${confidenceLabel} · ±${formatNumber((upperDelta + lowerDelta) / 2, 2)} bu/ac`
+                  ) : (
+                    `${confidenceLabel} · −${formatNumber(lowerDelta, 2)} / +${formatNumber(upperDelta, 2)} bu/ac`
+                  )}
                 </Typography>
               </Stack>
             </Grid>
