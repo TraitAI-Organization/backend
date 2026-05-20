@@ -1,6 +1,8 @@
 {
-  "p10_mean": 43.86868528150314,
-  "p50_mean": 47.90693564336098,
-  "p90_mean": 52.1997352429118,
-  "avg_interval_width": 8.331049961408661
+  "p10_mean": 43.7094572493247,
+  "prediction_mean": 48.06430312597859,
+  "p90_mean": 52.4191490026325,
+  "avg_interval_width": 8.709691753307805,
+  "invalid_lower_predictions": 0,
+  "invalid_upper_predictions": 0
 }

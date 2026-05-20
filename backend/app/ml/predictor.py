@@ -236,8 +236,23 @@ class PredictionService:
                     # quantiles per input, so enforce it here.
                     raw_lower = min(low_pred, high_pred)
                     raw_upper = max(low_pred, high_pred)
-                    median_q = min(qkeys, key=lambda q: abs(q - 0.5))
-                    raw_median = float(qpreds[median_q][0])
+                    # Pick the point estimate. Most quantile models use the median
+                    # (p50). Model v6 onward asked us to use the midpoint between
+                    # the outer quantiles (avg of p10/p90) — the engineer found
+                    # this calibrated better on out-of-domain rows than p50 alone.
+                    # Configurable via params.json or features.preprocessing:
+                    #   "point_estimator": "p50" | "avg_outer_quantiles" | "avg_p10_p90"
+                    params_block = self._metadata.get("params", {}) if self._metadata else {}
+                    point_estimator = (
+                        params_block.get("point_estimator")
+                        or preprocessing.get("point_estimator")
+                        or "p50"
+                    )
+                    if point_estimator in ("avg_outer_quantiles", "avg_p10_p90", "midpoint"):
+                        raw_median = (raw_lower + raw_upper) / 2.0
+                    else:
+                        median_q = min(qkeys, key=lambda q: abs(q - 0.5))
+                        raw_median = float(qpreds[median_q][0])
                     # e.g. q ∈ {0.05, 0.5, 0.95} → coverage = 0.90.
                     confidence_level = float(qkeys[-1] - qkeys[0])
             except Exception as e:

@@ -349,6 +349,65 @@ def _to_float(value: Any) -> Optional[float]:
         return None
 
 
+def _enrich_request_features(
+    request: "PredictionRequest",
+) -> Tuple[Dict[str, Any], str, Dict[str, Any]]:
+    """Shared enrichment pipeline used by every predict endpoint.
+
+    Takes a PredictionRequest, applies (1) county-centroid lat/long fill
+    when the user didn't supply coordinates and (2) live CSV-based
+    enrichment that pulls regional averages for the ~75 features the
+    wizard doesn't ask for. Returns:
+
+        (enriched_features, coordinates_source, live_enrichment_metadata)
+
+    `coordinates_source` is one of "user_provided", "county_centroid",
+    "unavailable". `live_enrichment_metadata` is the dict returned by
+    LiveEnrichmentLookup.enrich() — fields `source`, `rows`,
+    `filled_fields`. Both are safe to ignore if the caller doesn't
+    expose them in its response model.
+
+    Why this is shared:
+    Previously only the main /predictions endpoint enriched the
+    request. The /predictions/model/{tag}, /predictions/all-models, and
+    /predictions/batch endpoints all ran the lean 10-field payload
+    through the model, which collapses predictions toward the training
+    mean (~75 features defaulted to 0/"Missing"). Routing every endpoint
+    through this helper keeps live, multi-model, and batch results
+    consistent with the enriched-backfill predictions in the DB.
+    """
+    request_features = request.model_dump(exclude_none=True)
+    county = getattr(request, "county", None)
+    state = getattr(request, "state", None)
+
+    # Centroid fill — only when the user didn't supply lat/long.
+    user_lat = request_features.get("lat")
+    user_long = request_features.get("long")
+    coordinates_source = "user_provided" if (user_lat is not None and user_long is not None) else None
+    if coordinates_source is None:
+        centroid = _resolve_centroid(state, county)
+        if centroid is not None:
+            centroid_lat, centroid_long = centroid
+            if user_lat is None:
+                request_features["lat"] = centroid_lat
+            if user_long is None:
+                request_features["long"] = centroid_long
+            coordinates_source = "county_centroid"
+        else:
+            coordinates_source = "unavailable"
+
+    # Live enrichment — non-fatal if the CSV is missing.
+    live_enrichment_metadata: Dict[str, Any] = {"source": "disabled", "rows": 0, "filled_fields": {}}
+    try:
+        from app.services.live_enrichment import get_live_enrichment_lookup
+        lookup = get_live_enrichment_lookup()
+        request_features, live_enrichment_metadata = lookup.enrich(request_features)
+    except Exception as enrich_err:
+        logger.warning("Live enrichment unavailable: %s", enrich_err, exc_info=True)
+
+    return request_features, coordinates_source, live_enrichment_metadata
+
+
 def _serialize_prediction_run(run: db_models.PredictionRun) -> Dict[str, Any]:
     return {
         "prediction_run_id": run.prediction_run_id,
@@ -440,29 +499,13 @@ async def predict_yield(
             )
             regional_comparison = regional_avg
 
-        # Enrich the request payload with a county-centroid lat/long when
-        # the user didn't supply coordinates. `long` and `lat` are the
-        # 2nd/4th most important features in the live model, so feeding
-        # the model NaN for both (the previous behavior) was costing us
-        # noticeable accuracy. We record what we did via
-        # `coordinates_source` so the response can be transparent about
-        # whether the prediction used user-provided or county-centroid
-        # coordinates.
-        request_features = request.model_dump(exclude_none=True)
-        user_lat = request_features.get("lat")
-        user_long = request_features.get("long")
-        coordinates_source = "user_provided" if (user_lat is not None and user_long is not None) else None
-        if coordinates_source is None:
-            centroid = _resolve_centroid(state, county)
-            if centroid is not None:
-                centroid_lat, centroid_long = centroid
-                if user_lat is None:
-                    request_features["lat"] = centroid_lat
-                if user_long is None:
-                    request_features["long"] = centroid_long
-                coordinates_source = "county_centroid"
-            else:
-                coordinates_source = "unavailable"
+        # Centroid + CSV-driven feature enrichment. Shared with the
+        # specific-model, all-models, and batch endpoints so every
+        # prediction path feeds the model the same enriched payload —
+        # otherwise the lean inputs collapse predictions toward the
+        # training mean and live results disagree with the backfilled
+        # rows already in the predictions table.
+        request_features, coordinates_source, live_enrichment_metadata = _enrich_request_features(request)
 
         # Generate prediction
         prediction_result = predictor.predict(request_features, model_version)
@@ -505,6 +548,9 @@ async def predict_yield(
             },
             recommendations=None,  # Future: fertilizer recommendations
             coordinates_source=coordinates_source,
+            enrichment_source=live_enrichment_metadata.get("source"),
+            enrichment_rows=live_enrichment_metadata.get("rows"),
+            enrichment_filled_fields=live_enrichment_metadata.get("filled_fields") or None,
         )
 
         request_payload = request.model_dump(mode="json", exclude_none=True)
@@ -581,7 +627,12 @@ async def predict_yield_specific_model(
                 county=county
             )
 
-        prediction_result = predictor.predict(request.model_dump(exclude_none=True), model_version=model_version)
+        # Mirror the main endpoint's enrichment so a prediction from
+        # /predictions/model/{tag} produces the same numbers as
+        # /predictions for the same payload — the model expects the
+        # full 86-feature schema, not the lean wizard payload.
+        request_features, coordinates_source, live_enrichment_metadata = _enrich_request_features(request)
+        prediction_result = predictor.predict(request_features, model_version=model_version)
 
         explanations = {"top_features": []}
         try:
@@ -618,6 +669,10 @@ async def predict_yield_specific_model(
                 ]
             },
             recommendations=None,
+            coordinates_source=coordinates_source,
+            enrichment_source=live_enrichment_metadata.get("source"),
+            enrichment_rows=live_enrichment_metadata.get("rows"),
+            enrichment_filled_fields=live_enrichment_metadata.get("filled_fields") or None,
         )
 
         request_payload = request.model_dump(mode="json", exclude_none=True)
@@ -678,7 +733,10 @@ async def predict_yield_all_models(
                 detail="No model versions available. Register/train a model first."
             )
 
-        payload = request.model_dump(exclude_none=True)
+        # Enrich ONCE — every model sees the same payload, otherwise
+        # cross-model comparisons in the multi-model view conflate
+        # "different model" with "different feature fill".
+        payload, _coords_src, _enrich_meta = _enrich_request_features(request)
         items: List[MultiModelPredictionItem] = []
         explainer = ExplainabilityEngine(db, predictor)
         for mv in model_versions:
@@ -776,7 +834,10 @@ async def batch_predict_yield(
         results = []
         for req in requests:
             try:
-                result = predictor.predict(req.model_dump(exclude_none=True), model_version)
+                # Per-request enrichment so each row gets centroid + CSV
+                # fill keyed on its own state/county/crop/variety.
+                enriched_payload, _coords_src, _enrich_meta = _enrich_request_features(req)
+                result = predictor.predict(enriched_payload, model_version)
                 results.append(PredictionResponse(
                     predicted_yield=result['predicted_yield'],
                     confidence_interval=[

@@ -1,0 +1,11 @@
+{
+  "model_type": "catboost",
+  "quantiles": [
+    0.1,
+    0.5,
+    0.9
+  ],
+  "artifact_file": "model.cbm",
+  "source": "auto_sync",
+  "notes": "Auto-generated params placeholder by sync_models.py"
+}

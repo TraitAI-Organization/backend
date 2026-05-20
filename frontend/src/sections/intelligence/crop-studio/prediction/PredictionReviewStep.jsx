@@ -1198,7 +1198,7 @@ export default function PredictionReviewStep({ selectedModel, predictionResult, 
                             cursor: 'help'
                           }}
                         >
-                          (does not bracket predicted)
+                          (interval inconsistency found)
                           <InfoCircleOutlined style={{ fontSize: '0.72rem' }} />
                         </Box>
                       </Tooltip>

@@ -269,6 +269,15 @@ class PredictionResponse(BaseSchema):
     #   - "unavailable"     : no user coords and no centroid match for
     #                         the (state, county) pair — model received NaN
     coordinates_source: Optional[str] = None
+    # Live-enrichment trace. Tells the caller which historical-row match
+    # key fed the per-feature averages used to fill in inputs the user
+    # didn't provide. Source values: "state_county_crop_variety",
+    # "state_county_crop", "state_crop", "crop", "no_match", "disabled".
+    # filled_fields maps feature_name → enriched value, so the frontend
+    # can render a "N inputs auto-filled from regional averages" caveat.
+    enrichment_source: Optional[str] = None
+    enrichment_rows: Optional[int] = None
+    enrichment_filled_fields: Optional[Dict[str, float]] = None
 
 
 class MultiModelPredictionItem(BaseSchema):

@@ -104,7 +104,6 @@
       "crop": "crop_name_en",
       "variety": "variety_name_en"
     },
-    "point_estimator": "avg_p10_p90",
     "notes": "Auto-normalized by sync_models.py"
   }
 }
