@@ -39,18 +39,6 @@ class ExplainabilityEngine:
         established (so the SHAP-value post-processing knows which column
         to slice out of a multi-output attribution tensor).
         """
-        # Debug: log what we received so we can see why the multi-quantile
-        # unwrap isn't firing in production.
-        logger.info(
-            "_get_explainer called: type=%s module=%s has_trained_quantiles=%s has_underscore_model=%s has_models_by_quantile=%s recursive=%s",
-            type(model).__name__,
-            type(model).__module__,
-            hasattr(model, "trained_quantiles"),
-            hasattr(model, "_model"),
-            hasattr(model, "models_by_quantile"),
-            _is_recursive,
-        )
-
         # Top-level entry: clear any multi-output state from a previous
         # explain. The recursive branches preserve whatever they set up.
         if not _is_recursive:
