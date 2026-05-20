@@ -23,6 +23,13 @@ docker-compose.production.yml
 
 # Data
 data/
+# …but keep the static centroid lookup the prediction endpoint needs to
+# auto-fill lat/long from a (state, county) selection. Without this file
+# the backend logs "Centroid lookup file not found" and the model sees
+# lat=long=0 for every prediction, which silently kills the geographic
+# signal (currently the 2nd-strongest feature in the live model).
+!backend/app/data/
+!backend/app/data/state_county_centroids.json
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

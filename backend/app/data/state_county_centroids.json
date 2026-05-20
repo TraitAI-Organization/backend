@@ -1,0 +1,462 @@
+{
+  "Colorado": {
+    "Cheyenne": {
+      "lat": 38.6515,
+      "long": -102.0975,
+      "training_rows": 2
+    },
+    "Kiowa": {
+      "lat": 38.4587,
+      "long": -102.3457,
+      "training_rows": 3
+    },
+    "Kit Carson": {
+      "lat": 39.4552,
+      "long": -102.5828,
+      "training_rows": 6
+    },
+    "Phillips": {
+      "lat": 40.619,
+      "long": -102.393,
+      "training_rows": 1
+    }
+  },
+  "Kansas": {
+    "Barton": {
+      "lat": 38.2728,
+      "long": -98.817,
+      "training_rows": 4
+    },
+    "Clark": {
+      "lat": 37.4304,
+      "long": -99.8512,
+      "training_rows": 12
+    },
+    "Cloud": {
+      "lat": 39.4112,
+      "long": -97.6213,
+      "training_rows": 6
+    },
+    "Cowley": {
+      "lat": 37.0683,
+      "long": -97.1179,
+      "training_rows": 12
+    },
+    "Dickinson": {
+      "lat": 38.8674,
+      "long": -97.2068,
+      "training_rows": 134
+    },
+    "Edwards": {
+      "lat": 38.0003,
+      "long": -99.4646,
+      "training_rows": 43
+    },
+    "Ellis": {
+      "lat": 38.8158,
+      "long": -99.2661,
+      "training_rows": 69
+    },
+    "Ellsworth": {
+      "lat": 38.8114,
+      "long": -98.2978,
+      "training_rows": 23
+    },
+    "Finney": {
+      "lat": 38.0255,
+      "long": -100.6607,
+      "training_rows": 6
+    },
+    "Ford": {
+      "lat": 37.7422,
+      "long": -99.8391,
+      "training_rows": 77
+    },
+    "Gove": {
+      "lat": 38.998,
+      "long": -100.4536,
+      "training_rows": 9
+    },
+    "Graham": {
+      "lat": 39.1365,
+      "long": -99.8855,
+      "training_rows": 2
+    },
+    "Greeley": {
+      "lat": 38.3918,
+      "long": -101.8835,
+      "training_rows": 18
+    },
+    "Hamilton": {
+      "lat": 37.8984,
+      "long": -101.846,
+      "training_rows": 5
+    },
+    "Harper": {
+      "lat": 37.24,
+      "long": -97.808,
+      "training_rows": 1
+    },
+    "Harvey": {
+      "lat": 38.099,
+      "long": -97.2667,
+      "training_rows": 3
+    },
+    "Haskell": {
+      "lat": 37.5179,
+      "long": -100.8479,
+      "training_rows": 7
+    },
+    "Hodgeman": {
+      "lat": 38.0495,
+      "long": -99.8235,
+      "training_rows": 31
+    },
+    "Kearny": {
+      "lat": 38.18,
+      "long": -101.2642,
+      "training_rows": 11
+    },
+    "Kiowa": {
+      "lat": 37.5704,
+      "long": -99.2556,
+      "training_rows": 5
+    },
+    "Lane": {
+      "lat": 38.3782,
+      "long": -100.5358,
+      "training_rows": 16
+    },
+    "Lincoln": {
+      "lat": 39.0037,
+      "long": -98.0446,
+      "training_rows": 19
+    },
+    "Logan": {
+      "lat": 38.9496,
+      "long": -101.0458,
+      "training_rows": 9
+    },
+    "Marion": {
+      "lat": 38.4495,
+      "long": -97.2812,
+      "training_rows": 10
+    },
+    "McPherson": {
+      "lat": 38.4147,
+      "long": -97.6542,
+      "training_rows": 19
+    },
+    "Meade": {
+      "lat": 37.3826,
+      "long": -100.2702,
+      "training_rows": 5
+    },
+    "Mitchell": {
+      "lat": 39.359,
+      "long": -98.206,
+      "training_rows": 1
+    },
+    "Morris": {
+      "lat": 38.635,
+      "long": -96.716,
+      "training_rows": 1
+    },
+    "Morton": {
+      "lat": 37.225,
+      "long": -101.697,
+      "training_rows": 1
+    },
+    "Ness": {
+      "lat": 38.5044,
+      "long": -99.7439,
+      "training_rows": 29
+    },
+    "Norton": {
+      "lat": 39.5735,
+      "long": -99.805,
+      "training_rows": 2
+    },
+    "Osborne": {
+      "lat": 39.528,
+      "long": -98.9887,
+      "training_rows": 3
+    },
+    "Ottawa": {
+      "lat": 39.0566,
+      "long": -97.6052,
+      "training_rows": 9
+    },
+    "Pawnee": {
+      "lat": 38.137,
+      "long": -99.3753,
+      "training_rows": 26
+    },
+    "Pratt": {
+      "lat": 37.6156,
+      "long": -98.5492,
+      "training_rows": 5
+    },
+    "Reno": {
+      "lat": 37.963,
+      "long": -98.015,
+      "training_rows": 2
+    },
+    "Republic": {
+      "lat": 39.802,
+      "long": -97.717,
+      "training_rows": 1
+    },
+    "Rice": {
+      "lat": 38.4272,
+      "long": -98.2102,
+      "training_rows": 6
+    },
+    "Riley": {
+      "lat": 39.391,
+      "long": -96.744,
+      "training_rows": 1
+    },
+    "Rooks": {
+      "lat": 39.3412,
+      "long": -99.2484,
+      "training_rows": 12
+    },
+    "Rush": {
+      "lat": 38.4892,
+      "long": -99.4357,
+      "training_rows": 78
+    },
+    "Russell": {
+      "lat": 38.8529,
+      "long": -99.0129,
+      "training_rows": 32
+    },
+    "Saline": {
+      "lat": 38.9343,
+      "long": -97.7303,
+      "training_rows": 3
+    },
+    "Scott": {
+      "lat": 38.4852,
+      "long": -100.9099,
+      "training_rows": 8
+    },
+    "Sedgwick": {
+      "lat": 37.748,
+      "long": -97.6188,
+      "training_rows": 22
+    },
+    "Seward": {
+      "lat": 37.2236,
+      "long": -100.7089,
+      "training_rows": 9
+    },
+    "Sheridan": {
+      "lat": 39.221,
+      "long": -100.4625,
+      "training_rows": 4
+    },
+    "Sherman": {
+      "lat": 39.2935,
+      "long": -101.596,
+      "training_rows": 2
+    },
+    "Smith": {
+      "lat": 39.5735,
+      "long": -98.9135,
+      "training_rows": 2
+    },
+    "Stafford": {
+      "lat": 38.138,
+      "long": -98.643,
+      "training_rows": 1
+    },
+    "Stanton": {
+      "lat": 37.5797,
+      "long": -101.862,
+      "training_rows": 3
+    },
+    "Stevens": {
+      "lat": 37.003,
+      "long": -101.166,
+      "training_rows": 1
+    },
+    "Sumner": {
+      "lat": 37.233,
+      "long": -97.5869,
+      "training_rows": 7
+    },
+    "Thomas": {
+      "lat": 39.2742,
+      "long": -101.1395,
+      "training_rows": 8
+    },
+    "Trego": {
+      "lat": 38.8344,
+      "long": -99.8651,
+      "training_rows": 10
+    },
+    "Wallace": {
+      "lat": 38.779,
+      "long": -101.8818,
+      "training_rows": 4
+    },
+    "Wichita": {
+      "lat": 38.3215,
+      "long": -101.417,
+      "training_rows": 2
+    },
+    "Wilson": {
+      "lat": 37.492,
+      "long": -95.671,
+      "training_rows": 1
+    }
+  },
+  "Nebraska": {
+    "Frontier": {
+      "lat": 40.4153,
+      "long": -100.5078,
+      "training_rows": 6
+    },
+    "Hitchcock": {
+      "lat": 40.2567,
+      "long": -100.8952,
+      "training_rows": 8
+    },
+    "Nuckolls": {
+      "lat": 40.15,
+      "long": -97.9834,
+      "training_rows": 5
+    },
+    "Pawnee": {
+      "lat": 40.1164,
+      "long": -96.0849,
+      "training_rows": 9
+    },
+    "Red Willow": {
+      "lat": 40.2678,
+      "long": -100.4082,
+      "training_rows": 9
+    }
+  },
+  "Oklahoma": {
+    "Alfalfa": {
+      "lat": 36.6218,
+      "long": -98.501,
+      "training_rows": 4
+    },
+    "Beaver": {
+      "lat": 36.8305,
+      "long": -100.901,
+      "training_rows": 2
+    },
+    "Blaine": {
+      "lat": 36.018,
+      "long": -98.217,
+      "training_rows": 3
+    },
+    "Cimarron": {
+      "lat": 36.741,
+      "long": -102.271,
+      "training_rows": 1
+    },
+    "Cotton": {
+      "lat": 34.438,
+      "long": -98.474,
+      "training_rows": 1
+    },
+    "Kay": {
+      "lat": 36.9072,
+      "long": -97.346,
+      "training_rows": 6
+    },
+    "Kingfisher": {
+      "lat": 35.9951,
+      "long": -98.1551,
+      "training_rows": 10
+    },
+    "Kiowa": {
+      "lat": 34.9004,
+      "long": -99.0284,
+      "training_rows": 18
+    },
+    "Major": {
+      "lat": 36.2007,
+      "long": -98.4542,
+      "training_rows": 12
+    },
+    "Noble": {
+      "lat": 36.5102,
+      "long": -97.2398,
+      "training_rows": 4
+    },
+    "Ottawa": {
+      "lat": 36.916,
+      "long": -94.8228,
+      "training_rows": 4
+    },
+    "Texas": {
+      "lat": 36.8206,
+      "long": -101.0464,
+      "training_rows": 7
+    },
+    "Tillman": {
+      "lat": 34.3266,
+      "long": -98.6709,
+      "training_rows": 7
+    },
+    "Woods": {
+      "lat": 36.6863,
+      "long": -98.59,
+      "training_rows": 3
+    }
+  },
+  "Texas": {
+    "Carson": {
+      "lat": 35.331,
+      "long": -101.1,
+      "training_rows": 1
+    },
+    "Dallam": {
+      "lat": 36.1988,
+      "long": -102.27,
+      "training_rows": 5
+    },
+    "Deaf Smith": {
+      "lat": 35.0823,
+      "long": -102.2507,
+      "training_rows": 3
+    },
+    "Gray": {
+      "lat": 35.34,
+      "long": -101.083,
+      "training_rows": 1
+    },
+    "Hartley": {
+      "lat": 35.739,
+      "long": -102.169,
+      "training_rows": 1
+    },
+    "Lipscomb": {
+      "lat": 36.423,
+      "long": -100.52,
+      "training_rows": 1
+    },
+    "Ochiltree": {
+      "lat": 36.479,
+      "long": -100.6385,
+      "training_rows": 2
+    },
+    "Oldham": {
+      "lat": 35.206,
+      "long": -102.338,
+      "training_rows": 1
+    },
+    "Sherman": {
+      "lat": 36.1558,
+      "long": -102.125,
+      "training_rows": 4
+    }
+  }
+}
