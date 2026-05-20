@@ -506,7 +506,7 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                       </InfoField>
                     </Grid>
                     <Grid size={{ xs: 6, md: 3 }}>
-                      <InfoField label="Model Version">ID: 5</InfoField>
+                      <InfoField label="Model Version">ID: 6</InfoField>
                     </Grid>
                     <Grid size={{ xs: 6, md: 3 }}>
                       {/* "Trained" date moved up into the Last Trained
