@@ -472,7 +472,7 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                     <Grid size={{ xs: 12, md: 4 }}>
                       <MetricValue
                         label="Last Trained"
-                        valueLabel="May 11th, 2026"
+                        valueLabel="May 20th, 2026"
                         color={freshnessColor}
                       />
                     </Grid>
@@ -506,7 +506,7 @@ export default function ModelSelectionStep({ models, selectedModelId, onSelect, 
                       </InfoField>
                     </Grid>
                     <Grid size={{ xs: 6, md: 3 }}>
-                      <InfoField label="Model Version">ID: 4</InfoField>
+                      <InfoField label="Model Version">ID: 5</InfoField>
                     </Grid>
                     <Grid size={{ xs: 6, md: 3 }}>
                       {/* "Trained" date moved up into the Last Trained

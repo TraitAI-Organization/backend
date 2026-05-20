@@ -1,0 +1,11 @@
+{
+  "random_cv_r2_5fold": 0.81,
+  "random_cv_r2_20fold": 0.85,
+  "grouped_county_cv_r2": 0.07,
+  "grouped_crop_cv_r2": 0.017,
+  "leave_one_crop_out_r2": 0.17,
+  "leave_one_county_out_r2": 0.07,
+  "val_rmse": 10.0,
+  "quantiles": [0.1, 0.5, 0.9],
+  "_notes": "random_cv_r2_20fold = 0.85 is the headline number from the GenMills modelling report. The grouped_county_cv_r2 of 0.07 and leave_one_county_out_r2 of 0.07 represent the model's honest performance on counties it has never seen before — the prediction wizard uses coverage.json to keep users inside the trained envelope, where the random_cv_r2 number applies. Restored 2026-05-18 from import_external_model.py source after sync_models.py wrote a quantile-config-only stub."
+}

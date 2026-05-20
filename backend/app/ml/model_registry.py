@@ -53,6 +53,70 @@ class CatBoostQuantileWrapper:
         return sorted(self.models_by_quantile.keys())
 
 
+class CatBoostMultiQuantileWrapper:
+    """
+    Wraps a SINGLE CatBoost binary trained with the MultiQuantile loss
+    (a single .cbm whose .predict() returns a 2D array of shape
+    (n_samples, n_quantiles), one column per quantile).
+
+    Unlike CatBoostQuantileWrapper above (which composes N separately-trained
+    quantile models), MultiQuantile is trained jointly and is monotonic by
+    construction (p10 ≤ p50 ≤ p90 per input). That's the fix for the
+    "interval doesn't bracket the predicted value" problem that the
+    independently-trained quantile ensemble exhibited on out-of-domain rows.
+
+    Mirrors CatBoostQuantileWrapper's interface so the rest of the
+    prediction pipeline (PredictionService.predict()) keeps working
+    without per-model branching: .predict(X) returns p50, and
+    .predict_quantiles(X) returns {q: array} for each trained quantile.
+    """
+
+    def __init__(self, model: Any, quantiles: List[float], median_quantile: float = 0.5):
+        if not quantiles:
+            raise ValueError("CatBoostMultiQuantileWrapper requires a non-empty quantile list.")
+        self._model = model
+        # Preserve the training-time order so columns line up with quantile labels.
+        self.trained_quantiles: List[float] = list(quantiles)
+        # Pick the column that represents the point estimate.
+        if median_quantile in self.trained_quantiles:
+            self._median_q = median_quantile
+        else:
+            self._median_q = min(self.trained_quantiles, key=lambda q: abs(q - median_quantile))
+        self._median_idx = self.trained_quantiles.index(self._median_q)
+        # Mirror common CatBoost attributes for downstream introspection.
+        self.feature_names_ = getattr(self._model, "feature_names_", None)
+
+    def _predict_matrix(self, X):
+        """Run inference and coerce the result to a 2D (n_samples, n_quantiles) array."""
+        import numpy as np
+
+        raw = self._model.predict(X)
+        arr = np.asarray(raw)
+        if arr.ndim == 1:
+            # Single-quantile models will land here; reshape so column indexing works.
+            arr = arr.reshape(-1, 1)
+        return arr
+
+    def predict(self, X):
+        """Return the p50 column as a 1D array (matches sklearn-style regressors)."""
+        return self._predict_matrix(X)[:, self._median_idx]
+
+    def get_cat_feature_indices(self):
+        try:
+            return self._model.get_cat_feature_indices()
+        except Exception:
+            return []
+
+    def predict_quantiles(self, X) -> Dict[float, Any]:
+        """Return {q: array} for every trained quantile, drawn from one inference pass."""
+        preds = self._predict_matrix(X)
+        return {q: preds[:, i] for i, q in enumerate(self.trained_quantiles)}
+
+    @property
+    def quantiles(self) -> List[float]:
+        return sorted(self.trained_quantiles)
+
+
 class ModelRegistry:
     """
     Handles model versioning, storage, and retrieval.
@@ -93,6 +157,14 @@ class ModelRegistry:
             "pytorch": "deep_learning_pytorch",
             "torch": "deep_learning_pytorch",
             "cat_boost": "catboost",
+            # MultiQuantile is still a CatBoost binary; we want it to flow
+            # through the same wants_catboost branch in load_model() so the
+            # standard categorical-handling / preprocessing path applies.
+            # The actual multi-quantile wrapping is decided by which .cbm
+            # file is present, not by this label.
+            "catboost_multi_quantile": "catboost",
+            "catboost_multiquantile": "catboost",
+            "multi_quantile_catboost": "catboost",
         }
         return aliases.get(normalized, normalized)
 
@@ -220,6 +292,12 @@ class ModelRegistry:
         version_dir = self._resolve_version_dir(version_tag)
         model_path = os.path.join(version_dir, "model.pkl")
         catboost_model_path = os.path.join(version_dir, "model.cbm")
+        # MultiQuantile CatBoost binary: a single .cbm whose .predict()
+        # returns one column per trained quantile (e.g. p10/p50/p90).
+        # Takes priority over the four-file p10/p50/p90 ensemble because
+        # this is the architecturally newer, monotonicity-by-construction
+        # variant the team has standardized on.
+        catboost_multi_quantile_path = os.path.join(version_dir, "model_multi_quantile.cbm")
         pytorch_model_path = os.path.join(version_dir, "model.pth")
         features_path = os.path.join(version_dir, "features.json")
         metrics_path = os.path.join(version_dir, "metrics.json")
@@ -233,11 +311,13 @@ class ModelRegistry:
         if (
             not os.path.exists(model_path)
             and not os.path.exists(catboost_model_path)
+            and not os.path.exists(catboost_multi_quantile_path)
             and not os.path.exists(pytorch_model_path)
         ):
             raise FileNotFoundError(
                 "Model artifact not found: expected one of "
-                f"{model_path}, {catboost_model_path}, or {pytorch_model_path}"
+                f"{model_path}, {catboost_model_path}, {catboost_multi_quantile_path}, "
+                f"or {pytorch_model_path}"
             )
 
         with open(features_path, 'r') as f:
@@ -307,6 +387,42 @@ class ModelRegistry:
                 },
             )
             artifact_format = "pytorch_pth"
+        elif wants_catboost and os.path.exists(catboost_multi_quantile_path):
+            # MultiQuantile path — single binary, joint p10/p50/p90 training.
+            # Use base CatBoost (not CatBoostRegressor) because the model
+            # outputs a 2D matrix (one column per quantile), not a single
+            # regression value.
+            try:
+                from catboost import CatBoost
+            except ImportError as e:
+                raise ImportError(
+                    "CatBoost model detected but catboost is not installed. "
+                    "Install `catboost` in backend requirements."
+                ) from e
+            base_model = CatBoost()
+            base_model.load_model(catboost_multi_quantile_path)
+            # Quantile list comes from params.json (e.g. [0.1, 0.5, 0.9]).
+            # If the file is missing or malformed, fall back to the
+            # conventional 10/50/90 split and log so the operator knows.
+            params_quantiles = params.get("quantiles") if isinstance(params, dict) else None
+            if not isinstance(params_quantiles, list) or not params_quantiles:
+                logger.warning(
+                    "MultiQuantile model %s has no 'quantiles' list in params.json; "
+                    "defaulting to [0.1, 0.5, 0.9].",
+                    version_tag,
+                )
+                params_quantiles = [0.1, 0.5, 0.9]
+            model = CatBoostMultiQuantileWrapper(
+                base_model,
+                quantiles=[float(q) for q in params_quantiles],
+                median_quantile=0.5,
+            )
+            artifact_format = "catboost_cbm"
+            logger.info(
+                "Loaded CatBoost MultiQuantile model for %s with quantiles=%s",
+                version_tag,
+                sorted(model.trained_quantiles),
+            )
         elif wants_catboost and os.path.exists(catboost_model_path):
             try:
                 from catboost import CatBoostRegressor
@@ -366,7 +482,11 @@ class ModelRegistry:
         # If the folder ships per-quantile CatBoost artifacts (e.g. model_p10.cbm,
         # model_p50.cbm, model_p90.cbm), upgrade the loaded model into a quantile
         # wrapper so callers can read per-input prediction bounds.
-        if artifact_format == "catboost_cbm":
+        #
+        # Skip this block entirely if we already loaded a MultiQuantile model
+        # above — that wrapper already exposes predict_quantiles() and we
+        # don't want a leftover per-quantile ensemble to silently replace it.
+        if artifact_format == "catboost_cbm" and not isinstance(model, CatBoostMultiQuantileWrapper):
             try:
                 import re
                 from catboost import CatBoostRegressor
@@ -450,13 +570,26 @@ class ModelRegistry:
                 {"crop": "crop_name_en", "variety": "variety_name_en"},
             )
 
+        # MultiQuantile CatBoost models expect RAW inputs — they didn't ship
+        # cat_mappings.json or numeric_scaler.pkl during training, so applying
+        # leftover artifacts from a previous (non-MultiQuantile) checkpoint
+        # would push inputs into a space the model wasn't trained on. Detect
+        # the wrapper once and gate both side-car loads on it.
+        is_multi_quantile_model = isinstance(model, CatBoostMultiQuantileWrapper)
+
         # Load categorical mappings if the trainer shipped them. These translate raw
         # string category values (as seen at inference) to the integer codes the model
         # was trained on. Without this, deep-learning embeddings + CatBoost categorical
         # handling both receive unseen tokens for every row and produce garbage.
         cat_mappings: Optional[Dict[str, Dict[str, int]]] = None
         cat_mappings_path = os.path.join(version_dir, "cat_mappings.json")
-        if os.path.exists(cat_mappings_path):
+        if is_multi_quantile_model and os.path.exists(cat_mappings_path):
+            logger.info(
+                "Skipping cat_mappings.json for %s: MultiQuantile model "
+                "expects raw string categoricals (CatBoost handles them natively).",
+                version_tag,
+            )
+        elif os.path.exists(cat_mappings_path):
             try:
                 with open(cat_mappings_path, 'r') as f:
                     raw = json.load(f)
@@ -505,7 +638,13 @@ class ModelRegistry:
         # a scaler at training time keep working unchanged.
         numeric_scaler = None
         numeric_scaler_path = os.path.join(version_dir, "numeric_scaler.pkl")
-        if os.path.exists(numeric_scaler_path):
+        if is_multi_quantile_model and os.path.exists(numeric_scaler_path):
+            logger.info(
+                "Skipping numeric_scaler.pkl for %s: MultiQuantile model "
+                "expects raw numeric inputs.",
+                version_tag,
+            )
+        elif os.path.exists(numeric_scaler_path):
             try:
                 import joblib  # local import: keeps load cheap for models that don't ship a scaler
                 numeric_scaler = joblib.load(numeric_scaler_path)
