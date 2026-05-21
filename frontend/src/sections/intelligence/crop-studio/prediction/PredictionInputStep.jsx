@@ -237,7 +237,19 @@ export default function PredictionInputStep({
 }) {
   const theme = useTheme();
   const hasCrop = Boolean(formValues.crop);
-  const hasVarietiesForCrop = varieties.length > 0;
+  // Hide the "Unknown" sentinel from the variety dropdown. It's a real
+  // value in the training data (rows whose variety wasn't recorded) but
+  // showing it as a selectable option in the wizard is confusing — the
+  // user would pick it intending to mean "I don't know" while the model
+  // would interpret it as the specific category it was trained on under
+  // that name. Filtering it out (case-insensitive) means the user
+  // simply leaves the dropdown blank when they don't know the variety;
+  // the predictor already handles missing variety correctly (73% of
+  // training rows had it blank).
+  const displayedVarieties = varieties.filter(
+    (v) => String(v || '').trim().toLowerCase() !== 'unknown',
+  );
+  const hasVarietiesForCrop = displayedVarieties.length > 0;
   const isVarietyDisabled = !hasCrop || !hasVarietiesForCrop;
 
   // Per-form-field metadata derived from coverage.numeric_ranges. We expose
@@ -1035,7 +1047,7 @@ export default function PredictionInputStep({
                         No variety available for selected crop
                       </MenuItem>
                     ) : null}
-                    {varieties.map((variety) => (
+                    {displayedVarieties.map((variety) => (
                       <MenuItem key={variety} value={variety}>
                         {variety}
                       </MenuItem>

@@ -278,6 +278,12 @@ class PredictionResponse(BaseSchema):
     enrichment_source: Optional[str] = None
     enrichment_rows: Optional[int] = None
     enrichment_filled_fields: Optional[Dict[str, float]] = None
+    # Total count of user-provided (non-enriched) features after filtering
+    # the explainer's top-N list. Lets the frontend optionally render a
+    # "showing 5 of N features you provided" caption so the user knows
+    # the panel reflects the inputs they typed rather than the model's
+    # full feature set. Null when there's no explainability data.
+    total_user_features: Optional[int] = None
 
 
 class MultiModelPredictionItem(BaseSchema):

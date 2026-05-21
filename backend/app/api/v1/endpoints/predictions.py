@@ -349,6 +349,76 @@ def _to_float(value: Any) -> Optional[float]:
         return None
 
 
+# Internal-identifier feature columns the model trained on but which a
+# grower would never recognize in the "Top Contributing Features" panel.
+# They're integer IDs or join keys carried through from the source CSV
+# (most are 0 / blank for operational rows, so their attributed SHAP
+# impact reflects the model's prior on "ID was missing", not anything
+# the user can act on). Filtering them keeps the panel readable.
+#
+# Extend this set if more meaningless columns show up in the top-5
+# rankings as the model evolves — it's cheap to err on the side of
+# hiding things the user can't explain to themselves.
+_ALWAYS_HIDE_FROM_TOP_FEATURES: set = {
+    "field",
+    "grower",
+    "job_id",
+    "supply_id",
+    "fertilizer_id",
+    "tankMix_id",
+    "actives_id",
+    "cdms_fk",
+}
+
+
+def _auto_filled_feature_names(
+    coordinates_source: Optional[str],
+    live_enrichment_metadata: Dict[str, Any],
+) -> set:
+    """Return the set of feature names whose values came from server-side
+    enrichment rather than from the user's request payload — plus a small
+    "always hide" list of internal identifiers the user wouldn't recognize.
+
+    Includes:
+      - "lat" / "long" when the centroid-fallback supplied them
+      - every key in live_enrichment_metadata["filled_fields"]
+      - the static _ALWAYS_HIDE_FROM_TOP_FEATURES set (internal IDs)
+
+    Used to filter the SHAP top-features list before returning it to the
+    UI — the wizard's "Top Contributing Features" panel should only
+    surface features the user actually provided, otherwise the user sees
+    unfamiliar feature names with attributed yield impact and has no
+    intuition for what the value means or where it came from.
+    """
+    auto_filled: set = set(_ALWAYS_HIDE_FROM_TOP_FEATURES)
+    if coordinates_source == "county_centroid":
+        auto_filled.update({"lat", "long"})
+    filled = (live_enrichment_metadata or {}).get("filled_fields") or {}
+    if isinstance(filled, dict):
+        auto_filled.update(filled.keys())
+    return auto_filled
+
+
+def _user_features_only(
+    top_features: List[Dict[str, Any]],
+    auto_filled: set,
+    limit: int = 5,
+) -> Tuple[List[Dict[str, Any]], int]:
+    """Drop features whose name is in `auto_filled`, then truncate to
+    `limit`. Returns (filtered_slice, total_user_features_in_pool).
+
+    The total is useful for the frontend's "5 of N features you provided"
+    caption — it reflects how many user-provided features were in the
+    explainer's pool before we sliced to `limit`, not the total user
+    features in the entire model (which would require an explainer call
+    without `top_n`).
+    """
+    if not top_features:
+        return [], 0
+    user_features = [f for f in top_features if f.get("feature") not in auto_filled]
+    return user_features[:limit], len(user_features)
+
+
 def _enrich_request_features(
     request: "PredictionRequest",
 ) -> Tuple[Dict[str, Any], str, Dict[str, Any]]:
@@ -510,20 +580,33 @@ async def predict_yield(
         # Generate prediction
         prediction_result = predictor.predict(request_features, model_version)
 
-        # Get explainability (best-effort; do not fail prediction if explanation fails)
+        # Get explainability (best-effort; do not fail prediction if explanation fails).
+        # We request top_n=30 instead of 5 so that after we drop auto-filled
+        # features (live enrichment + centroid lat/long), we almost always
+        # still have ≥5 user-provided features left to surface. 30 is a
+        # safe upper bound — even with all ~17 live-enrichment features
+        # ranked in the top, we'd still recover 13 user-provided.
         explanations = {"top_features": []}
         try:
             explainer = ExplainabilityEngine(db, predictor)
             explanations = explainer.explain_prediction(
                 features=prediction_result['features'],
                 model_version=model_version,
-                base_value=prediction_result.get('base_value', 0.0)
+                base_value=prediction_result.get('base_value', 0.0),
+                top_n=30,
             )
         except Exception as explain_err:
             logger.warning(
                 f"Explainability unavailable for model {model_version.version_tag}: {explain_err}",
                 exc_info=True,
             )
+
+        # Filter out features the backend auto-filled (centroid + live
+        # enrichment). Users would otherwise see SHAP attributions for
+        # values they never provided and have no intuition for, which
+        # makes the prediction feel opaque even when it's not.
+        auto_filled = _auto_filled_feature_names(coordinates_source, live_enrichment_metadata)
+        top5_user, total_user = _user_features_only(explanations.get('top_features', []), auto_filled, limit=5)
 
         # Build response
         response = PredictionResponse(
@@ -543,7 +626,7 @@ async def predict_yield(
                         direction=feat['direction'],
                         importance=feat['importance']
                     ).model_dump()
-                    for feat in explanations['top_features'][:5]
+                    for feat in top5_user
                 ]
             },
             recommendations=None,  # Future: fertilizer recommendations
@@ -551,6 +634,7 @@ async def predict_yield(
             enrichment_source=live_enrichment_metadata.get("source"),
             enrichment_rows=live_enrichment_metadata.get("rows"),
             enrichment_filled_fields=live_enrichment_metadata.get("filled_fields") or None,
+            total_user_features=total_user,
         )
 
         request_payload = request.model_dump(mode="json", exclude_none=True)
@@ -634,19 +718,25 @@ async def predict_yield_specific_model(
         request_features, coordinates_source, live_enrichment_metadata = _enrich_request_features(request)
         prediction_result = predictor.predict(request_features, model_version=model_version)
 
+        # Pull the larger pool so post-filter we still have 5 user-provided
+        # features to show. See the main endpoint for the full rationale.
         explanations = {"top_features": []}
         try:
             explainer = ExplainabilityEngine(db, predictor)
             explanations = explainer.explain_prediction(
                 features=prediction_result['features'],
                 model_version=model_version,
-                base_value=prediction_result.get('base_value', 0.0)
+                base_value=prediction_result.get('base_value', 0.0),
+                top_n=30,
             )
         except Exception as explain_err:
             logger.warning(
                 f"Explainability unavailable for model {model_version.version_tag}: {explain_err}",
                 exc_info=True,
             )
+
+        auto_filled = _auto_filled_feature_names(coordinates_source, live_enrichment_metadata)
+        top5_user, total_user = _user_features_only(explanations.get('top_features', []), auto_filled, limit=5)
 
         response = PredictionResponse(
             predicted_yield=prediction_result['predicted_yield'],
@@ -665,7 +755,7 @@ async def predict_yield_specific_model(
                         direction=feat['direction'],
                         importance=feat['importance']
                     ).model_dump()
-                    for feat in explanations['top_features'][:5]
+                    for feat in top5_user
                 ]
             },
             recommendations=None,
@@ -673,6 +763,7 @@ async def predict_yield_specific_model(
             enrichment_source=live_enrichment_metadata.get("source"),
             enrichment_rows=live_enrichment_metadata.get("rows"),
             enrichment_filled_fields=live_enrichment_metadata.get("filled_fields") or None,
+            total_user_features=total_user,
         )
 
         request_payload = request.model_dump(mode="json", exclude_none=True)
